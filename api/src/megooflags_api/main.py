@@ -7,11 +7,14 @@ from megooflags_api import __version__, metrics
 from megooflags_api.db import create_engine
 from megooflags_api.routers import health
 from megooflags_api.settings import Settings, get_settings
+from megooflags_api.tracing import configure_tracing
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
+    if app.state.tracer_provider is not None:
+        app.state.tracer_provider.shutdown()
     await app.state.engine.dispose()
 
 
@@ -23,6 +26,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(metrics.MetricsMiddleware)
     app.include_router(health.router)
     app.include_router(metrics.router)
+    app.state.tracer_provider = configure_tracing(app, app.state.engine)
     return app
 
 
