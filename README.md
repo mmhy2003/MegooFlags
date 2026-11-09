@@ -60,6 +60,10 @@ database migrations and for releases are in [AGENTS.md](AGENTS.md). Changes are 
 [CHANGELOG.md](CHANGELOG.md). Releases are cut by a maintainer by pushing a `vX.Y.Z` tag, which
 publishes multi-arch images to `ghcr.io/mmhy2003/megooflags-api` and `ghcr.io/mmhy2003/megooflags-web`.
 
+Day-to-day work is merged into `develop`, and `main` holds the released code. A release is a pull
+request from `develop` into `main`; once it is merged, the maintainer tags the merge commit on `main`.
+The branching rules and release steps are in [AGENTS.md](AGENTS.md#2-branches-and-pull-requests).
+
 ## Repository layout
 
 ```
