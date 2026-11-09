@@ -6,8 +6,15 @@ services:
     restart: unless-stopped
     ports:
       - "${MEGOOFLAGS_HTTP_PORT:-80}:80"
-      - "443:443"
-      - "443:443/udp"
+      # 443 is published on the host only when MEGOOFLAGS_SITE_ADDRESS holds a domain (automatic HTTPS).
+      # Left empty (plain HTTP), Docker maps it to a random free host port where nothing listens,
+      # so it never clashes with another proxy on :443.
+      - target: 443
+        published: "${MEGOOFLAGS_SITE_ADDRESS:+443}"
+        protocol: tcp
+      - target: 443
+        published: "${MEGOOFLAGS_SITE_ADDRESS:+443}"
+        protocol: udp
     environment:
       MEGOOFLAGS_SITE_ADDRESS: ${MEGOOFLAGS_SITE_ADDRESS:-:80}
       MEGOOFLAGS_TRUSTED_PROXIES: ${MEGOOFLAGS_TRUSTED_PROXIES:-private_ranges}
@@ -41,6 +48,11 @@ services:
     environment:
       MEGOOFLAGS_DATABASE_URL: ${MEGOOFLAGS_DATABASE_URL:-postgresql+asyncpg://megooflags:megooflags@db:5432/megooflags}
       MEGOOFLAGS_PUBLIC_URL: ${MEGOOFLAGS_PUBLIC_URL:-}
+      MEGOOFLAGS_LOG_LEVEL: ${MEGOOFLAGS_LOG_LEVEL:-INFO}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-megooflags-api}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
     depends_on:
       migrate:
         condition: service_completed_successfully

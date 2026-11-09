@@ -5,8 +5,17 @@
 }
 
 {$MEGOOFLAGS_SITE_ADDRESS::80} {
+	# Metrics stay inside the compose network: Prometheus scrapes each api replica on :8000.
+	respond /metrics 404
+
 	@api path /api/* /sdk/* /ofrep/* /healthz /readyz
-	reverse_proxy @api api:8000 {
+	reverse_proxy @api {
+		# Every replica of `docker compose up --scale api=N`, re-resolved every 5s.
+		dynamic a api 8000 {
+			refresh 5s
+		}
+		lb_policy round_robin
+		lb_try_duration 5s
 		flush_interval -1
 	}
 	reverse_proxy web:3000
