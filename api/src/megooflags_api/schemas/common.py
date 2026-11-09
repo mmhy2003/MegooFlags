@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
@@ -15,3 +16,10 @@ class ApiModel(BaseModel):
 class Page[T](ApiModel):
     items: list[T]
     next_cursor: str | None
+
+
+class FlagEnvironmentState(ApiModel):
+    environment: str
+    enabled: bool
+    version: int
+    updated_at: datetime

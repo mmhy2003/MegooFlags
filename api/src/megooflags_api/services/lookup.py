@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.errors import not_found
-from megooflags_api.models import Environment, Project
+from megooflags_api.models import Environment, Flag, Project
 
 
 async def get_project(session: AsyncSession, key: str) -> Project:
@@ -21,3 +21,11 @@ async def get_environment(session: AsyncSession, project: Project, key: str) -> 
     if environment is None:
         raise not_found("environment", key)
     return environment
+
+
+async def get_flag(session: AsyncSession, project: Project, key: str) -> Flag:
+    """Archived flags are found too: archive only hides them from default lists."""
+    flag = await session.scalar(select(Flag).where(Flag.project_id == project.id, Flag.key == key))
+    if flag is None:
+        raise not_found("flag", key)
+    return flag

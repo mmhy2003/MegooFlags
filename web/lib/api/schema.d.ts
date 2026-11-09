@@ -78,6 +78,40 @@ export interface paths {
         patch: operations["update_environment_api_projects__project__environments__env__patch"];
         trace?: never;
     };
+    "/api/projects/{project}/flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Flag */
+        post: operations["create_flag_api_projects__project__flags_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/flags/{flag}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Flag */
+        get: operations["read_flag_api_projects__project__flags__flag__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -168,6 +202,89 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** FlagCreate */
+        FlagCreate: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Off Variation
+             * @description Key of the variation served when the flag is off.
+             */
+            off_variation?: string | null;
+            /** Owner */
+            owner?: string | null;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+            type: components["schemas"]["FlagType"];
+            /**
+             * Variations
+             * @description Required for string, number and JSON flags. Boolean flags always get the variations true and false.
+             */
+            variations?: components["schemas"]["VariationIn"][] | null;
+        };
+        /** FlagEnvironmentState */
+        FlagEnvironmentState: {
+            /** Enabled */
+            enabled: boolean;
+            /** Environment */
+            environment: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** FlagOut */
+        FlagOut: {
+            /** Archived */
+            archived: boolean;
+            /** Archived At */
+            archived_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Environments */
+            environments: components["schemas"]["FlagEnvironmentState"][];
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Off Variation */
+            off_variation: string;
+            /** Owner */
+            owner: string | null;
+            /** Tags */
+            tags: string[];
+            type: components["schemas"]["FlagType"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Variations */
+            variations: components["schemas"]["VariationOut"][];
+        };
+        /**
+         * FlagType
+         * @enum {string}
+         */
+        FlagType: "boolean" | "string" | "number" | "json";
         /** HealthResponse */
         HealthResponse: {
             /** Status */
@@ -251,6 +368,32 @@ export interface components {
         ReadyResponse: {
             /** Status */
             status: string;
+        };
+        /** VariationIn */
+        VariationIn: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Key */
+            key: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            value: components["schemas"]["JsonValue"];
+        };
+        /** VariationOut */
+        VariationOut: {
+            /** Description */
+            description: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            value: components["schemas"]["JsonValue"];
         };
     };
     responses: never;
@@ -734,6 +877,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnvironmentOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_flag_api_projects__project__flags_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FlagCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_flag_api_projects__project__flags__flag__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagOut"];
                 };
             };
             /** @description Not Found */
