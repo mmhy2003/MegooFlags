@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from megooflags_api import __version__, metrics
-from megooflags_api.db import create_engine
+from megooflags_api.db import create_engine, create_sessionmaker
+from megooflags_api.errors import install_error_handlers
 from megooflags_api.logging import AccessLogMiddleware, configure_logging
 from megooflags_api.routers import health
 from megooflags_api.settings import Settings, get_settings
@@ -25,6 +26,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="MegooFlags API", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.engine = create_engine(settings)
+    app.state.sessionmaker = create_sessionmaker(app.state.engine)
+    install_error_handlers(app)
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(metrics.MetricsMiddleware)
     app.include_router(health.router)

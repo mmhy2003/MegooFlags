@@ -1,0 +1,113 @@
+from typing import Any
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, JsonValue
+from sqlalchemy.exc import IntegrityError
+
+
+class ErrorBody(BaseModel):
+    code: str
+    message: str
+    details: JsonValue = None
+
+
+class ApiError(Exception):
+    def __init__(self, status: int, code: str, message: str, details: JsonValue = None) -> None:
+        super().__init__(message)
+        self.status = status
+        self.code = code
+        self.message = message
+        self.details = details
+
+
+def not_found(entity: str, key: str) -> ApiError:
+    return ApiError(404, "not_found", f"{entity} '{key}' not found")
+
+
+def key_conflict(entity: str, key: str) -> ApiError:
+    return ApiError(409, "key_conflict", f"{entity} '{key}' already exists")
+
+
+def version_conflict(current: int) -> ApiError:
+    return ApiError(
+        409,
+        "version_conflict",
+        f"the config was changed by someone else (current version {current})",
+        {"version": current},
+    )
+
+
+def in_use(message: str, used_by: list[dict[str, str]]) -> ApiError:
+    details: JsonValue = {"used_by": [dict(u) for u in used_by]}
+    return ApiError(409, "in_use", message, details)
+
+
+def not_archived(key: str) -> ApiError:
+    return ApiError(409, "not_archived", f"flag '{key}' must be archived before it is deleted")
+
+
+def invalid_reference(message: str, path: str) -> ApiError:
+    return ApiError(422, "invalid_reference", message, {"path": path})
+
+
+def validation_error(message: str, path: str | None = None) -> ApiError:
+    return ApiError(422, "validation_error", message, None if path is None else {"path": path})
+
+
+def prerequisite_cycle(message: str, path: str) -> ApiError:
+    return ApiError(422, "prerequisite_cycle", message, {"path": path})
+
+
+def integrity_error_status_code(sqlstate: str | None) -> tuple[int, str]:
+    """Map a Postgres integrity violation that escaped the services' own checks."""
+    match sqlstate:
+        case "23505":  # unique_violation
+            return 409, "key_conflict"
+        case "23503":  # foreign_key_violation
+            return 409, "in_use"
+        case "23514":  # check_violation
+            return 422, "validation_error"
+        case _:
+            return 500, "internal_error"
+
+
+ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorBody},
+    409: {"model": ErrorBody},
+    422: {"model": ErrorBody},
+}
+
+
+def _error_response(
+    status: int, code: str, message: str, details: JsonValue = None
+) -> JSONResponse:
+    body = ErrorBody(code=code, message=message, details=details)
+    return JSONResponse(status_code=status, content=body.model_dump(mode="json"))
+
+
+async def _api_error(request: Request, exc: Exception) -> JSONResponse:
+    assert isinstance(exc, ApiError)
+    return _error_response(exc.status, exc.code, exc.message, exc.details)
+
+
+async def _request_validation_error(request: Request, exc: Exception) -> JSONResponse:
+    assert isinstance(exc, RequestValidationError)
+    details: JsonValue = [
+        {"loc": list(e["loc"]), "msg": e["msg"], "type": e["type"]} for e in exc.errors()
+    ]
+    return _error_response(422, "validation_error", "request validation failed", details)
+
+
+async def _integrity_error(request: Request, exc: Exception) -> JSONResponse:
+    assert isinstance(exc, IntegrityError)
+    status, code = integrity_error_status_code(getattr(exc.orig, "sqlstate", None))
+    message = "internal error" if status == 500 else "the change conflicts with existing data"
+    return _error_response(status, code, message)
+
+
+def install_error_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(ApiError, _api_error)
+    app.add_exception_handler(RequestValidationError, _request_validation_error)
+    app.add_exception_handler(IntegrityError, _integrity_error)
