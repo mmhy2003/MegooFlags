@@ -158,7 +158,11 @@ export interface paths {
         };
         /** Read Flag Config */
         get: operations["read_flag_config_api_projects__project__flags__flag__environments__environment__get"];
-        put?: never;
+        /**
+         * Replace Flag Config
+         * @description Replace the whole config; `version` must match the current one, or 409.
+         */
+        put: operations["replace_flag_config_api_projects__project__flags__flag__environments__environment__put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -374,6 +378,29 @@ export interface components {
             details?: components["schemas"]["JsonValue"];
             /** Message */
             message: string;
+        };
+        /** FlagConfigIn */
+        FlagConfigIn: {
+            /** Enabled */
+            enabled: boolean;
+            fallthrough: components["schemas"]["Serve"];
+            /**
+             * Prerequisites
+             * @default []
+             */
+            prerequisites: components["schemas"]["PrerequisiteIn"][];
+            /**
+             * Rules
+             * @default []
+             */
+            rules: components["schemas"]["RuleIn"][];
+            /**
+             * Targets
+             * @default []
+             */
+            targets: components["schemas"]["TargetIn"][];
+            /** Version */
+            version: number;
         };
         /**
          * FlagConfigOut
@@ -650,6 +677,19 @@ export interface components {
             bucket_by: string;
             /** Weights */
             weights: components["schemas"]["WeightIn"][];
+        };
+        /** RuleIn */
+        RuleIn: {
+            /** Clauses */
+            clauses: components["schemas"]["ClauseIn"][];
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            rollout?: components["schemas"]["RolloutIn"] | null;
+            /** Variation */
+            variation?: string | null;
         };
         /** RuleOut */
         RuleOut: {
@@ -1718,6 +1758,61 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagConfigOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    replace_flag_config_api_projects__project__flags__flag__environments__environment__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FlagConfigIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

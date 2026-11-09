@@ -238,6 +238,53 @@
         "title": "ErrorBody",
         "type": "object"
       },
+      "FlagConfigIn": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "fallthrough": {
+            "$ref": "#/components/schemas/Serve"
+          },
+          "prerequisites": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PrerequisiteIn"
+            },
+            "title": "Prerequisites",
+            "type": "array"
+          },
+          "rules": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RuleIn"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "targets": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TargetIn"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "enabled",
+          "fallthrough"
+        ],
+        "title": "FlagConfigIn",
+        "type": "object"
+      },
       "FlagConfigOut": {
         "additionalProperties": false,
         "description": "Targets are grouped per variation in variation order, with values sorted.",
@@ -1021,6 +1068,52 @@
           "weights"
         ],
         "title": "RolloutIn",
+        "type": "object"
+      },
+      "RuleIn": {
+        "additionalProperties": false,
+        "properties": {
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/ClauseIn"
+            },
+            "minItems": 1,
+            "title": "Clauses",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 10000,
+            "title": "Description",
+            "type": "string"
+          },
+          "rollout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RolloutIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "variation": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variation"
+          }
+        },
+        "required": [
+          "clauses"
+        ],
+        "title": "RuleIn",
         "type": "object"
       },
       "RuleOut": {
@@ -2836,6 +2929,95 @@
           }
         },
         "summary": "Read Flag Config",
+        "tags": [
+          "flag-environments"
+        ]
+      },
+      "put": {
+        "description": "Replace the whole config; `version` must match the current one, or 409.",
+        "operationId": "replace_flag_config_api_projects__project__flags__flag__environments__environment__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "flag",
+            "required": true,
+            "schema": {
+              "title": "Flag",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environment",
+            "required": true,
+            "schema": {
+              "title": "Environment",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlagConfigIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlagConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Replace Flag Config",
         "tags": [
           "flag-environments"
         ]

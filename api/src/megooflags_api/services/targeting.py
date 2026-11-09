@@ -3,9 +3,10 @@
 import uuid
 from collections import defaultdict
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from megooflags_api.errors import invalid_reference, validation_error, version_conflict
 from megooflags_api.models import (
     Flag,
     FlagEnvironment,
@@ -16,6 +17,8 @@ from megooflags_api.models import (
     Variation,
 )
 from megooflags_api.schemas.targeting import (
+    ClauseIn,
+    FlagConfigIn,
     FlagConfigOut,
     PrerequisiteIn,
     RolloutIn,
@@ -24,7 +27,12 @@ from megooflags_api.schemas.targeting import (
     TargetIn,
     WeightIn,
 )
-from megooflags_api.services.clauses import load_clauses
+from megooflags_api.services.clauses import (
+    check_clause,
+    insert_clauses,
+    load_clauses,
+    resolve_segments,
+)
 
 
 async def load_config(
@@ -124,3 +132,171 @@ async def load_config(
         prerequisites=prerequisites,
         updated_at=fe.updated_at,
     )
+
+
+TOTAL_WEIGHT = 100000
+
+
+def _check_targets(body: FlagConfigIn) -> None:
+    seen: set[str] = set()
+    for i, target in enumerate(body.targets):
+        for j, key in enumerate(target.values):
+            if key in seen:
+                raise validation_error(
+                    f"context key '{key}' is in more than one target list",
+                    f"targets[{i}].values[{j}]",
+                )
+            seen.add(key)
+
+
+def _check_rollout(rollout: RolloutIn, path: str) -> None:
+    seen: set[str] = set()
+    for j, weight in enumerate(rollout.weights):
+        if weight.variation in seen:
+            raise validation_error(
+                f"variation '{weight.variation}' is listed twice", f"{path}.weights[{j}].variation"
+            )
+        seen.add(weight.variation)
+    if sum(w.weight for w in rollout.weights) != TOTAL_WEIGHT:
+        raise validation_error(f"weights must add up to {TOTAL_WEIGHT}", f"{path}.weights")
+
+
+def _serves(body: FlagConfigIn) -> list[tuple[str, Serve]]:
+    """Every rule outcome and the fallthrough, with their paths."""
+    return [(f"rules[{i}]", rule) for i, rule in enumerate(body.rules)] + [
+        ("fallthrough", body.fallthrough)
+    ]
+
+
+def _variation_refs(body: FlagConfigIn) -> list[tuple[str, str]]:
+    """Every variation key the body references, with its path, in body order."""
+    refs = [(f"targets[{i}].variation", t.variation) for i, t in enumerate(body.targets)]
+    for path, serve in _serves(body):
+        if serve.variation is not None:
+            refs.append((f"{path}.variation", serve.variation))
+        if serve.rollout is not None:
+            refs.extend(
+                (f"{path}.rollout.weights[{j}].variation", w.variation)
+                for j, w in enumerate(serve.rollout.weights)
+            )
+    return refs
+
+
+def _weight_rows(
+    rollout: RolloutIn, ids: dict[str, uuid.UUID], **owner: uuid.UUID
+) -> list[dict[str, object]]:
+    return [
+        {"id": uuid.uuid4(), "variation_id": ids[w.variation], "weight": w.weight, **owner}
+        for w in rollout.weights
+    ]
+
+
+async def replace_config(
+    session: AsyncSession,
+    flag: Flag,
+    fe: FlagEnvironment,
+    body: FlagConfigIn,
+    *,
+    check_version: bool = True,
+    set_enabled: bool = True,
+) -> None:
+    """Replace the whole config of `fe`, which the caller has locked (SELECT ... FOR UPDATE).
+
+    Everything is validated before the first delete, so a refused body leaves the config as is.
+    """
+    if check_version and body.version != fe.version:
+        raise version_conflict(fe.version)
+
+    variation_ids: dict[str, uuid.UUID] = {
+        key: id_
+        for key, id_ in await session.execute(
+            select(Variation.key, Variation.id).where(Variation.flag_id == flag.id)
+        )
+    }
+    for path, key in _variation_refs(body):
+        if key not in variation_ids:
+            raise invalid_reference(f"unknown variation '{key}'", path)
+
+    _check_targets(body)
+    clauses_by_path: list[tuple[str, ClauseIn]] = []
+    for i, rule in enumerate(body.rules):
+        for k, clause in enumerate(rule.clauses):
+            path = f"rules[{i}].clauses[{k}]"
+            check_clause(clause, path, allow_segments=True)
+            clauses_by_path.append((path, clause))
+    for path, serve in _serves(body):
+        if serve.rollout is not None:
+            _check_rollout(serve.rollout, f"{path}.rollout")
+    segment_ids = await resolve_segments(session, flag.project_id, clauses_by_path)
+    if body.prerequisites:
+        raise validation_error("prerequisites are not supported yet", "prerequisites")
+
+    await session.execute(delete(FlagTarget).where(FlagTarget.flag_environment_id == fe.id))
+    await session.execute(delete(FlagRule).where(FlagRule.flag_environment_id == fe.id))
+    await session.execute(delete(RolloutWeight).where(RolloutWeight.flag_environment_id == fe.id))
+    await session.execute(
+        delete(FlagPrerequisite).where(FlagPrerequisite.flag_environment_id == fe.id)
+    )
+
+    targets = [
+        {
+            "id": uuid.uuid4(),
+            "flag_environment_id": fe.id,
+            "variation_id": variation_ids[target.variation],
+            "context_key": key,
+        }
+        for target in body.targets
+        for key in target.values
+    ]
+    if targets:
+        await session.execute(insert(FlagTarget), targets)
+
+    rule_ids = [uuid.uuid4() for _ in body.rules]
+    if body.rules:
+        await session.execute(
+            insert(FlagRule),
+            [
+                {
+                    "id": rule_id,
+                    "flag_environment_id": fe.id,
+                    "position": position,
+                    "description": rule.description,
+                    "variation_id": None
+                    if rule.variation is None
+                    else variation_ids[rule.variation],
+                    "bucket_by": None if rule.rollout is None else rule.rollout.bucket_by,
+                }
+                for position, (rule_id, rule) in enumerate(zip(rule_ids, body.rules, strict=True))
+            ],
+        )
+    weights: list[dict[str, object]] = []
+    for rule_id, rule in zip(rule_ids, body.rules, strict=True):
+        if rule.rollout is not None:
+            weights += _weight_rows(rule.rollout, variation_ids, flag_rule_id=rule_id)
+    fallthrough = body.fallthrough
+    if fallthrough.rollout is not None:
+        weights += _weight_rows(fallthrough.rollout, variation_ids, flag_environment_id=fe.id)
+    if weights:
+        await session.execute(insert(RolloutWeight), weights)
+    for rule_id, rule in zip(rule_ids, body.rules, strict=True):
+        await insert_clauses(
+            session,
+            rule.clauses,
+            flag_rule_id=rule_id,
+            segment_rule_id=None,
+            segment_ids=segment_ids,
+        )
+
+    if fallthrough.variation is not None:
+        fe.fallthrough_variation_id = variation_ids[fallthrough.variation]
+        fe.fallthrough_bucket_by = None
+    else:
+        assert fallthrough.rollout is not None
+        fe.fallthrough_variation_id = None
+        fe.fallthrough_bucket_by = fallthrough.rollout.bucket_by
+    if set_enabled:
+        fe.enabled = body.enabled
+    fe.version = fe.version + 1
+    fe.updated_at = func.now()
+    await session.flush()
+    await session.refresh(fe)  # load the updated_at the database set

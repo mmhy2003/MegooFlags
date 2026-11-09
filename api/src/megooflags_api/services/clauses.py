@@ -92,7 +92,7 @@ async def resolve_segments(
             Segment.project_id == project_id, Segment.key.in_({key for _, key in refs})
         )
     )
-    ids: dict[str, uuid.UUID] = {key: id_ for key, id_ in rows.tuples()}
+    ids: dict[str, uuid.UUID] = {key: id_ for key, id_ in rows}
     for path, key in refs:
         if key not in ids:
             raise invalid_reference(f"unknown segment '{key}'", path)
@@ -165,7 +165,7 @@ async def load_clauses(
             .where(ClauseSegment.clause_id.in_(segment_clause_ids))
             .order_by(Segment.key)
         )
-        for clause_id, key in rows.tuples():
+        for clause_id, key in rows:
             segment_keys[clause_id].append(key)
     result: dict[uuid.UUID, list[ClauseOut]] = defaultdict(list)
     for c in clauses:
