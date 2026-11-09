@@ -156,6 +156,10 @@ jobs:
   smoke:
     runs-on: ubuntu-24.04
     needs: images
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [http, https]
     steps:
       - uses: actions/checkout@v4
       - id: v
@@ -179,4 +183,4 @@ jobs:
             VERSION=${{ steps.v.outputs.version }}
             REVISION=${{ github.sha }}
           cache-from: type=gha,scope=web
-      - run: bash scripts/smoke.sh
+      - run: bash scripts/smoke.sh ${{ matrix.mode }}
