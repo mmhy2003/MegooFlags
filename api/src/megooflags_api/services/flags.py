@@ -112,7 +112,7 @@ async def create_flag(session: AsyncSession, project: Project, body: FlagCreate)
     return flag
 
 
-def _like_pattern(q: str) -> str:
+def like_pattern(q: str) -> str:
     """A case-insensitive substring pattern, with the LIKE wildcards in `q` matched literally."""
     escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
@@ -152,7 +152,7 @@ async def list_flags(
         .limit(limit + 1)
     )
     if q:
-        pattern = _like_pattern(q)
+        pattern = like_pattern(q)
         query = query.where(
             or_(Flag.key.ilike(pattern, escape="\\"), Flag.name.ilike(pattern, escape="\\"))
         )

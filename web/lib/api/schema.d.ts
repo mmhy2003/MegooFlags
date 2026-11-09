@@ -184,6 +184,44 @@ export interface paths {
         patch: operations["update_variation_api_projects__project__flags__flag__variations__variation__patch"];
         trace?: never;
     };
+    "/api/projects/{project}/segments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Segments */
+        get: operations["list_segments_api_projects__project__segments_get"];
+        put?: never;
+        /** Create Segment */
+        post: operations["create_segment_api_projects__project__segments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/segments/{segment}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Segment */
+        get: operations["read_segment_api_projects__project__segments__segment__get"];
+        /** Replace Segment Config */
+        put: operations["replace_segment_config_api_projects__project__segments__segment__put"];
+        post?: never;
+        /** Delete Segment */
+        delete: operations["delete_segment_api_projects__project__segments__segment__delete"];
+        options?: never;
+        head?: never;
+        /** Update Segment */
+        patch: operations["update_segment_api_projects__project__segments__segment__patch"];
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -222,6 +260,35 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ClauseIn */
+        ClauseIn: {
+            /**
+             * Attribute
+             * @default key
+             */
+            attribute: string;
+            /**
+             * Negate
+             * @default false
+             */
+            negate: boolean;
+            operator: components["schemas"]["Operator"];
+            /** Values */
+            values: (string | number | boolean)[];
+        };
+        /**
+         * ClauseOut
+         * @description For `in_segment`, `values` are the segment keys, sorted.
+         */
+        ClauseOut: {
+            /** Attribute */
+            attribute: string;
+            /** Negate */
+            negate: boolean;
+            operator: components["schemas"]["Operator"];
+            /** Values */
+            values: (string | number | boolean)[];
+        };
         /** EnvironmentCreate */
         EnvironmentCreate: {
             /**
@@ -411,6 +478,11 @@ export interface components {
             version: string;
         };
         JsonValue: unknown;
+        /**
+         * Operator
+         * @enum {string}
+         */
+        Operator: "in" | "not_in" | "contains" | "starts_with" | "ends_with" | "matches" | "lt" | "lte" | "gt" | "gte" | "semver_eq" | "semver_lt" | "semver_gt" | "before" | "after" | "in_segment";
         /** Page[FlagSummary] */
         Page_FlagSummary_: {
             /** Items */
@@ -422,6 +494,13 @@ export interface components {
         Page_ProjectSummary_: {
             /** Items */
             items: components["schemas"]["ProjectSummary"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[SegmentSummary] */
+        Page_SegmentSummary_: {
+            /** Items */
+            items: components["schemas"]["SegmentSummary"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -493,6 +572,110 @@ export interface components {
         ReadyResponse: {
             /** Status */
             status: string;
+        };
+        /**
+         * SegmentConfigIn
+         * @description Replaces the whole config. A context key may be in one list only; repeats are dropped.
+         */
+        SegmentConfigIn: {
+            /**
+             * Excluded
+             * @default []
+             */
+            excluded: string[];
+            /**
+             * Included
+             * @default []
+             */
+            included: string[];
+            /**
+             * Rules
+             * @default []
+             */
+            rules: components["schemas"]["SegmentRuleIn"][];
+        };
+        /** SegmentCreate */
+        SegmentCreate: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * SegmentOut
+         * @description `included` and `excluded` are sorted; `rules` keep their order.
+         */
+        SegmentOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Excluded */
+            excluded: string[];
+            /** Included */
+            included: string[];
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Rules */
+            rules: components["schemas"]["SegmentRuleOut"][];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SegmentRuleIn */
+        SegmentRuleIn: {
+            /** Clauses */
+            clauses: components["schemas"]["ClauseIn"][];
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+        };
+        /** SegmentRuleOut */
+        SegmentRuleOut: {
+            /** Clauses */
+            clauses: components["schemas"]["ClauseOut"][];
+            /** Description */
+            description: string;
+        };
+        /** SegmentSummary */
+        SegmentSummary: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SegmentUpdate */
+        SegmentUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
         };
         /** VariationIn */
         VariationIn: {
@@ -1533,6 +1716,319 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VariationOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_segments_api_projects__project__segments_get: {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive substring of the key or name. */
+                q?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SegmentSummary_"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_segment_api_projects__project__segments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SegmentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SegmentOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_segment_api_projects__project__segments__segment__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                segment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SegmentOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    replace_segment_config_api_projects__project__segments__segment__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                segment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SegmentConfigIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SegmentOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_segment_api_projects__project__segments__segment__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                segment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_segment_api_projects__project__segments__segment__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                segment: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SegmentUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SegmentOut"];
                 };
             };
             /** @description Not Found */

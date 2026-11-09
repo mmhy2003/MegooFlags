@@ -1,9 +1,12 @@
-from pydantic import Field, StrictBool, StrictFloat, StrictInt, StrictStr
+from typing import Annotated
+
+from pydantic import Field, StrictBool, StrictFloat, StrictInt, StrictStr, StringConstraints
 
 from megooflags_api.models.enums import Operator
 from megooflags_api.schemas.common import ApiModel
 
 Scalar = StrictStr | StrictInt | StrictFloat | StrictBool
+ContextKey = Annotated[str, StringConstraints(min_length=1, max_length=256)]
 
 
 class ClauseIn(ApiModel):
