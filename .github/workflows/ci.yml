@@ -1,0 +1,182 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+      - run: python3 scripts/check_version.py
+      - run: uv run --frozen --project api pytest scripts/tests
+
+  api-lint:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+      - run: uv sync --frozen
+      - run: uv run ruff check . ../scripts
+      - run: uv run ruff format --check . ../scripts
+      - run: uv run mypy
+
+  api-test:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: megooflags
+          POSTGRES_PASSWORD: megooflags
+          POSTGRES_DB: megooflags
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U megooflags" --health-interval 5s
+          --health-timeout 5s --health-retries 20
+    env:
+      MEGOOFLAGS_DATABASE_URL: postgresql+asyncpg://megooflags:megooflags@localhost:5432/megooflags
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+      - run: uv sync --frozen
+      - run: uv run pytest -v
+
+  migrations:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:  # same block as api-test
+        image: postgres:16
+        env:
+          POSTGRES_USER: megooflags
+          POSTGRES_PASSWORD: megooflags
+          POSTGRES_DB: megooflags
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U megooflags" --health-interval 5s
+          --health-timeout 5s --health-retries 20
+    env:
+      MEGOOFLAGS_DATABASE_URL: postgresql+asyncpg://megooflags:megooflags@localhost:5432/megooflags
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+      - run: bash scripts/check_migrations.sh
+
+  web:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm build
+      - name: OpenAPI spec and client drift
+        working-directory: .
+        run: |
+          uv run --frozen --project api python -m megooflags_api.export_openapi api/openapi.json
+          pnpm --dir web gen:api
+          git diff --exit-code -- api/openapi.json web/lib/api/schema.d.ts \
+            || { echo "::error::api/openapi.json or web/lib/api/schema.d.ts is stale. Run the commands in AGENTS.md and commit."; exit 1; }
+
+  images:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        image: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image }}
+          push: false
+          tags: megooflags-${{ matrix.image }}:ci
+          build-args: |
+            VERSION=${{ steps.v.outputs.version }}
+            REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  smoke:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: api
+          load: true
+          tags: megooflags-api:ci
+          build-args: |
+            VERSION=${{ steps.v.outputs.version }}
+            REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=api
+      - uses: docker/build-push-action@v6
+        with:
+          context: web
+          load: true
+          tags: megooflags-web:ci
+          build-args: |
+            VERSION=${{ steps.v.outputs.version }}
+            REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=web
+      - run: bash scripts/smoke.sh

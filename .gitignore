@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+out/
+
+# Environment
+.env
+!.env.example
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/

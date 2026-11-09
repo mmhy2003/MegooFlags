@@ -1,0 +1,66 @@
+name: megooflags
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "${MEGOOFLAGS_HTTP_PORT:-80}:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      MEGOOFLAGS_SITE_ADDRESS: ${MEGOOFLAGS_SITE_ADDRESS:-:80}
+      MEGOOFLAGS_TRUSTED_PROXIES: ${MEGOOFLAGS_TRUSTED_PROXIES:-private_ranges}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+  web:
+    image: ghcr.io/mmhy2003/megooflags-web:${MEGOOFLAGS_VERSION:-latest}
+    restart: unless-stopped
+
+  migrate:
+    image: ghcr.io/mmhy2003/megooflags-api:${MEGOOFLAGS_VERSION:-latest}
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      MEGOOFLAGS_DATABASE_URL: ${MEGOOFLAGS_DATABASE_URL:-postgresql+asyncpg://megooflags:megooflags@db:5432/megooflags}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: ghcr.io/mmhy2003/megooflags-api:${MEGOOFLAGS_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      MEGOOFLAGS_DATABASE_URL: ${MEGOOFLAGS_DATABASE_URL:-postgresql+asyncpg://megooflags:megooflags@db:5432/megooflags}
+      MEGOOFLAGS_PUBLIC_URL: ${MEGOOFLAGS_PUBLIC_URL:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: megooflags
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-megooflags}
+      POSTGRES_DB: megooflags
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U megooflags -d megooflags"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  caddy_data:
+  caddy_config:
+  db_data:

@@ -1,0 +1,13 @@
+{
+	servers {
+		trusted_proxies static {$MEGOOFLAGS_TRUSTED_PROXIES:private_ranges}
+	}
+}
+
+{$MEGOOFLAGS_SITE_ADDRESS::80} {
+	@api path /api/* /sdk/* /ofrep/* /healthz /readyz
+	reverse_proxy @api api:8000 {
+		flush_interval -1
+	}
+	reverse_proxy web:3000
+}
