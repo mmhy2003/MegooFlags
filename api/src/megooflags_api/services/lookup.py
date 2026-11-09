@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.errors import not_found
-from megooflags_api.models import Environment, Flag, Project
+from megooflags_api.models import Environment, Flag, Project, Variation
 
 
 async def get_project(session: AsyncSession, key: str) -> Project:
@@ -29,3 +29,12 @@ async def get_flag(session: AsyncSession, project: Project, key: str) -> Flag:
     if flag is None:
         raise not_found("flag", key)
     return flag
+
+
+async def get_variation(session: AsyncSession, flag: Flag, key: str) -> Variation:
+    variation = await session.scalar(
+        select(Variation).where(Variation.flag_id == flag.id, Variation.key == key)
+    )
+    if variation is None:
+        raise not_found("variation", key)
+    return variation
