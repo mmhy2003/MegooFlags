@@ -85,7 +85,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Flags */
+        get: operations["list_flags_api_projects__project__flags_get"];
         put?: never;
         /** Create Flag */
         post: operations["create_flag_api_projects__project__flags_post"];
@@ -109,7 +110,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Flag */
+        patch: operations["update_flag_api_projects__project__flags__flag__patch"];
         trace?: never;
     };
     "/healthz": {
@@ -280,11 +282,57 @@ export interface components {
             /** Variations */
             variations: components["schemas"]["VariationOut"][];
         };
+        /** FlagSummary */
+        FlagSummary: {
+            /** Archived */
+            archived: boolean;
+            /** Archived At */
+            archived_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Environments */
+            environments: components["schemas"]["FlagEnvironmentState"][];
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Owner */
+            owner: string | null;
+            /** Tags */
+            tags: string[];
+            type: components["schemas"]["FlagType"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /**
          * FlagType
          * @enum {string}
          */
         FlagType: "boolean" | "string" | "number" | "json";
+        /** FlagUpdate */
+        FlagUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Off Variation */
+            off_variation?: string | null;
+            /**
+             * Owner
+             * @description Send null to clear the owner.
+             */
+            owner?: string | null;
+            /** Tags */
+            tags?: string[] | null;
+        };
         /** HealthResponse */
         HealthResponse: {
             /** Status */
@@ -293,6 +341,13 @@ export interface components {
             version: string;
         };
         JsonValue: unknown;
+        /** Page[FlagSummary] */
+        Page_FlagSummary_: {
+            /** Items */
+            items: components["schemas"]["FlagSummary"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** Page[ProjectSummary] */
         Page_ProjectSummary_: {
             /** Items */
@@ -908,6 +963,66 @@ export interface operations {
             };
         };
     };
+    list_flags_api_projects__project__flags_get: {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive substring of the key or name. */
+                q?: string | null;
+                /** @description Repeatable: flags must have every tag given. */
+                tag?: string[] | null;
+                owner?: string | null;
+                /** @description List only archived flags instead of live ones. */
+                archived?: boolean;
+                type?: components["schemas"]["FlagType"] | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_FlagSummary_"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     create_flag_api_projects__project__flags_post: {
         parameters: {
             query?: never;
@@ -972,6 +1087,60 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_flag_api_projects__project__flags__flag__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FlagUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

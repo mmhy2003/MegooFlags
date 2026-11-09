@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +10,15 @@ from megooflags_api.errors import invalid_reference, key_conflict, validation_er
 from megooflags_api.models import Environment, Flag, FlagEnvironment, Project, Variation
 from megooflags_api.models.enums import FlagType
 from megooflags_api.schemas.common import FlagEnvironmentState
-from megooflags_api.schemas.flags import FlagCreate, FlagOut, VariationIn, VariationOut
+from megooflags_api.schemas.flags import (
+    FlagCreate,
+    FlagOut,
+    FlagSummary,
+    FlagUpdate,
+    VariationIn,
+    VariationOut,
+)
+from megooflags_api.services.pagination import decode_cursor, page_slice
 from megooflags_api.services.values import check_value
 
 BOOLEAN_VARIATIONS = [VariationIn(key="true", value=True), VariationIn(key="false", value=False)]
@@ -95,6 +103,102 @@ async def create_flag(session: AsyncSession, project: Project, body: FlagCreate)
     )
     await session.flush()
     return flag
+
+
+def _like_pattern(q: str) -> str:
+    """A case-insensitive substring pattern, with the LIKE wildcards in `q` matched literally."""
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+async def list_flags(
+    session: AsyncSession,
+    project: Project,
+    *,
+    q: str | None,
+    tags: list[str],
+    owner: str | None,
+    archived: bool,
+    type: FlagType | None,
+    cursor: str | None,
+    limit: int,
+) -> tuple[list[FlagSummary], str | None]:
+    """One query for the page of flags, one for their environment states; no variations."""
+    query = (
+        select(
+            Flag.id,
+            Flag.key,
+            Flag.name,
+            Flag.description,
+            Flag.type,
+            Flag.tags,
+            Flag.owner,
+            Flag.archived_at,
+            Flag.created_at,
+            Flag.updated_at,
+        )
+        .where(
+            Flag.project_id == project.id,
+            Flag.archived_at.is_not(None) if archived else Flag.archived_at.is_(None),
+        )
+        .order_by(Flag.key)
+        .limit(limit + 1)
+    )
+    if q:
+        pattern = _like_pattern(q)
+        query = query.where(
+            or_(Flag.key.ilike(pattern, escape="\\"), Flag.name.ilike(pattern, escape="\\"))
+        )
+    if tags:
+        query = query.where(Flag.tags.contains(tags))
+    if owner is not None:
+        query = query.where(Flag.owner == owner)
+    if type is not None:
+        query = query.where(Flag.type == type)
+    if cursor is not None:
+        query = query.where(Flag.key > decode_cursor(cursor))
+
+    rows, next_cursor = page_slice(list(await session.execute(query)), limit, lambda r: r.key)
+    states = await environment_states(session, [row.id for row in rows]) if rows else {}
+    items = [
+        FlagSummary(
+            key=row.key,
+            name=row.name,
+            description=row.description,
+            type=row.type,
+            tags=row.tags,
+            owner=row.owner,
+            archived=row.archived_at is not None,
+            archived_at=row.archived_at,
+            environments=states[row.id],
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+        for row in rows
+    ]
+    return items, next_cursor
+
+
+async def update_flag(session: AsyncSession, flag: Flag, body: FlagUpdate) -> None:
+    """Only the fields sent change; an explicit `owner: null` clears the owner."""
+    if body.name is not None:
+        flag.name = body.name
+    if body.description is not None:
+        flag.description = body.description
+    if body.tags is not None:
+        flag.tags = body.tags
+    if "owner" in body.model_fields_set:
+        flag.owner = body.owner
+    if body.off_variation is not None:
+        variation_id = await session.scalar(
+            select(Variation.id).where(
+                Variation.flag_id == flag.id, Variation.key == body.off_variation
+            )
+        )
+        if variation_id is None:
+            raise invalid_reference(f"unknown variation '{body.off_variation}'", "off_variation")
+        flag.off_variation_id = variation_id
+    await session.flush()
 
 
 async def environment_states(

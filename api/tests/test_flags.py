@@ -205,3 +205,156 @@ async def test_new_environment_backfills_flag(api: httpx.AsyncClient) -> None:
         "production",
         "qa",
     ]
+
+
+async def list_keys(api: httpx.AsyncClient, **params: Any) -> list[str]:
+    r = await api.get("/api/projects/demo/flags", params=params)
+    assert r.status_code == 200, r.text
+    return [item["key"] for item in r.json()["items"]]
+
+
+async def test_list_default_hides_archived(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_flag(api, key="live")
+    await create_flag(api, key="old")
+    async with app.state.engine.begin() as conn:
+        await conn.execute(text("UPDATE flag SET archived_at = now() WHERE key = 'old'"))
+
+    assert await list_keys(api) == ["live"]
+    assert await list_keys(api, archived="true") == ["old"]
+
+
+async def test_list_filters(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_flag(api, key="checkout-v2", tags=["web", "beta"], owner="team-web")
+    await create_flag(api, key="search", name="New Checkout Search", tags=["web"])
+    await create_flag(
+        api,
+        key="price",
+        type="number",
+        variations=[{"key": "a", "value": 1}],
+        off_variation="a",
+        tags=["beta"],
+        owner="team-web-2",
+    )
+    await create_flag(api, key="under_score", name="100% literal")
+
+    assert await list_keys(api, q="CHECKOUT") == ["checkout-v2", "search"]
+    assert await list_keys(api, q="%") == ["under_score"]
+    assert await list_keys(api, q="_") == ["under_score"]
+    assert await list_keys(api, q="\\") == []
+    assert await list_keys(api, tag="web") == ["checkout-v2", "search"]
+    assert await list_keys(api, tag=["web", "beta"]) == ["checkout-v2"]
+    assert await list_keys(api, owner="team-web") == ["checkout-v2"]
+    assert await list_keys(api, type="number") == ["price"]
+    assert await list_keys(api, type="boolean", tag="beta") == ["checkout-v2"]
+
+
+async def test_list_paginates_by_key(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    for key in ["e", "c", "a", "d", "b"]:
+        await create_flag(api, key=key)
+
+    keys: list[str] = []
+    cursor: str | None = None
+    pages = 0
+    while True:
+        params: dict[str, str | int] = {"limit": 2}
+        if cursor is not None:
+            params["cursor"] = cursor
+        r = await api.get("/api/projects/demo/flags", params=params)
+        assert r.status_code == 200, r.text
+        page = r.json()
+        keys += [f["key"] for f in page["items"]]
+        cursor = page["next_cursor"]
+        pages += 1
+        if cursor is None:
+            break
+
+    assert keys == ["a", "b", "c", "d", "e"]
+    assert pages == 3
+    for limit in (0, 501):
+        r = await api.get("/api/projects/demo/flags", params={"limit": limit})
+        assert_error(r, 422, "validation_error")
+    r = await api.get("/api/projects/demo/flags", params={"cursor": "!!not base64!!"})
+    assert_error(r, 422, "validation_error")
+    assert_error(await api.get("/api/projects/missing/flags"), 404, "not_found")
+
+
+async def test_list_items_have_env_states(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_flag(api)
+
+    r = await api.get("/api/projects/demo/flags")
+
+    assert r.status_code == 200, r.text
+    [item] = r.json()["items"]
+    assert "variations" not in item
+    assert "off_variation" not in item
+    assert [(e["environment"], e["enabled"], e["version"]) for e in item["environments"]] == [
+        ("development", False, 1),
+        ("staging", False, 1),
+        ("production", False, 1),
+    ]
+
+
+async def test_patch_flag(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_flag(
+        api,
+        key="text",
+        type="string",
+        variations=STRING_VARIATIONS,
+        off_variation="a",
+        owner="team-web",
+    )
+
+    r = await api.patch(
+        "/api/projects/demo/flags/text",
+        json={
+            "name": "Renamed",
+            "description": "Changed",
+            "tags": ["x", "y", "x"],
+            "owner": None,
+            "off_variation": "b",
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert (body["name"], body["description"], body["tags"]) == ("Renamed", "Changed", ["x", "y"])
+    assert (body["owner"], body["off_variation"]) == (None, "b")
+    assert (await api.get("/api/projects/demo/flags/text")).json() == body
+
+    r = await api.patch("/api/projects/demo/flags/text", json={"owner": "team-api"})
+    assert r.status_code == 200, r.text
+    assert (r.json()["owner"], r.json()["name"], r.json()["tags"]) == (
+        "team-api",
+        "Renamed",
+        ["x", "y"],
+    )
+    r = await api.patch("/api/projects/demo/flags/text", json={"name": "Again"})
+    assert r.json()["owner"] == "team-api"
+    assert_error(
+        await api.patch("/api/projects/demo/flags/missing", json={"name": "X"}), 404, "not_found"
+    )
+
+
+async def test_patch_off_variation_unknown_422(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_flag(api)
+
+    r = await api.patch("/api/projects/demo/flags/new-ui", json={"off_variation": "maybe"})
+
+    body = assert_error(r, 422, "invalid_reference")
+    assert body["details"] == {"path": "off_variation"}
+
+
+async def test_patch_type_or_key_422(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_flag(api)
+
+    for field, value in [("type", "string"), ("key", "renamed")]:
+        r = await api.patch("/api/projects/demo/flags/new-ui", json={field: value})
+        assert_error(r, 422, "validation_error")
+    assert (await api.get("/api/projects/demo/flags/new-ui")).json()["type"] == "boolean"
