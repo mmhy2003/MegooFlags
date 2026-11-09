@@ -92,6 +92,13 @@ class FlagConfigIn(ApiModel):
     prerequisites: list[PrerequisiteIn] = []
 
 
+class ToggleIn(ApiModel):
+    """When `version` is set it must match the current one, or 409."""
+
+    enabled: bool
+    version: int | None = None
+
+
 class FlagConfigOut(ApiModel):
     """Targets are grouped per variation in variation order, with values sorted."""
 

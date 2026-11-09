@@ -135,6 +135,17 @@ async def load_config(
     )
 
 
+async def set_enabled(session: AsyncSession, fe: FlagEnvironment, enabled: bool) -> None:
+    """Turn `fe` on or off; the version only moves when the state changes."""
+    if fe.enabled == enabled:
+        return
+    fe.enabled = enabled
+    fe.version = fe.version + 1
+    fe.updated_at = func.now()
+    await session.flush()
+    await session.refresh(fe)  # load the updated_at the database set
+
+
 TOTAL_WEIGHT = 100000
 
 
