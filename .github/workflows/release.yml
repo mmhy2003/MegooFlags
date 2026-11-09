@@ -22,6 +22,22 @@ jobs:
       prerelease: ${{ steps.meta.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tag is on main
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *-rc.*)
+              echo "$GITHUB_REF_NAME is a release candidate; the main-branch check is skipped."
+              ;;
+            *)
+              if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+                echo "::error::$GITHUB_REF_NAME must point to a commit on main"
+                exit 1
+              fi
+              echo "$GITHUB_REF_NAME is on main."
+              ;;
+          esac
       - name: Tag matches VERSION
         run: python3 scripts/check_version.py --tag "$GITHUB_REF_NAME"
       - id: meta

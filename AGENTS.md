@@ -20,7 +20,24 @@ Package managers:
 - Never switch to pip or npm, and never add a second lockfile.
 - Always commit lockfile changes together with the manifest change that caused them.
 
-## 2. Versioning (X.Y.Z)
+## 2. Branches and pull requests
+
+- `develop` is for new features and upcoming changes. Every task branch starts from an up-to-date `origin/develop`:
+
+  ```bash
+  git fetch origin
+  git switch -c <branch> origin/develop
+  ```
+
+- `main` is production. It changes only through a release pull request from `develop` (section 10).
+- Nobody commits or pushes directly to `develop` or `main`. Every change goes through a pull request.
+- Task pull requests target `develop`: `gh pr create --base develop`. Never open a task pull request against `main`.
+- Merge with a merge commit (`gh pr merge --merge`), never squash or rebase. This applies to pull requests into
+  `develop` and to the `develop` → `main` release pull request. Squash or rebase makes `main` and `develop` drift
+  apart, and every later release pull request shows old commits again.
+- Hotfixes take the same path: a fix pull request into `develop`, then a patch release (section 10).
+
+## 3. Versioning (X.Y.Z)
 
 The server, both images and both packages share one version, stored in `VERSION`. From 1.0.0 on:
 
@@ -32,7 +49,7 @@ The server, both images and both packages share one version, stored in `VERSION`
 
 When in doubt between two levels, pick the higher one.
 
-## 3. Before 1.0.0 (0.Y.Z)
+## 4. Before 1.0.0 (0.Y.Z)
 
 While the major version is 0, the API is not yet stable and the rules shift one place to the right:
 
@@ -43,7 +60,7 @@ While the major version is 0, the API is not yet stable and the rules shift one 
 - Every `0.Y.Z` release is published as a GitHub pre-release.
 - Going to 1.0.0 is a maintainer decision. Agents never propose it on their own.
 
-## 4. Bumping the version
+## 5. Bumping the version
 
 Change all of these **in one commit**:
 
@@ -69,14 +86,14 @@ python3 scripts/check_version.py        # prints "version OK: X.Y.Z"
 The scripts need Python 3.12 or later. If your system `python3` is older, run them with
 `uv run --project api python scripts/check_version.py`.
 
-## 5. CHANGELOG
+## 6. CHANGELOG
 
 Every user-visible change adds a line under `## [Unreleased]` in `CHANGELOG.md`, in the right group:
 **Added**, **Changed**, **Fixed** or **Removed**. Write it for users, not for reviewers: what changed and
 what they need to do, not how the code works. Internal refactors and test-only changes need no entry.
 The release notes are built from this file, so a missing entry is a missing release note.
 
-## 6. Database migrations
+## 7. Database migrations
 
 - Every schema change is an Alembic revision with a working `downgrade()`:
 
@@ -93,9 +110,9 @@ The release notes are built from this file, so a missing entry is a missing rele
 
   Example: renaming `flags.key` to `flags.slug`. In 0.4.0, add a nullable `slug`, backfill it from `key`, write both on every insert and update, and keep reading `key`. In 0.5.0, read `slug`, make it `NOT NULL`, and drop `key`. A single migration that renames the column would break every replica still running 0.4.0.
 
-`bash scripts/check_migrations.sh` checks the single head, then upgrades to head, walks down one revision at a time to base and upgrades again. It needs Postgres (see section 8).
+`bash scripts/check_migrations.sh` checks the single head, then upgrades to head, walks down one revision at a time to base and upgrades again. It needs Postgres (see section 9).
 
-## 7. API client
+## 8. API client
 
 The web client is generated from the API's OpenAPI spec. After any change to API routes or models, run:
 
@@ -106,7 +123,7 @@ cd web && pnpm gen:api
 
 Commit both `api/openapi.json` and `web/lib/api/schema.d.ts`. CI regenerates both and fails on any drift.
 
-## 8. Local checks (the same as `ci.yml`)
+## 9. Local checks (the same as `ci.yml`)
 
 Run all of these before you open a pull request or say a task is done. They are the commands that CI runs.
 
@@ -146,18 +163,25 @@ docker build -t megooflags-api:ci api && docker build -t megooflags-web:ci web &
 
 If you change a workflow, also run `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest`.
 
-## 9. Releases
+## 10. Releases
 
-Agents prepare release commits and pull requests (the version bump in section 4). Agents **never**:
+Agents prepare release commits and pull requests. Agents **never**:
 
 - create or push `v*` or `sdk-*` tags,
 - create GitHub releases,
 - push images to any registry.
 
-A maintainer merges the release pull request and pushes the tag. `release.yml` does the rest:
+A release follows these steps, in order:
 
-- `vX.Y.Z` is a release. The tag must match `VERSION`, or the workflow fails before anything is built.
-- `vX.Y.Z-rc.N` is a test release. It publishes only the `X.Y.Z-rc.N` image tag and is always a pre-release.
+1. **Bump the version in `develop`.** Open an ordinary pull request into `develop` with the version bump from section 5, and merge it once CI is green.
+2. **Open the release pull request** from `develop` into `main`, titled `Release X.Y.Z`:
+   `gh pr create --base main --head develop --title "Release X.Y.Z"`.
+3. **Merge and tag.** A maintainer merges it with a merge commit and pushes the `vX.Y.Z` tag on that merge commit on `main`.
+   A test release `vX.Y.Z-rc.N` may be tagged on `develop` or on `main`.
+4. **`release.yml` does the rest.** It checks the tag before anything is built:
+   - `vX.Y.Z` is a release. Its commit must be on `main`, and the tag must match `VERSION`, or the workflow fails.
+     A tag pushed before the release pull request was merged fails: delete the tag, merge the pull request, then tag `main` again.
+   - `vX.Y.Z-rc.N` is a test release. It may come from `develop`, publishes only the `X.Y.Z-rc.N` image tag and is always a pre-release.
 
 Images go to `ghcr.io/mmhy2003/megooflags-api` and `ghcr.io/mmhy2003/megooflags-web` for linux/amd64 and linux/arm64. A release `vX.Y.Z` gets the image tags:
 
@@ -170,9 +194,9 @@ Images go to `ghcr.io/mmhy2003/megooflags-api` and `ghcr.io/mmhy2003/megooflags-
 
 An rc tag never moves `X.Y`, `X` or `latest`. The GitHub release notes come from the matching `CHANGELOG.md` section, and the release attaches `docker-compose.yml`, `Caddyfile` and `.env.example`.
 
-## 10. SDKs
+## 11. SDKs
 
 SDKs live in this repository under `sdks/<lang>/`, each with its own version, independent of the server.
 Their tags are `sdk-<lang>/vX.Y.Z` (for example `sdk-node/v1.2.0`), except Go, which must use
-`sdks/go/vX.Y.Z` because Go modules in a subdirectory are tagged with their path. The rules in section 9
+`sdks/go/vX.Y.Z` because Go modules in a subdirectory are tagged with their path. The rules in section 10
 apply: agents never push SDK tags. See `sdks/README.md` and `spec/README.md`.

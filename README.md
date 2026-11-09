@@ -51,7 +51,7 @@ pnpm gen:api                                       # regenerate the typed API cl
 ```
 
 The full list of checks that CI runs, including the Postgres setup, migrations, images and the smoke
-test, is in [AGENTS.md](AGENTS.md#8-local-checks-the-same-as-ciyml).
+test, is in [AGENTS.md](AGENTS.md#9-local-checks-the-same-as-ciyml).
 
 ## Versioning and releases
 
@@ -59,6 +59,10 @@ The server, API and web share one version, stored in `VERSION`. The rules for bu
 database migrations and for releases are in [AGENTS.md](AGENTS.md). Changes are listed in
 [CHANGELOG.md](CHANGELOG.md). Releases are cut by a maintainer by pushing a `vX.Y.Z` tag, which
 publishes multi-arch images to `ghcr.io/mmhy2003/megooflags-api` and `ghcr.io/mmhy2003/megooflags-web`.
+
+Day-to-day work is merged into `develop`, and `main` holds the released code. A release is a pull
+request from `develop` into `main`; once it is merged, the maintainer tags the merge commit on `main`.
+The branching rules and release steps are in [AGENTS.md](AGENTS.md#2-branches-and-pull-requests).
 
 ## Repository layout
 
