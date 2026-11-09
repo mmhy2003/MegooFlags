@@ -1,8 +1,9 @@
-# Override for CI and local smoke tests: run locally built images on a non-privileged port.
+# Override for CI and local smoke tests: run locally built images on non-privileged ports.
 services:
   caddy:
     ports: !override
       - "${MEGOOFLAGS_HTTP_PORT:-8080}:80"
+      - "${MEGOOFLAGS_HTTPS_PORT:-8443}:443"
   web:
     image: megooflags-web:ci
     pull_policy: never
