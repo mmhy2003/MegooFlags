@@ -308,16 +308,6 @@ async def test_put_bad_operator_value_422(api: httpx.AsyncClient) -> None:
     assert error["details"] == {"path": "rules[0].clauses[1].values[0]"}
 
 
-async def test_put_prerequisites_not_supported_yet_422(api: httpx.AsyncClient) -> None:
-    await setup_color(api)
-    prerequisites = [{"flag": "other", "variation": "on"}]
-
-    r = await api.put(PRODUCTION, json=config(prerequisites=prerequisites))
-
-    error = assert_error(r, 422, "validation_error")
-    assert error["details"] == {"path": "prerequisites"}
-
-
 async def test_put_failed_validation_keeps_config(api: httpx.AsyncClient) -> None:
     await setup_color(api)
     saved = (await api.put(PRODUCTION, json=FULL_CONFIG)).json()

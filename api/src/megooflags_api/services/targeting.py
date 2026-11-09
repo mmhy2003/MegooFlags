@@ -33,6 +33,7 @@ from megooflags_api.services.clauses import (
     load_clauses,
     resolve_segments,
 )
+from megooflags_api.services.prerequisites import check_prerequisites
 
 
 async def load_config(
@@ -228,8 +229,7 @@ async def replace_config(
         if serve.rollout is not None:
             _check_rollout(serve.rollout, f"{path}.rollout")
     segment_ids = await resolve_segments(session, flag.project_id, clauses_by_path)
-    if body.prerequisites:
-        raise validation_error("prerequisites are not supported yet", "prerequisites")
+    prerequisites = await check_prerequisites(session, flag, fe.environment_id, body.prerequisites)
 
     await session.execute(delete(FlagTarget).where(FlagTarget.flag_environment_id == fe.id))
     await session.execute(delete(FlagRule).where(FlagRule.flag_environment_id == fe.id))
@@ -285,6 +285,20 @@ async def replace_config(
             flag_rule_id=rule_id,
             segment_rule_id=None,
             segment_ids=segment_ids,
+        )
+    if prerequisites:
+        await session.execute(
+            insert(FlagPrerequisite),
+            [
+                {
+                    "id": uuid.uuid4(),
+                    "flag_environment_id": fe.id,
+                    "prerequisite_flag_id": prerequisite_flag_id,
+                    "variation_id": variation_id,
+                    "position": position,
+                }
+                for position, (prerequisite_flag_id, variation_id) in enumerate(prerequisites)
+            ],
         )
 
     if fallthrough.variation is not None:

@@ -414,26 +414,20 @@ async def test_delete_archived_204(api: httpx.AsyncClient) -> None:
     await create_flag(api)
 
 
-async def test_archive_and_delete_blocked_by_prerequisite_dependent(
-    app: FastAPI, api: httpx.AsyncClient
-) -> None:
+async def test_archive_and_delete_blocked_by_prerequisite_dependent(api: httpx.AsyncClient) -> None:
     await create_project(api)
     await create_flag(api, key="a")
     await create_flag(api, key="b")
-    async with app.state.engine.begin() as conn:
-        await conn.execute(
-            text(
-                "INSERT INTO flag_prerequisite"
-                " (id, flag_environment_id, prerequisite_flag_id, variation_id, position)"
-                " SELECT gen_random_uuid(), fe.id, a.id, v.id, 0"
-                " FROM flag a"
-                " JOIN variation v ON v.flag_id = a.id AND v.key = 'true'"
-                " JOIN flag b ON b.key = 'b'"
-                " JOIN flag_environment fe ON fe.flag_id = b.id"
-                " JOIN environment e ON e.id = fe.environment_id AND e.key = 'production'"
-                " WHERE a.key = 'a'"
-            )
-        )
+    r = await api.put(
+        "/api/projects/demo/flags/b/environments/production",
+        json={
+            "version": 1,
+            "enabled": False,
+            "fallthrough": {"variation": "true"},
+            "prerequisites": [{"flag": "a", "variation": "true"}],
+        },
+    )
+    assert r.status_code == 200, r.text
 
     body = assert_error(await api.post("/api/projects/demo/flags/a/archive"), 409, "in_use")
     assert body["message"] == "flag 'a' is a prerequisite of other flags"
