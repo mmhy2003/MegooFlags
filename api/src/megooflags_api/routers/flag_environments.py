@@ -4,7 +4,7 @@ from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES, version_conflict
 from megooflags_api.models import FlagEnvironment
 from megooflags_api.schemas.common import FlagEnvironmentState
-from megooflags_api.schemas.targeting import FlagConfigIn, FlagConfigOut, ToggleIn
+from megooflags_api.schemas.targeting import CopyIn, FlagConfigIn, FlagConfigOut, ToggleIn
 from megooflags_api.services import targeting
 from megooflags_api.services.flags import environment_states
 from megooflags_api.services.lookup import (
@@ -81,6 +81,25 @@ async def kill_flag(
     await targeting.set_enabled(session, fe, False)
     await session.commit()
     return _state(fe, env_row.key)
+
+
+@router.post("/projects/{project}/flags/{flag}/copy")
+async def copy_flag_config(
+    session: SessionDep, project: str, flag: str, body: CopyIn
+) -> list[FlagEnvironmentState]:
+    """Copy targets, rules, rollouts and prerequisites from one environment to others.
+
+    The on/off state is copied only with `include_enabled`. Returns the target environments' new
+    state, in environment order.
+    """
+    project_row = await get_project(session, project)
+    flag_row = await get_flag(session, project_row, flag)
+    source = await get_environment(session, project_row, body.source)
+    targets = [await get_environment(session, project_row, key) for key in body.to]
+    await targeting.copy_config(session, flag_row, source, targets, body.include_enabled)
+    await session.commit()
+    states = (await environment_states(session, [flag_row.id]))[flag_row.id]
+    return [state for state in states if state.environment in body.to]
 
 
 def _state(fe: FlagEnvironment, env_key: str) -> FlagEnvironmentState:

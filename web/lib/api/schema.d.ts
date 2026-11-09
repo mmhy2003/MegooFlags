@@ -132,6 +132,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project}/flags/{flag}/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copy Flag Config
+         * @description Copy targets, rules, rollouts and prerequisites from one environment to others.
+         *
+         *     The on/off state is copied only with `include_enabled`. Returns the target environments' new
+         *     state, in environment order.
+         */
+        post: operations["copy_flag_config_api_projects__project__flags__flag__copy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project}/flags/{flag}/environments": {
         parameters: {
             query?: never;
@@ -368,6 +391,23 @@ export interface components {
             operator: components["schemas"]["Operator"];
             /** Values */
             values: (string | number | boolean)[];
+        };
+        /**
+         * CopyIn
+         * @description Copy the config of environment `from` to every environment in `to`.
+         *
+         *     The on/off state is copied only with `include_enabled`.
+         */
+        CopyIn: {
+            /** From */
+            from: string;
+            /**
+             * Include Enabled
+             * @default false
+             */
+            include_enabled: boolean;
+            /** To */
+            to: string[];
         };
         /** EnvironmentCreate */
         EnvironmentCreate: {
@@ -1717,6 +1757,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FlagOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    copy_flag_config_api_projects__project__flags__flag__copy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CopyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagEnvironmentState"][];
                 };
             };
             /** @description Not Found */

@@ -99,6 +99,17 @@ class ToggleIn(ApiModel):
     version: int | None = None
 
 
+class CopyIn(ApiModel):
+    """Copy the config of environment `from` to every environment in `to`.
+
+    The on/off state is copied only with `include_enabled`.
+    """
+
+    source: Key = Field(alias="from")
+    to: list[Key] = Field(min_length=1)
+    include_enabled: bool = False
+
+
 class FlagConfigOut(ApiModel):
     """Targets are grouped per variation in variation order, with values sorted."""
 

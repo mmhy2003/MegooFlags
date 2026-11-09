@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.errors import invalid_reference, validation_error, version_conflict
 from megooflags_api.models import (
+    Environment,
     Flag,
     FlagEnvironment,
     FlagPrerequisite,
@@ -33,6 +34,7 @@ from megooflags_api.services.clauses import (
     load_clauses,
     resolve_segments,
 )
+from megooflags_api.services.lookup import get_flag_environment
 from megooflags_api.services.prerequisites import check_prerequisites
 
 
@@ -325,3 +327,40 @@ async def replace_config(
     fe.updated_at = func.now()
     await session.flush()
     await session.refresh(fe)  # load the updated_at the database set
+
+
+async def copy_config(
+    session: AsyncSession,
+    flag: Flag,
+    source: Environment,
+    targets: list[Environment],
+    include_enabled: bool,
+) -> None:
+    """Replace the config of `flag` in every target environment with its config in `source`.
+
+    The on/off state is copied only with `include_enabled`. Each target is validated against its
+    own environment (prerequisite cycles), so the caller must roll back if one is refused.
+    """
+    target_ids = [env.id for env in targets]
+    if len(set(target_ids)) != len(target_ids):
+        raise validation_error("an environment is listed twice", "to")
+    if source.id in target_ids:
+        raise validation_error(f"cannot copy environment '{source.key}' to itself", "to")
+
+    config = await load_config(
+        session, flag, await get_flag_environment(session, flag, source), source.key
+    )
+    rows = await session.scalars(
+        select(FlagEnvironment)
+        .where(FlagEnvironment.flag_id == flag.id, FlagEnvironment.environment_id.in_(target_ids))
+        .order_by(FlagEnvironment.id)
+        .with_for_update()
+    )
+    for fe in rows.all():
+        body = FlagConfigIn.model_validate(
+            config.model_dump(include={"targets", "rules", "fallthrough", "prerequisites"})
+            | {"version": fe.version, "enabled": config.enabled}
+        )
+        await replace_config(
+            session, flag, fe, body, check_version=False, set_enabled=include_enabled
+        )

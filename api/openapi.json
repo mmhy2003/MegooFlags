@@ -94,6 +94,37 @@
         "title": "ClauseOut",
         "type": "object"
       },
+      "CopyIn": {
+        "additionalProperties": false,
+        "description": "Copy the config of environment `from` to every environment in `to`.\n\nThe on/off state is copied only with `include_enabled`.",
+        "properties": {
+          "from": {
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+            "title": "From",
+            "type": "string"
+          },
+          "include_enabled": {
+            "default": false,
+            "title": "Include Enabled",
+            "type": "boolean"
+          },
+          "to": {
+            "items": {
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "To",
+            "type": "array"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "CopyIn",
+        "type": "object"
+      },
       "EnvironmentCreate": {
         "additionalProperties": false,
         "properties": {
@@ -2802,6 +2833,92 @@
         "summary": "Archive Flag",
         "tags": [
           "flags"
+        ]
+      }
+    },
+    "/api/projects/{project}/flags/{flag}/copy": {
+      "post": {
+        "description": "Copy targets, rules, rollouts and prerequisites from one environment to others.\n\nThe on/off state is copied only with `include_enabled`. Returns the target environments' new\nstate, in environment order.",
+        "operationId": "copy_flag_config_api_projects__project__flags__flag__copy_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "flag",
+            "required": true,
+            "schema": {
+              "title": "Flag",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FlagEnvironmentState"
+                  },
+                  "title": "Response Copy Flag Config Api Projects  Project  Flags  Flag  Copy Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Copy Flag Config",
+        "tags": [
+          "flag-environments"
         ]
       }
     },
