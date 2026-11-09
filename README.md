@@ -51,7 +51,7 @@ pnpm gen:api                                       # regenerate the typed API cl
 ```
 
 The full list of checks that CI runs, including the Postgres setup, migrations, images and the smoke
-test, is in [AGENTS.md](AGENTS.md#8-local-checks-the-same-as-ciyml).
+test, is in [AGENTS.md](AGENTS.md#9-local-checks-the-same-as-ciyml).
 
 ## Versioning and releases
 
