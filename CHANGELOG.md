@@ -14,6 +14,8 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - Typed web API client generated from the OpenAPI spec.
 - Docker images `megooflags-api` and `megooflags-web`, reference Docker Compose bundle with Caddy.
 - CI (lint, types, tests, migrations, build, images, smoke) and tag-driven release pipeline.
+- AGENTS.md and CLAUDE.md with versioning, migration and release rules for coding agents.
+- Reserved sdks/ and spec/ layout for in-repo SDKs.
 
 ### Changed
 
