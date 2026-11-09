@@ -358,3 +358,90 @@ async def test_patch_type_or_key_422(api: httpx.AsyncClient) -> None:
         r = await api.patch("/api/projects/demo/flags/new-ui", json={field: value})
         assert_error(r, 422, "validation_error")
     assert (await api.get("/api/projects/demo/flags/new-ui")).json()["type"] == "boolean"
+
+
+async def test_archive_sets_archived(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_flag(api)
+
+    r = await api.post("/api/projects/demo/flags/new-ui/archive")
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["archived"] is True
+    assert body["archived_at"] is not None
+    assert await list_keys(api) == []
+    assert await list_keys(api, archived="true") == ["new-ui"]
+
+    again = await api.post("/api/projects/demo/flags/new-ui/archive")
+    assert again.status_code == 200, again.text
+    assert again.json()["archived_at"] == body["archived_at"]
+
+
+async def test_restore_clears_archived(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_flag(api)
+    await api.post("/api/projects/demo/flags/new-ui/archive")
+
+    r = await api.post("/api/projects/demo/flags/new-ui/restore")
+
+    assert r.status_code == 200, r.text
+    assert (r.json()["archived"], r.json()["archived_at"]) == (False, None)
+    assert await list_keys(api) == ["new-ui"]
+
+    again = await api.post("/api/projects/demo/flags/new-ui/restore")
+    assert again.status_code == 200, again.text
+    assert (again.json()["archived"], again.json()["archived_at"]) == (False, None)
+
+
+async def test_delete_requires_archive(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_flag(api)
+
+    assert_error(await api.delete("/api/projects/demo/flags/new-ui"), 409, "not_archived")
+    assert (await api.get("/api/projects/demo/flags/new-ui")).status_code == 200
+
+
+async def test_delete_archived_204(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_flag(api)
+    await api.post("/api/projects/demo/flags/new-ui/archive")
+
+    r = await api.delete("/api/projects/demo/flags/new-ui")
+
+    assert r.status_code == 204, r.text
+    assert_error(await api.get("/api/projects/demo/flags/new-ui"), 404, "not_found")
+    await create_flag(api)
+
+
+async def test_archive_and_delete_blocked_by_prerequisite_dependent(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await create_project(api)
+    await create_flag(api, key="a")
+    await create_flag(api, key="b")
+    async with app.state.engine.begin() as conn:
+        await conn.execute(
+            text(
+                "INSERT INTO flag_prerequisite"
+                " (id, flag_environment_id, prerequisite_flag_id, variation_id, position)"
+                " SELECT gen_random_uuid(), fe.id, a.id, v.id, 0"
+                " FROM flag a"
+                " JOIN variation v ON v.flag_id = a.id AND v.key = 'true'"
+                " JOIN flag b ON b.key = 'b'"
+                " JOIN flag_environment fe ON fe.flag_id = b.id"
+                " JOIN environment e ON e.id = fe.environment_id AND e.key = 'production'"
+                " WHERE a.key = 'a'"
+            )
+        )
+
+    body = assert_error(await api.post("/api/projects/demo/flags/a/archive"), 409, "in_use")
+    assert body["message"] == "flag 'a' is a prerequisite of other flags"
+    assert body["details"] == {"used_by": [{"flag": "b", "environment": "production"}]}
+    assert (await api.get("/api/projects/demo/flags/a")).json()["archived"] is False
+
+    assert (await api.post("/api/projects/demo/flags/b/archive")).status_code == 200
+    assert (await api.delete("/api/projects/demo/flags/b")).status_code == 204
+
+    assert (await api.post("/api/projects/demo/flags/a/archive")).status_code == 200
+    assert (await api.delete("/api/projects/demo/flags/a")).status_code == 204

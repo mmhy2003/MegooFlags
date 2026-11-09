@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES
@@ -62,3 +62,29 @@ async def update_flag(session: SessionDep, project: str, flag: str, body: FlagUp
     out = await flags.flag_out(session, row)
     await session.commit()
     return out
+
+
+@router.post("/projects/{project}/flags/{flag}/archive")
+async def archive_flag(session: SessionDep, project: str, flag: str) -> FlagOut:
+    row = await get_flag(session, await get_project(session, project), flag)
+    await flags.archive_flag(session, row)
+    out = await flags.flag_out(session, row)
+    await session.commit()
+    return out
+
+
+@router.post("/projects/{project}/flags/{flag}/restore")
+async def restore_flag(session: SessionDep, project: str, flag: str) -> FlagOut:
+    row = await get_flag(session, await get_project(session, project), flag)
+    await flags.restore_flag(session, row)
+    out = await flags.flag_out(session, row)
+    await session.commit()
+    return out
+
+
+@router.delete("/projects/{project}/flags/{flag}", status_code=204)
+async def delete_flag(session: SessionDep, project: str, flag: str) -> Response:
+    row = await get_flag(session, await get_project(session, project), flag)
+    await flags.delete_flag(session, row)
+    await session.commit()
+    return Response(status_code=204)

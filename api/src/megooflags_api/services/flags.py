@@ -2,11 +2,17 @@
 
 import uuid
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from megooflags_api.errors import invalid_reference, key_conflict, validation_error
+from megooflags_api.errors import (
+    in_use,
+    invalid_reference,
+    key_conflict,
+    not_archived,
+    validation_error,
+)
 from megooflags_api.models import Environment, Flag, FlagEnvironment, Project, Variation
 from megooflags_api.models.enums import FlagType
 from megooflags_api.schemas.common import FlagEnvironmentState
@@ -19,6 +25,7 @@ from megooflags_api.schemas.flags import (
     VariationOut,
 )
 from megooflags_api.services.pagination import decode_cursor, page_slice
+from megooflags_api.services.usage import flag_dependents
 from megooflags_api.services.values import check_value
 
 BOOLEAN_VARIATIONS = [VariationIn(key="true", value=True), VariationIn(key="false", value=False)]
@@ -198,6 +205,36 @@ async def update_flag(session: AsyncSession, flag: Flag, body: FlagUpdate) -> No
         if variation_id is None:
             raise invalid_reference(f"unknown variation '{body.off_variation}'", "off_variation")
         flag.off_variation_id = variation_id
+    await session.flush()
+
+
+async def _check_not_prerequisite(session: AsyncSession, flag: Flag) -> None:
+    dependents = await flag_dependents(session, flag.id)
+    if dependents:
+        raise in_use(f"flag '{flag.key}' is a prerequisite of other flags", dependents)
+
+
+async def archive_flag(session: AsyncSession, flag: Flag) -> None:
+    """Archiving an archived flag keeps its original archived_at."""
+    await _check_not_prerequisite(session, flag)
+    if flag.archived_at is None:
+        flag.archived_at = func.now()
+        await session.flush()
+        await session.refresh(flag)  # load the archived_at the database set
+
+
+async def restore_flag(session: AsyncSession, flag: Flag) -> None:
+    if flag.archived_at is not None:
+        flag.archived_at = None
+        await session.flush()
+
+
+async def delete_flag(session: AsyncSession, flag: Flag) -> None:
+    """Variations and per-environment config go with the flag (ON DELETE CASCADE)."""
+    if flag.archived_at is None:
+        raise not_archived(flag.key)
+    await _check_not_prerequisite(session, flag)
+    await session.delete(flag)
     await session.flush()
 
 
