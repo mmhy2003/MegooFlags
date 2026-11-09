@@ -132,6 +132,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project}/flags/{flag}/environments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Flag Environments */
+        get: operations["list_flag_environments_api_projects__project__flags__flag__environments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/flags/{flag}/environments/{environment}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Flag Config */
+        get: operations["read_flag_config_api_projects__project__flags__flag__environments__environment__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project}/flags/{flag}/restore": {
         parameters: {
             query?: never;
@@ -341,6 +375,30 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * FlagConfigOut
+         * @description Targets are grouped per variation in variation order, with values sorted.
+         */
+        FlagConfigOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Environment */
+            environment: string;
+            fallthrough: components["schemas"]["Serve"];
+            /** Prerequisites */
+            prerequisites: components["schemas"]["PrerequisiteIn"][];
+            /** Rules */
+            rules: components["schemas"]["RuleOut"][];
+            /** Targets */
+            targets: components["schemas"]["TargetIn"][];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
         /** FlagCreate */
         FlagCreate: {
             /**
@@ -504,6 +562,16 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /**
+         * PrerequisiteIn
+         * @description The prerequisite `flag` must serve `variation` for this flag to be evaluated.
+         */
+        PrerequisiteIn: {
+            /** Flag */
+            flag: string;
+            /** Variation */
+            variation: string;
+        };
         /** ProjectCreate */
         ProjectCreate: {
             /**
@@ -572,6 +640,26 @@ export interface components {
         ReadyResponse: {
             /** Status */
             status: string;
+        };
+        /** RolloutIn */
+        RolloutIn: {
+            /**
+             * Bucket By
+             * @default key
+             */
+            bucket_by: string;
+            /** Weights */
+            weights: components["schemas"]["WeightIn"][];
+        };
+        /** RuleOut */
+        RuleOut: {
+            /** Clauses */
+            clauses: components["schemas"]["ClauseOut"][];
+            /** Description */
+            description: string;
+            rollout?: components["schemas"]["RolloutIn"] | null;
+            /** Variation */
+            variation?: string | null;
         };
         /**
          * SegmentConfigIn
@@ -677,6 +765,25 @@ export interface components {
             /** Name */
             name?: string | null;
         };
+        /**
+         * Serve
+         * @description What a rule or the fallthrough serves: exactly one of a fixed variation or a rollout.
+         */
+        Serve: {
+            rollout?: components["schemas"]["RolloutIn"] | null;
+            /** Variation */
+            variation?: string | null;
+        };
+        /**
+         * TargetIn
+         * @description Context keys served `variation`; a key appears in one list only.
+         */
+        TargetIn: {
+            /** Values */
+            values: string[];
+            /** Variation */
+            variation: string;
+        };
         /** VariationIn */
         VariationIn: {
             /**
@@ -710,6 +817,16 @@ export interface components {
             /** Name */
             name?: string | null;
             value?: components["schemas"]["JsonValue"];
+        };
+        /**
+         * WeightIn
+         * @description A variation's share in thousandths of a percent; a rollout's weights add up to 100000.
+         */
+        WeightIn: {
+            /** Variation */
+            variation: string;
+            /** Weight */
+            weight: number;
         };
     };
     responses: never;
@@ -1508,6 +1625,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FlagOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_flag_environments_api_projects__project__flags__flag__environments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagEnvironmentState"][];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_flag_config_api_projects__project__flags__flag__environments__environment__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                environment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagConfigOut"];
                 };
             };
             /** @description Not Found */

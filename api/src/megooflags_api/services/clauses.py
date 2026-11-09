@@ -139,11 +139,14 @@ async def load_clauses(
     flag_rule_ids: list[uuid.UUID] | None = None,
     segment_rule_ids: list[uuid.UUID] | None = None,
 ) -> dict[uuid.UUID, list[ClauseOut]]:
-    """The clauses of each given rule, in position order, keyed by rule id."""
-    if flag_rule_ids:
+    """The clauses of each given rule, in position order, keyed by rule id.
+
+    The clause query runs even for an empty list, so callers issue the same statements
+    whatever the number of rules."""
+    if flag_rule_ids is not None:
         owner = Clause.flag_rule_id
         rule_ids = flag_rule_ids
-    elif segment_rule_ids:
+    elif segment_rule_ids is not None:
         owner = Clause.segment_rule_id
         rule_ids = segment_rule_ids
     else:
@@ -166,7 +169,7 @@ async def load_clauses(
             segment_keys[clause_id].append(key)
     result: dict[uuid.UUID, list[ClauseOut]] = defaultdict(list)
     for c in clauses:
-        rule_id = c.flag_rule_id if flag_rule_ids else c.segment_rule_id
+        rule_id = c.flag_rule_id if flag_rule_ids is not None else c.segment_rule_id
         assert rule_id is not None
         values = segment_keys[c.id] if c.operator == Operator.IN_SEGMENT else c.values
         result[rule_id].append(

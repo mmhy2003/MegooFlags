@@ -238,6 +238,65 @@
         "title": "ErrorBody",
         "type": "object"
       },
+      "FlagConfigOut": {
+        "additionalProperties": false,
+        "description": "Targets are grouped per variation in variation order, with values sorted.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
+          "fallthrough": {
+            "$ref": "#/components/schemas/Serve"
+          },
+          "prerequisites": {
+            "items": {
+              "$ref": "#/components/schemas/PrerequisiteIn"
+            },
+            "title": "Prerequisites",
+            "type": "array"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleOut"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/TargetIn"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "environment",
+          "enabled",
+          "version",
+          "targets",
+          "rules",
+          "fallthrough",
+          "prerequisites",
+          "updated_at"
+        ],
+        "title": "FlagConfigOut",
+        "type": "object"
+      },
       "FlagCreate": {
         "additionalProperties": false,
         "properties": {
@@ -748,6 +807,28 @@
         "title": "Page[SegmentSummary]",
         "type": "object"
       },
+      "PrerequisiteIn": {
+        "additionalProperties": false,
+        "description": "The prerequisite `flag` must serve `variation` for this flag to be evaluated.",
+        "properties": {
+          "flag": {
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+            "title": "Flag",
+            "type": "string"
+          },
+          "variation": {
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+            "title": "Variation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "flag",
+          "variation"
+        ],
+        "title": "PrerequisiteIn",
+        "type": "object"
+      },
       "ProjectCreate": {
         "additionalProperties": false,
         "properties": {
@@ -915,6 +996,75 @@
           "status"
         ],
         "title": "ReadyResponse",
+        "type": "object"
+      },
+      "RolloutIn": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket_by": {
+            "default": "key",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Bucket By",
+            "type": "string"
+          },
+          "weights": {
+            "items": {
+              "$ref": "#/components/schemas/WeightIn"
+            },
+            "minItems": 1,
+            "title": "Weights",
+            "type": "array"
+          }
+        },
+        "required": [
+          "weights"
+        ],
+        "title": "RolloutIn",
+        "type": "object"
+      },
+      "RuleOut": {
+        "additionalProperties": false,
+        "properties": {
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/ClauseOut"
+            },
+            "title": "Clauses",
+            "type": "array"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "rollout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RolloutIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "variation": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variation"
+          }
+        },
+        "required": [
+          "description",
+          "clauses"
+        ],
+        "title": "RuleOut",
         "type": "object"
       },
       "SegmentConfigIn": {
@@ -1156,6 +1306,63 @@
         "title": "SegmentUpdate",
         "type": "object"
       },
+      "Serve": {
+        "additionalProperties": false,
+        "description": "What a rule or the fallthrough serves: exactly one of a fixed variation or a rollout.",
+        "properties": {
+          "rollout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RolloutIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "variation": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variation"
+          }
+        },
+        "title": "Serve",
+        "type": "object"
+      },
+      "TargetIn": {
+        "additionalProperties": false,
+        "description": "Context keys served `variation`; a key appears in one list only.",
+        "properties": {
+          "values": {
+            "items": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Values",
+            "type": "array"
+          },
+          "variation": {
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+            "title": "Variation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "variation",
+          "values"
+        ],
+        "title": "TargetIn",
+        "type": "object"
+      },
       "VariationIn": {
         "additionalProperties": false,
         "properties": {
@@ -1247,6 +1454,29 @@
           }
         },
         "title": "VariationUpdate",
+        "type": "object"
+      },
+      "WeightIn": {
+        "additionalProperties": false,
+        "description": "A variation's share in thousandths of a percent; a rollout's weights add up to 100000.",
+        "properties": {
+          "variation": {
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+            "title": "Variation",
+            "type": "string"
+          },
+          "weight": {
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Weight",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "variation",
+          "weight"
+        ],
+        "title": "WeightIn",
         "type": "object"
       }
     }
@@ -2453,6 +2683,161 @@
         "summary": "Archive Flag",
         "tags": [
           "flags"
+        ]
+      }
+    },
+    "/api/projects/{project}/flags/{flag}/environments": {
+      "get": {
+        "operationId": "list_flag_environments_api_projects__project__flags__flag__environments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "flag",
+            "required": true,
+            "schema": {
+              "title": "Flag",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FlagEnvironmentState"
+                  },
+                  "title": "Response List Flag Environments Api Projects  Project  Flags  Flag  Environments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Flag Environments",
+        "tags": [
+          "flag-environments"
+        ]
+      }
+    },
+    "/api/projects/{project}/flags/{flag}/environments/{environment}": {
+      "get": {
+        "operationId": "read_flag_config_api_projects__project__flags__flag__environments__environment__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "flag",
+            "required": true,
+            "schema": {
+              "title": "Flag",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environment",
+            "required": true,
+            "schema": {
+              "title": "Environment",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlagConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Read Flag Config",
+        "tags": [
+          "flag-environments"
         ]
       }
     },

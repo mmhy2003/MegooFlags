@@ -4,7 +4,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.errors import not_found
-from megooflags_api.models import Environment, Flag, Project, Segment, Variation
+from megooflags_api.models import (
+    Environment,
+    Flag,
+    FlagEnvironment,
+    Project,
+    Segment,
+    Variation,
+)
 
 
 async def get_project(session: AsyncSession, key: str) -> Project:
@@ -47,3 +54,18 @@ async def get_segment(session: AsyncSession, project: Project, key: str) -> Segm
     if segment is None:
         raise not_found("segment", key)
     return segment
+
+
+async def get_flag_environment(
+    session: AsyncSession, flag: Flag, environment: Environment, *, lock: bool = False
+) -> FlagEnvironment:
+    """The flag's row in `environment`; `lock` takes a row lock (SELECT ... FOR UPDATE)."""
+    query = select(FlagEnvironment).where(
+        FlagEnvironment.flag_id == flag.id, FlagEnvironment.environment_id == environment.id
+    )
+    if lock:
+        query = query.with_for_update()
+    fe = await session.scalar(query)
+    if fe is None:
+        raise not_found("environment", environment.key)
+    return fe
