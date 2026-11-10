@@ -2,6 +2,7 @@
 
 from megooflags_api.models.flag import Flag, Variation
 from megooflags_api.models.identity import (
+    ApiToken,
     OrgSettings,
     Role,
     RoleBinding,
@@ -24,6 +25,7 @@ from megooflags_api.models.targeting import (
 )
 
 __all__ = [
+    "ApiToken",
     "Clause",
     "ClauseSegment",
     "Environment",

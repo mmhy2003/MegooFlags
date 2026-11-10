@@ -1,6 +1,7 @@
 import megooflags_api.models  # noqa: F401
 from megooflags_api.db import Base
 from megooflags_api.models.enums import (
+    ApiTokenKind,
     FlagType,
     Operator,
     ScopeKind,
@@ -37,6 +38,7 @@ def test_metadata_has_all_tables() -> None:
         "role_binding",
         "org_settings",
         "session",
+        "api_token",
     }
 
 
@@ -65,3 +67,4 @@ def test_enum_values() -> None:
     assert [k.value for k in SubjectKind] == ["user", "team", "service_token"]
     assert [s.value for s in ScopeKind] == ["org", "project", "environment"]
     assert [s.value for s in SessionState] == ["pending_mfa", "enrol_mfa", "active"]
+    assert [k.value for k in ApiTokenKind] == ["service", "personal"]

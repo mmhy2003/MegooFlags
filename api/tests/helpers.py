@@ -9,16 +9,17 @@ import httpx
 import pytest
 import uvicorn
 from fastapi import FastAPI
-from sqlalchemy import event, select, text
+from sqlalchemy import event, func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from megooflags_api.models import Role, RoleBinding
 from megooflags_api.models.enums import ScopeKind, SubjectKind
+from megooflags_api.services.api_tokens import create_service_token
 from megooflags_api.services.users import create_user
 
 # Empties every table the tests write to, keeping the built-in roles and the org_settings row.
 RESET_SQL = [
-    'TRUNCATE project, "user", team, role_binding CASCADE',
+    'TRUNCATE project, "user", team, role_binding, api_token CASCADE',
     "DELETE FROM role WHERE NOT builtin",
     "UPDATE org_settings SET require_mfa = false",
 ]
@@ -47,20 +48,62 @@ async def seed_user(
     """A committed user holding `role` (a role key) at `scope`."""
     async with app.state.sessionmaker() as session:
         user = await create_user(session, email, name, password)
+        await session.commit()
+    await seed_binding(app, SubjectKind.USER, user.id, role, scope, project_id, environment_id)
+    return user.id
+
+
+async def seed_binding(
+    app: FastAPI,
+    subject_kind: SubjectKind | str,
+    subject_id: uuid.UUID,
+    role: str,
+    scope: str = "org",
+    project_id: uuid.UUID | None = None,
+    environment_id: uuid.UUID | None = None,
+) -> uuid.UUID:
+    """A committed binding of `role` (a role key) to the subject at `scope`."""
+    async with app.state.sessionmaker() as session:
         role_id = await session.scalar(select(Role.id).where(Role.key == role))
         assert role_id is not None, f"no role {role!r}"
-        session.add(
-            RoleBinding(
-                subject_kind=SubjectKind.USER,
-                subject_id=user.id,
-                role_id=role_id,
-                scope=ScopeKind(scope),
-                project_id=project_id,
-                environment_id=environment_id,
-            )
+        binding = RoleBinding(
+            subject_kind=SubjectKind(subject_kind),
+            subject_id=subject_id,
+            role_id=role_id,
+            scope=ScopeKind(scope),
+            project_id=project_id,
+            environment_id=environment_id,
         )
+        session.add(binding)
         await session.commit()
-        return user.id
+        return binding.id
+
+
+async def seed_service_token(
+    app: FastAPI,
+    role: str = "admin",
+    *,
+    scope: str = "org",
+    project_id: uuid.UUID | None = None,
+    environment_id: uuid.UUID | None = None,
+    name: str = "tests",
+) -> str:
+    """A committed service token holding `role` at `scope`. Returns the secret.
+
+    `last_used_at` is set, so requests made with it do not write it again.
+    """
+    async with app.state.sessionmaker() as session:
+        row, token = await create_service_token(session, name, created_by=None, expires_at=None)
+        row.last_used_at = await session.scalar(select(func.now()))
+        await session.commit()
+    await seed_binding(
+        app, SubjectKind.SERVICE_TOKEN, row.id, role, scope, project_id, environment_id
+    )
+    return token
+
+
+def bearer(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
 
 
 async def create_project(

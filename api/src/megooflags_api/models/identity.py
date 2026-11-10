@@ -17,7 +17,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from megooflags_api.db import Base
 from megooflags_api.models.base import TimestampMixin, pg_enum, uuid_pk
-from megooflags_api.models.enums import ScopeKind, SessionState, SubjectKind, UserStatus
+from megooflags_api.models.enums import (
+    ApiTokenKind,
+    ScopeKind,
+    SessionState,
+    SubjectKind,
+    UserStatus,
+)
 
 
 class User(Base):
@@ -153,3 +159,42 @@ class UserSession(Base):
     mfa_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ip: Mapped[str | None] = mapped_column(String(45))
     user_agent: Mapped[str | None] = mapped_column(String(512))
+
+
+class ApiToken(Base):
+    """A service or personal API token. Only the sha256 of the secret is stored."""
+
+    __tablename__ = "api_token"
+    __table_args__ = (
+        UniqueConstraint("secret_hash"),
+        CheckConstraint(
+            "(kind = 'personal') = (owner_user_id IS NOT NULL)", name="personal_has_owner"
+        ),
+    )
+    __mapper_args__ = {"eager_defaults": True}
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    kind: Mapped[ApiTokenKind] = mapped_column(pg_enum(ApiTokenKind, "api_token_kind"))
+    name: Mapped[str] = mapped_column(String(200))
+    prefix: Mapped[str] = mapped_column(String(14))
+    secret_hash: Mapped[str] = mapped_column(String(64))
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), index=True
+    )
+    # The user or token that created it; no FK, so the record outlives its creator.
+    created_by: Mapped[uuid.UUID | None]
+    # Personal tokens only: a subset of the catalogue, optionally limited to a project or env.
+    permissions: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("project.id", ondelete="CASCADE")
+    )
+    environment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("environment.id", ondelete="CASCADE")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rotated_from_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("api_token.id", ondelete="SET NULL")
+    )

@@ -58,3 +58,8 @@ class SessionState(StrEnum):
     PENDING_MFA = "pending_mfa"  # password checked, second factor still to come
     ENROL_MFA = "enrol_mfa"  # signed in, but the org requires a factor the user has not set up
     ACTIVE = "active"
+
+
+class ApiTokenKind(StrEnum):
+    SERVICE = "service"  # has its own role bindings
+    PERSONAL = "personal"  # a permission subset, capped by its owner's rights
