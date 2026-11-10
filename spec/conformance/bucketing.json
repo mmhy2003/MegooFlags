@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "description": "Bucketing hash vectors: input is \"<flag_key>.<bucketing value>\", bucket is uint64_be(sha256(utf8(input))[0:8]) mod 100000. Split the input at the first \".\".",
+  "vectors": [
+    {"input": "f.u", "bucket": 68258},
+    {"input": "f.", "bucket": 30480},
+    {"input": "f.é", "bucket": 15695},
+    {"input": "f.日本", "bucket": 51328},
+    {"input": "f.42", "bucket": 59114},
+    {"input": "f.0", "bucket": 63745},
+    {"input": "f.-7", "bucket": 62405},
+    {"input": "f.user-1", "bucket": 92944},
+    {"input": "f.a.b", "bucket": 22353},
+    {"input": "f.9007199254740991", "bucket": 35410},
+    {"input": "flag.u", "bucket": 40960},
+    {"input": "checkout.alice", "bucket": 4998},
+    {"input": "checkout.bob", "bucket": 37238},
+    {"input": "new-ui.user-123", "bucket": 11296},
+    {"input": "new-ui.user-124", "bucket": 88299},
+    {"input": "a.b", "bucket": 4687},
+    {"input": "rollout.user-1", "bucket": 2613},
+    {"input": "rollout.user-2", "bucket": 37994},
+    {"input": "rollout.user-3", "bucket": 82799},
+    {"input": "rollout.alice", "bucket": 89502},
+    {"input": "rollout.42", "bucket": 59948},
+    {"input": "rollout.acme", "bucket": 98311},
+    {"input": "rollout.globex", "bucket": 90023}
+  ]
+}

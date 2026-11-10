@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://megooflags.dev/spec/conformance/conformance.schema.json",
+  "title": "MegooFlags conformance case file",
+  "description": "One file of cases/: a ruleset and the tests evaluated against it. See README.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "description", "ruleset", "tests"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "description": { "type": "string" },
+    "ruleset": {
+      "type": "object",
+      "description": "A ruleset valid against ../ruleset.schema.json."
+    },
+    "tests": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/test" }
+    }
+  },
+  "$defs": {
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "flag", "context", "default", "expected"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "flag": { "type": "string" },
+        "context": true,
+        "default": true,
+        "expected_type": { "enum": ["boolean", "string", "number", "json"] },
+        "expected": { "$ref": "#/$defs/expected" }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "variant", "reason", "error_code", "metadata"],
+      "properties": {
+        "value": true,
+        "variant": { "type": ["string", "null"] },
+        "reason": {
+          "enum": [
+            "STATIC",
+            "DEFAULT",
+            "TARGETING_MATCH",
+            "SPLIT",
+            "DISABLED",
+            "PREREQUISITE_FAILED",
+            "ERROR"
+          ]
+        },
+        "error_code": {
+          "enum": [
+            null,
+            "FLAG_NOT_FOUND",
+            "TYPE_MISMATCH",
+            "PARSE_ERROR",
+            "INVALID_CONTEXT",
+            "GENERAL"
+          ]
+        },
+        "metadata": { "type": "object" }
+      }
+    }
+  }
+}

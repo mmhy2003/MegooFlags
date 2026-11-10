@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "description": "Individual targeting (T-2): the context key against each target's list, before the rules.",
+  "ruleset": {
+    "schema_version": 1,
+    "project": "conformance",
+    "environment": "test",
+    "flags": {
+      "f": {
+        "key": "f",
+        "type": "string",
+        "enabled": true,
+        "version": 1,
+        "variations": [
+          {"key": "a", "value": "a"},
+          {"key": "b", "value": "b"},
+          {"key": "c", "value": "c"},
+          {"key": "fall", "value": "fall"}
+        ],
+        "off_variation": "fall",
+        "prerequisites": [],
+        "targets": [
+          {"variation": "a", "values": ["alice", "42"]},
+          {"variation": "b", "values": ["bob"]}
+        ],
+        "rules": [
+          {
+            "description": "pro plan",
+            "clauses": [{"attribute": "plan", "operator": "in", "values": ["pro"], "negate": false}],
+            "serve": {"variation": "c"}
+          }
+        ],
+        "fallthrough": {"variation": "fall"}
+      }
+    },
+    "segments": {}
+  },
+  "tests": [
+    {"name": "key-in-first-list", "flag": "f", "context": {"key": "alice"}, "default": "x",
+     "expected": {"value": "a", "variant": "a", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {}}},
+    {"name": "key-in-second-list", "flag": "f", "context": {"key": "bob"}, "default": "x",
+     "expected": {"value": "b", "variant": "b", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {}}},
+    {"name": "key-in-no-list", "flag": "f", "context": {"key": "carol"}, "default": "x",
+     "expected": {"value": "fall", "variant": "fall", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "target-beats-matching-rule", "flag": "f", "context": {"key": "alice", "plan": "pro"}, "default": "x",
+     "expected": {"value": "a", "variant": "a", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {}}},
+    {"name": "rule-when-not-targeted", "flag": "f", "context": {"key": "carol", "plan": "pro"}, "default": "x",
+     "expected": {"value": "c", "variant": "c", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 0}}},
+    {"name": "number-key-does-not-match-string", "flag": "f", "context": {"key": 42}, "default": "x",
+     "expected": {"value": "fall", "variant": "fall", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "string-key-42-matches", "flag": "f", "context": {"key": "42"}, "default": "x",
+     "expected": {"value": "a", "variant": "a", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {}}},
+    {"name": "target-match-is-case-sensitive", "flag": "f", "context": {"key": "Alice"}, "default": "x",
+     "expected": {"value": "fall", "variant": "fall", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "missing-key", "flag": "f", "context": {}, "default": "x",
+     "expected": {"value": "fall", "variant": "fall", "reason": "DEFAULT", "error_code": null, "metadata": {}}}
+  ]
+}
