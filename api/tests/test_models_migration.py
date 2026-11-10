@@ -39,6 +39,7 @@ def test_metadata_has_all_tables() -> None:
         "org_settings",
         "session",
         "api_token",
+        "audit_entry",
     }
 
 

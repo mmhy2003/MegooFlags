@@ -12,14 +12,14 @@ from fastapi import FastAPI
 from sqlalchemy import event, func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from megooflags_api.models import Role, RoleBinding
+from megooflags_api.models import AuditEntry, Role, RoleBinding
 from megooflags_api.models.enums import ScopeKind, SubjectKind
 from megooflags_api.services.api_tokens import create_service_token
 from megooflags_api.services.users import create_user
 
 # Empties every table the tests write to, keeping the built-in roles and the org_settings row.
 RESET_SQL = [
-    'TRUNCATE project, "user", team, role_binding, api_token CASCADE',
+    'TRUNCATE project, "user", team, role_binding, api_token, audit_entry CASCADE',
     "DELETE FROM role WHERE NOT builtin",
     "UPDATE org_settings SET require_mfa = false",
 ]
@@ -104,6 +104,16 @@ async def seed_service_token(
 
 def bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+async def audit_entries(app: FastAPI, action: str | None = None) -> list[dict[str, Any]]:
+    """The audit entries in insertion order, optionally only those with `action`."""
+    statement = select(AuditEntry.__table__).order_by(AuditEntry.id)
+    if action is not None:
+        statement = statement.where(AuditEntry.action == action)
+    async with app.state.sessionmaker() as session:
+        rows = await session.execute(statement)
+        return [dict(row) for row in rows.mappings()]
 
 
 async def create_project(

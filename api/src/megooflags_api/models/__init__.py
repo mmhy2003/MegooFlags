@@ -1,5 +1,6 @@
 """All models, imported so that `Base.metadata` is complete."""
 
+from megooflags_api.models.audit import AuditEntry
 from megooflags_api.models.flag import Flag, Variation
 from megooflags_api.models.identity import (
     ApiToken,
@@ -26,6 +27,7 @@ from megooflags_api.models.targeting import (
 
 __all__ = [
     "ApiToken",
+    "AuditEntry",
     "Clause",
     "ClauseSegment",
     "Environment",
