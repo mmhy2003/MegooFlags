@@ -1,4 +1,7 @@
+import asyncio
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -10,7 +13,11 @@ from test_ofrep import setup_demo
 
 from megooflags_api.models.project import Environment
 from megooflags_api.models.sdk import EvaluationCount, ExposureEvent
-from megooflags_api.services.events import RETENTION_LOCK_ID, delete_expired
+from megooflags_api.services.events import (
+    RETENTION_LOCK_ID,
+    EvaluationCounter,
+    delete_expired,
+)
 from megooflags_api.settings import Settings
 
 EVENTS = "/sdk/v1/events"
@@ -121,6 +128,7 @@ async def test_counts_upsert(app: FastAPI, api: httpx.AsyncClient) -> None:
         "counts": [
             count,
             {**count, "count": 3},
+            {**count, "hour": "2026-11-10T15:47:00+05:30", "count": 4},  # 10:17Z
             {"flag_key": "size", "variant": None, "hour": "2026-11-10T10:59:59Z", "count": 1},
         ]
     }
@@ -130,14 +138,14 @@ async def test_counts_upsert(app: FastAPI, api: httpx.AsyncClient) -> None:
     assert r.status_code == 202, r.text
     ten = datetime(2026, 11, 10, 10, tzinfo=UTC)
     assert [(c.flag_key, c.variant, c.hour, c.count) for c in await counts(app)] == [
-        ("color", "red", ten, 5),
+        ("color", "red", ten, 9),
         ("size", "", ten, 1),
     ]
 
     r = await api.post(EVENTS, json={"counts": [count]}, headers=bearer(key))
 
     assert r.status_code == 202, r.text
-    assert [(c.flag_key, c.count) for c in await counts(app)] == [("color", 7), ("size", 1)]
+    assert [(c.flag_key, c.count) for c in await counts(app)] == [("color", 11), ("size", 1)]
 
 
 async def test_limits(app: FastAPI, api: httpx.AsyncClient) -> None:
@@ -175,6 +183,16 @@ async def test_client_key_allowed_and_cors(app: FastAPI, api: httpx.AsyncClient)
 
 async def test_events_require_a_key(app: FastAPI, api: httpx.AsyncClient) -> None:
     r = await api.post(EVENTS, json={"exposures": [exposure()]})
+
+    assert_error(r, 401, "unauthorized")
+
+
+async def test_oversized_body_without_a_key_is_unauthorized(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    big = [exposure(context={"blob": "x" * 1200}) for _ in range(900)]
+
+    r = await api.post(EVENTS, json={"exposures": big})
 
     assert_error(r, 401, "unauthorized")
 
@@ -232,6 +250,31 @@ async def test_flush_empty_no_statements(app: FastAPI) -> None:
         await app.state.evaluation_counter.flush(app.state.sessionmaker)
 
     assert statements == []
+
+
+async def test_cancelled_flush_keeps_the_batch(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    env_id = await environment_id(app)
+    hour = datetime(2026, 11, 10, 10, tzinfo=UTC)
+    counter = EvaluationCounter(clock=lambda: hour)
+    counter.record(env_id, [("color", "red")])
+    entered = asyncio.Event()
+
+    @asynccontextmanager
+    async def stuck() -> AsyncIterator[None]:
+        entered.set()
+        await asyncio.Event().wait()
+        yield
+
+    flush = asyncio.create_task(counter.flush(stuck))  # type: ignore[arg-type]
+    await entered.wait()
+    flush.cancel()
+    await asyncio.gather(flush, return_exceptions=True)
+    await counter.flush(app.state.sessionmaker)
+
+    assert [(c.flag_key, c.variant, c.hour, c.count) for c in await counts(app)] == [
+        ("color", "red", hour, 1)
+    ]
 
 
 async def test_retention(app: FastAPI, api: httpx.AsyncClient) -> None:

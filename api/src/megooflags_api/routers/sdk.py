@@ -191,15 +191,23 @@ async def stream_changes(
     )
 
 
+async def _events_key(request: Request, principal: AnyKeyDep) -> SdkPrincipal:
+    """Authenticate before checking the body size, so anonymous callers always get 401."""
+    await limit_body_size(request)
+    return principal
+
+
 @router.post(
     "/events",
     status_code=202,
     response_class=Response,
-    dependencies=[Depends(limit_body_size)],
     responses={202: {"description": "The batch was stored."}},
 )
 async def send_events(
-    request: Request, principal: AnyKeyDep, body: EventsIn, session: SessionDep
+    request: Request,
+    principal: Annotated[SdkPrincipal, Depends(_events_key)],
+    body: EventsIn,
+    session: SessionDep,
 ) -> Response:
     """Store exposures and add evaluation counts, at most 1000 of each and 1 MB per batch. The
     context is dropped unless `MEGOOFLAGS_PERSIST_CONTEXT` is enabled; unknown flags are kept."""

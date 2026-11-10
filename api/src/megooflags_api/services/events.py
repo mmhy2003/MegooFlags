@@ -28,7 +28,8 @@ CountKey = tuple[uuid.UUID, str, str, datetime]  # environment, flag key, varian
 
 
 def truncate_hour(value: datetime) -> datetime:
-    return value.replace(minute=0, second=0, microsecond=0)
+    """The UTC hour, so counts sent with different offsets share one bucket."""
+    return value.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
 
 
 async def limit_body_size(request: Request) -> None:
@@ -91,18 +92,23 @@ class EvaluationCounter:
             self._pending[key] = self._pending.get(key, 0) + 1
 
     async def flush(self, sessionmaker: async_sessionmaker[AsyncSession]) -> None:
-        """Write the pending counts; on failure they are kept for the next flush."""
+        """Write the pending counts. Unless they were committed, they are kept for the next
+        flush, also when the flush is cancelled at shutdown."""
         batch, self._pending = self._pending, {}
         if not batch:
             return
+        committed = False
         try:
             async with sessionmaker() as session:
                 await add_counts(session, batch)
                 await session.commit()
+                committed = True
         except Exception:
             logger.exception("flushing %d evaluation counts failed; retrying later", len(batch))
-            for key, n in batch.items():
-                self._pending[key] = self._pending.get(key, 0) + n
+        finally:
+            if not committed:
+                for key, n in batch.items():
+                    self._pending[key] = self._pending.get(key, 0) + n
 
     async def run(
         self, sessionmaker: async_sessionmaker[AsyncSession], interval: float = 10.0
