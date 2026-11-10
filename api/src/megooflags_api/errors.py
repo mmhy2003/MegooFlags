@@ -80,6 +80,16 @@ def forbidden(message: str) -> ApiError:
     return ApiError(403, "forbidden", message)
 
 
+def mfa_required() -> ApiError:
+    return ApiError(401, "mfa_required", "a second factor is required to finish signing in")
+
+
+def mfa_enrolment_required() -> ApiError:
+    return ApiError(
+        403, "mfa_enrolment_required", "set up a second factor before using this endpoint"
+    )
+
+
 def csrf_failed() -> ApiError:
     return ApiError(403, "csrf_failed", "the request origin is not allowed")
 
