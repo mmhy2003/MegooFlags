@@ -79,7 +79,7 @@ def _evaluate_flag(
             if key in target.values:
                 return _serve(flag, target.variation, Reason.TARGETING_MATCH, default)
     for index, rule in enumerate(flag.rules):
-        if all(_clause_matches(ruleset, c, context) for c in rule.clauses):
+        if _all_clauses_match(ruleset, rule.clauses, context):
             return _serve_rule(
                 flag, rule.serve, context, Reason.TARGETING_MATCH, default, {"rule_index": index}
             )
@@ -105,6 +105,16 @@ def _prerequisite_met(
     return result.reason != Reason.ERROR and result.variant == prereq.variation
 
 
+def _all_clauses_match(
+    ruleset: Ruleset, clauses: tuple[Clause, ...], context: dict[str, Any]
+) -> bool:
+    # A plain loop instead of all(<generator>): this runs for every rule of every evaluation.
+    for clause in clauses:
+        if not _clause_matches(ruleset, clause, context):
+            return False
+    return True
+
+
 def _clause_matches(ruleset: Ruleset, clause: Clause, context: dict[str, Any]) -> bool:
     if clause.operator == "in_segment":
         hit = any(_in_segment(ruleset, ruleset.segments.get(k), context) for k in clause.values)
@@ -112,8 +122,10 @@ def _clause_matches(ruleset: Ruleset, clause: Clause, context: dict[str, Any]) -
     value = context.get(clause.attribute)
     if value is None:  # missing or null: false, negate not applied
         return False
-    elements = value if isinstance(value, list) else [value]
-    hit = any(match_value(clause.operator, e, clause.prepared) for e in elements)
+    if isinstance(value, list):
+        hit = any(match_value(clause.operator, e, clause.prepared) for e in value)
+    else:  # the common scalar case skips the generator: this is the engine's hot path
+        hit = match_value(clause.operator, value, clause.prepared)
     return hit != clause.negate
 
 
@@ -126,9 +138,7 @@ def _in_segment(ruleset: Ruleset, segment: Segment | None, context: dict[str, An
             return False
         if key in segment.included:
             return True
-    return any(
-        all(_clause_matches(ruleset, c, context) for c in rule.clauses) for rule in segment.rules
-    )
+    return any(_all_clauses_match(ruleset, rule.clauses, context) for rule in segment.rules)
 
 
 def _serve(
