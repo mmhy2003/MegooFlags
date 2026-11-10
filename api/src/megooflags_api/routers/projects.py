@@ -10,6 +10,7 @@ from megooflags_api.schemas.projects import (
     ProjectUpdate,
 )
 from megooflags_api.services import projects
+from megooflags_api.services.changes import ChangesDep
 from megooflags_api.services.lookup import get_project
 
 router = APIRouter(tags=["projects"], responses=ERROR_RESPONSES)
@@ -24,10 +25,11 @@ async def list_projects(
 
 
 @router.post("/projects", status_code=201)
-async def create_project(session: SessionDep, body: ProjectCreate) -> ProjectOut:
+async def create_project(session: SessionDep, bus: ChangesDep, body: ProjectCreate) -> ProjectOut:
     project = await projects.create_project(session, body)
     out = await projects.project_out(session, project)
     await session.commit()
+    await bus.publish(project.id)
     return out
 
 
@@ -37,16 +39,22 @@ async def read_project(session: SessionDep, project: str) -> ProjectOut:
 
 
 @router.patch("/projects/{project}")
-async def update_project(session: SessionDep, project: str, body: ProjectUpdate) -> ProjectOut:
+async def update_project(
+    session: SessionDep, bus: ChangesDep, project: str, body: ProjectUpdate
+) -> ProjectOut:
     row = await get_project(session, project)
     await projects.update_project(session, row, body)
     out = await projects.project_out(session, row)
     await session.commit()
+    await bus.publish(row.id)
     return out
 
 
 @router.delete("/projects/{project}", status_code=204)
-async def delete_project(session: SessionDep, project: str) -> Response:
-    await projects.delete_project(session, await get_project(session, project))
+async def delete_project(session: SessionDep, bus: ChangesDep, project: str) -> Response:
+    row = await get_project(session, project)
+    project_id = row.id
+    await projects.delete_project(session, row)
     await session.commit()
+    await bus.publish(project_id)
     return Response(status_code=204)

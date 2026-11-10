@@ -4,7 +4,7 @@ from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from megooflags_api.main import create_app
-from megooflags_api.tracing import configure_tracing
+from megooflags_api.tracing import EXCLUDED_URLS, configure_tracing
 
 
 async def test_tracing_is_off_without_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -38,3 +38,8 @@ async def test_tracing_records_spans_when_configured(monkeypatch: pytest.MonkeyP
         provider.shutdown()
         SQLAlchemyInstrumentor().uninstrument()
         await app.state.engine.dispose()
+
+
+def test_stream_is_not_traced() -> None:
+    # The instrumentation records the full URL, and client keys may travel in `?key=`.
+    assert "/sdk/v1/stream" in EXCLUDED_URLS.split(",")

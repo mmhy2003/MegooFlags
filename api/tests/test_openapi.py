@@ -26,6 +26,8 @@ def test_spec_documents_management_api() -> None:
         "/api/projects/{project}/environments",
         "/api/projects/{project}/environments/{env}",
         "/api/projects/{project}/environments/{env}/evaluate",
+        "/api/projects/{project}/environments/{env}/sdk-keys",
+        "/api/projects/{project}/environments/{env}/sdk-keys/{id}",
         "/api/projects/{project}/flags",
         flag,
         f"{flag}/archive",
@@ -48,6 +50,24 @@ def test_spec_documents_management_api() -> None:
         ref = put_responses[status]["content"]["application/json"]["schema"]["$ref"]
         assert ref == "#/components/schemas/ErrorBody"
     assert "from" in schemas["CopyIn"]["properties"]
+
+
+def test_spec_documents_sdk_api() -> None:
+    spec = json.loads(render())
+
+    assert {
+        "/sdk/v1/ruleset",
+        "/sdk/v1/evaluate",
+        "/sdk/v1/stream",
+        "/sdk/v1/events",
+    } <= spec["paths"].keys()
+    assert "413" in spec["paths"]["/sdk/v1/events"]["post"]["responses"]
+
+
+def test_spec_documents_ofrep() -> None:
+    spec = json.loads(render())
+
+    assert {"/ofrep/v1/evaluate/flags", "/ofrep/v1/evaluate/flags/{key}"} <= spec["paths"].keys()
 
 
 def test_committed_spec_is_current() -> None:

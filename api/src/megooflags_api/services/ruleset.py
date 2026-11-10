@@ -7,6 +7,7 @@ environment or the project instead of passing ids, and every query runs even whe
 
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import func, select
@@ -33,11 +34,24 @@ from megooflags_api.models.enums import Operator, SegmentTargetKind
 SCHEMA_VERSION = 1
 
 
+@dataclass(frozen=True, slots=True)
+class EnvRef:
+    """The environment columns the SDK path needs, detached from any session."""
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    key: str
+
+    @classmethod
+    def of(cls, environment: Environment) -> "EnvRef":
+        return cls(id=environment.id, project_id=environment.project_id, key=environment.key)
+
+
 def _clause(attribute: str, operator: Operator, values: list[Any], negate: bool) -> dict[str, Any]:
     return {"attribute": attribute, "operator": operator.value, "values": values, "negate": negate}
 
 
-async def build_ruleset(session: AsyncSession, environment: Environment) -> dict[str, Any]:
+async def build_ruleset(session: AsyncSession, environment: EnvRef) -> dict[str, Any]:
     """The ruleset of `environment` in 14 statements."""
     project_id = environment.project_id
     in_env = FlagEnvironment.environment_id == environment.id

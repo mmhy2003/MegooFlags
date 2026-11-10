@@ -28,9 +28,16 @@ def client_for() -> ClientFactory:
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 yield client
         finally:
+            await app.state.valkey.aclose()
             await app.state.engine.dispose()
 
     return factory
+
+
+@pytest.fixture(scope="session")
+def valkey_up() -> None:
+    if "MEGOOFLAGS_VALKEY_URL" not in os.environ:
+        pytest.skip("MEGOOFLAGS_VALKEY_URL is not set")
 
 
 @pytest.fixture(scope="session")
@@ -49,6 +56,8 @@ async def app(migrated: None) -> AsyncIterator[FastAPI]:
     try:
         yield app
     finally:
+        await app.state.ruleset_cache.aclose()
+        await app.state.valkey.aclose()
         await app.state.engine.dispose()
 
 

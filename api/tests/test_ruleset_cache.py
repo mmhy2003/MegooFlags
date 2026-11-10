@@ -1,4 +1,8 @@
 import asyncio
+import hashlib
+import json
+import time
+import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -6,13 +10,16 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from helpers import count_statements, create_flag, create_project
+from jsonschema import Draft202012Validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from test_spec_schemas import ruleset_schema
 
 from megooflags_api.evaluation import Ruleset
 from megooflags_api.models import Environment, Project
 from megooflags_api.services import ruleset_cache
-from megooflags_api.services.ruleset_cache import RulesetCache
+from megooflags_api.services.ruleset import EnvRef, build_ruleset
+from megooflags_api.services.ruleset_cache import CachedRuleset, RulesetCache
 
 FLAGS = "/api/projects/demo/flags"
 COLOR = f"{FLAGS}/color"
@@ -211,3 +218,357 @@ async def test_concurrent_misses_build_once(
 
     assert calls == 1
     assert all(r is results[0] for r in results)
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+async def entry(
+    app: FastAPI, cache: RulesetCache, max_age: float = 1.0, env: str = "production"
+) -> tuple[CachedRuleset, list[str]]:
+    async with app.state.sessionmaker() as session:
+        environment = await load_environment(session, env)
+        with count_statements(app.state.engine) as statements:
+            result = await cache.get_entry(session, environment, max_age=max_age)
+    return result, statements
+
+
+async def test_entry_body_and_etag(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+
+    result, _ = await entry(app, RulesetCache(), max_age=0.0)
+
+    async with app.state.sessionmaker() as session:
+        raw = await build_ruleset(session, await load_environment(session))
+    body = json.dumps(raw, separators=(",", ":"), ensure_ascii=False).encode()
+    assert result.body == body
+    assert result.etag == '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
+    Draft202012Validator(ruleset_schema()).validate(json.loads(result.body))
+    assert result.ruleset.environment == "production"
+
+
+async def test_max_age_hit_is_zero_statements(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    clock = FakeClock()
+    cache = RulesetCache(clock=clock)
+    first, _ = await entry(app, cache)
+
+    clock.now += 0.9
+    second, statements = await entry(app, cache)
+
+    assert second is first
+    assert statements == []
+
+
+async def test_max_age_expired_checks_fingerprint(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    clock = FakeClock()
+    cache = RulesetCache(clock=clock)
+    first, _ = await entry(app, cache)
+
+    clock.now += 1.5
+    second, statements = await entry(app, cache)
+    clock.now += 0.5
+    third, again = await entry(app, cache)
+
+    assert second is first
+    assert len(statements) == 1
+    assert third is first
+    assert again == []  # the fingerprint check renewed checked_at
+
+
+async def test_concurrent_stale_lookups_check_fingerprint_once(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await setup_demo(api)
+    clock = FakeClock()
+    cache = RulesetCache(clock=clock)
+    first, _ = await entry(app, cache)
+    async with app.state.sessionmaker() as session:
+        environment = await load_environment(session)
+
+    async def get() -> CachedRuleset:
+        async with app.state.sessionmaker() as session:
+            return await cache.get_entry(session, environment, max_age=1.0)
+
+    clock.now += 1.5
+    with count_statements(app.state.engine) as statements:
+        results = await asyncio.gather(*(get() for _ in range(10)))
+
+    assert all(r is first for r in results)
+    assert len(statements) == 1
+
+
+async def test_rebuild_does_not_block_event_loop(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup_demo(api)
+    parse = ruleset_cache.parse_ruleset
+
+    def slow_parse(raw: dict[str, Any]) -> Ruleset:
+        time.sleep(0.3)  # stands in for parsing a large ruleset
+        return parse(raw)
+
+    monkeypatch.setattr(ruleset_cache, "parse_ruleset", slow_parse)
+    ticks = 0
+
+    async def ticker() -> None:
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    task = asyncio.create_task(ticker())
+    try:
+        result, _ = await entry(app, RulesetCache(), max_age=0.0)
+    finally:
+        task.cancel()
+
+    assert result.ruleset.environment == "production"
+    assert ticks >= 20  # 0.3 s of parsing would allow none while it blocks the loop
+
+
+async def test_invalidate_forces_check(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    clock = FakeClock()
+    cache = RulesetCache(clock=clock)
+    first, _ = await entry(app, cache)
+    async with app.state.sessionmaker() as session:
+        project_id = (await load_environment(session)).project_id
+
+    cache.invalidate(project_id)
+    second, statements = await entry(app, cache)
+
+    assert second is first
+    assert len(statements) == 1
+
+    r = await api.post(f"{PRODUCTION}/kill")
+    assert r.status_code == 200, r.text
+    stale, _ = await entry(app, cache)
+    assert stale is first
+    cache.invalidate(project_id)
+    fresh, _ = await entry(app, cache)
+    assert fresh is not first
+    assert fresh.ruleset.flags["color"].enabled is False
+
+
+async def test_invalidate_other_project_no_effect(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    await create_project(api, key="other")
+    clock = FakeClock()
+    cache = RulesetCache(clock=clock)
+    first, _ = await entry(app, cache)
+    async with app.state.sessionmaker() as session:
+        other = await session.scalar(select(Project.id).where(Project.key == "other"))
+    assert other is not None
+
+    cache.invalidate(other)
+    second, statements = await entry(app, cache)
+
+    assert second is first
+    assert statements == []
+
+
+async def test_etag_stable_when_content_same(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    first, _ = await entry(app, cache, max_age=0.0)
+
+    r = await api.patch(COLOR, json={"name": "Colour"})
+    assert r.status_code == 200, r.text
+    second, _ = await entry(app, cache, max_age=0.0)
+
+    assert second.fingerprint != first.fingerprint
+    assert second.etag == first.etag
+    assert second.body == first.body
+
+
+async def settle(cache: RulesetCache) -> None:
+    """Wait for the background checks that lookups started."""
+    while cache._refreshes:
+        await asyncio.gather(*cache._refreshes.values())
+
+
+async def test_stale_entry_served_while_checked_in_background(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await setup_demo(api)
+    clock = FakeClock()
+    cache = RulesetCache(app.state.sessionmaker, clock=clock)
+    first, _ = await entry(app, cache)
+
+    clock.now += 1.5
+    with count_statements(app.state.engine) as background:
+        stale, statements = await entry(app, cache)
+        await settle(cache)
+    renewed, again = await entry(app, cache)
+
+    assert stale is first
+    assert statements == []  # the request itself ran no query
+    assert len(background) == 2  # loading the environment, then one fingerprint check
+    assert "md5(" in background[1]
+    assert renewed is first
+    assert again == []  # the background check renewed checked_at
+
+
+async def test_stale_lookups_do_not_wait_for_the_check(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup_demo(api)
+    clock = FakeClock()
+    cache = RulesetCache(app.state.sessionmaker, clock=clock)
+    first, _ = await entry(app, cache)
+    async with app.state.sessionmaker() as session:
+        environment = await load_environment(session)
+    checks = 0
+    fingerprint = cache._fingerprint
+
+    async def slow(session: AsyncSession, environment: Environment) -> tuple[float, str]:
+        nonlocal checks
+        checks += 1
+        await asyncio.sleep(0.5)  # stands in for the ~50 ms query under load
+        return await fingerprint(session, environment)
+
+    monkeypatch.setattr(cache, "_fingerprint", slow)
+
+    async def get() -> CachedRuleset:
+        async with app.state.sessionmaker() as session:
+            return await cache.get_entry(session, environment, max_age=1.0)
+
+    clock.now += 1.5
+    started = time.monotonic()
+    results = await asyncio.gather(*(get() for _ in range(10)))
+    elapsed = time.monotonic() - started
+    await settle(cache)
+
+    assert all(r is first for r in results)
+    assert elapsed < 0.25
+    assert checks == 1
+
+
+async def test_background_check_picks_up_a_write(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    clock = FakeClock()
+    cache = RulesetCache(app.state.sessionmaker, clock=clock)
+    first, _ = await entry(app, cache)
+    r = await api.post(f"{PRODUCTION}/kill")
+    assert r.status_code == 200, r.text
+
+    clock.now += 1.5
+    stale, _ = await entry(app, cache)
+    await settle(cache)
+    fresh, statements = await entry(app, cache)
+
+    assert stale is first
+    assert fresh is not first
+    assert fresh.ruleset.flags["color"].enabled is False
+    assert statements == []
+
+
+async def test_invalidated_entry_is_never_served_stale(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await setup_demo(api)
+    clock = FakeClock()
+    cache = RulesetCache(app.state.sessionmaker, clock=clock)
+    first, _ = await entry(app, cache)
+    async with app.state.sessionmaker() as session:
+        project_id = (await load_environment(session)).project_id
+    r = await api.post(f"{PRODUCTION}/kill")
+    assert r.status_code == 200, r.text
+
+    cache.invalidate(project_id)
+    fresh, _ = await entry(app, cache)
+
+    assert fresh is not first
+    assert fresh.ruleset.flags["color"].enabled is False
+
+
+async def test_invalidation_during_a_check_is_kept(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup_demo(api)
+    clock = FakeClock()
+    cache = RulesetCache(app.state.sessionmaker, clock=clock)
+    first, _ = await entry(app, cache)
+    async with app.state.sessionmaker() as session:
+        project_id = (await load_environment(session)).project_id
+    fingerprint = cache._fingerprint
+
+    async def racing(session: AsyncSession, environment: Environment) -> tuple[float, str]:
+        result = await fingerprint(session, environment)
+        # A write commits and its change message arrives after the query read the fingerprint.
+        r = await api.post(f"{PRODUCTION}/kill")
+        assert r.status_code == 200, r.text
+        cache.invalidate(project_id)
+        return result
+
+    monkeypatch.setattr(cache, "_fingerprint", racing)
+    clock.now += 1.5
+    await entry(app, cache)
+    await settle(cache)
+    monkeypatch.setattr(cache, "_fingerprint", fingerprint)
+
+    fresh, _ = await entry(app, cache)
+
+    assert fresh is not first
+    assert fresh.ruleset.flags["color"].enabled is False
+
+
+async def test_failed_background_check_is_retried(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup_demo(api)
+    clock = FakeClock()
+    cache = RulesetCache(app.state.sessionmaker, clock=clock)
+    first, _ = await entry(app, cache)
+    fingerprint = cache._fingerprint
+    calls = 0
+
+    async def flaky(session: AsyncSession, environment: Environment) -> tuple[float, str]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise ConnectionError("database restarting")
+        return await fingerprint(session, environment)
+
+    monkeypatch.setattr(cache, "_fingerprint", flaky)
+    clock.now += 1.5
+    stale, _ = await entry(app, cache)
+    await settle(cache)
+    again, _ = await entry(app, cache)
+    await settle(cache)
+
+    assert stale is first
+    assert again is first
+    assert calls == 2
+    assert cache._locks == {}
+
+
+async def test_locks_are_released(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup_demo(api)
+    cache = RulesetCache(app.state.sessionmaker, max_environments=1)
+
+    for env in ("development", "staging", "production"):
+        await entry(app, cache, max_age=0.0, env=env)
+        await entry(app, cache, max_age=1.0, env=env)
+
+    async def failing(session: AsyncSession, environment: EnvRef) -> dict[str, Any]:
+        raise LookupError("environment deleted")
+
+    monkeypatch.setattr(ruleset_cache, "build_ruleset", failing)
+    async with app.state.sessionmaker() as session:
+        environment = EnvRef.of(await load_environment(session))
+        gone = EnvRef(id=uuid.uuid4(), project_id=environment.project_id, key="gone")
+        for max_age in (0.0, 1.0):
+            with pytest.raises(LookupError):
+                await cache.get_entry(session, gone, max_age=max_age)
+
+    assert cache._locks == {}

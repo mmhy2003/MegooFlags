@@ -127,12 +127,15 @@ Commit both `api/openapi.json` and `web/lib/api/schema.d.ts`. CI regenerates bot
 
 Run all of these before you open a pull request or say a task is done. They are the commands that CI runs.
 
-Start a Postgres for the database tests:
+Start a Postgres for the database tests and a Valkey. The API and its tests need Valkey; Valkey
+tests skip when `MEGOOFLAGS_VALKEY_URL` is unset.
 
 ```bash
 docker run -d --name mf-pg -e POSTGRES_USER=megooflags -e POSTGRES_PASSWORD=megooflags \
   -e POSTGRES_DB=megooflags -p 5432:5432 postgres:16
+docker run -d --name mf-valkey -p 6379:6379 valkey/valkey:8
 export MEGOOFLAGS_DATABASE_URL=postgresql+asyncpg://megooflags:megooflags@localhost:5432/megooflags
+export MEGOOFLAGS_VALKEY_URL=redis://localhost:6379/0
 ```
 
 Then, from the repository root:
