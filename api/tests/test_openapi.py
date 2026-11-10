@@ -52,6 +52,12 @@ def test_spec_documents_management_api() -> None:
     assert "from" in schemas["CopyIn"]["properties"]
 
 
+def test_spec_documents_sdk_api() -> None:
+    spec = json.loads(render())
+
+    assert {"/sdk/v1/ruleset", "/sdk/v1/evaluate"} <= spec["paths"].keys()
+
+
 def test_committed_spec_is_current() -> None:
     committed = (API_DIR / "openapi.json").read_text(encoding="utf-8")
 

@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import Depends, FastAPI
 
 from megooflags_api import __version__, metrics
+from megooflags_api.cors import SdkCorsMiddleware
 from megooflags_api.db import create_engine, create_sessionmaker
 from megooflags_api.deps import get_actor
 from megooflags_api.errors import install_error_handlers
@@ -17,6 +18,7 @@ from megooflags_api.routers import (
     flags,
     health,
     projects,
+    sdk,
     sdk_keys,
     segments,
 )
@@ -67,6 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_error_handlers(app)
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(metrics.MetricsMiddleware)
+    app.add_middleware(SdkCorsMiddleware)
     app.include_router(health.router)
     app.include_router(metrics.router)
     for module in (
@@ -79,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sdk_keys,
     ):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_actor)])
+    app.include_router(sdk.router)
     app.state.tracer_provider = configure_tracing(app, app.state.engine)
     return app
 
