@@ -1,5 +1,6 @@
 """MegooFlags reference evaluation engine. Stdlib only: no DB, FastAPI or Pydantic imports."""
 
+from megooflags_api.evaluation.engine import evaluate, evaluate_all
 from megooflags_api.evaluation.model import (
     FLAG_TYPES,
     MAX_PREREQUISITE_DEPTH,
@@ -40,5 +41,7 @@ __all__ = [
     "Target",
     "Variation",
     "Weight",
+    "evaluate",
+    "evaluate_all",
     "parse_ruleset",
 ]
