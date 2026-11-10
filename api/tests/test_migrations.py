@@ -18,7 +18,7 @@ needs_db = pytest.mark.skipif(
 def test_single_head() -> None:
     script = ScriptDirectory.from_config(Config(str(API_DIR / "alembic.ini")))
 
-    assert script.get_heads() == ["0007"]
+    assert script.get_heads() == ["0008"]
 
 
 @needs_db

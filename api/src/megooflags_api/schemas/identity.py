@@ -5,8 +5,9 @@ from typing import Annotated, Self
 from pydantic import Field, model_validator
 
 from megooflags_api.auth.rbac import Permission
-from megooflags_api.models.enums import ScopeKind, SubjectKind, UserStatus
-from megooflags_api.schemas.common import ApiModel, Description, Key, Name
+from megooflags_api.models.enums import InvitationPurpose, ScopeKind, SubjectKind, UserStatus
+from megooflags_api.schemas.auth import Password
+from megooflags_api.schemas.common import ApiModel, Description, Email, Key, Name
 
 
 class UserOut(ApiModel):
@@ -17,6 +18,38 @@ class UserOut(ApiModel):
     has_password: bool
     created_at: datetime
     last_login_at: datetime | None
+
+
+class UserCreate(ApiModel):
+    email: Email
+    name: Name
+
+
+class UserUpdate(ApiModel):
+    name: Name | None = None
+
+
+class InviteLink(ApiModel):
+    """A one-time link to set a password, shown once; the admin shares it with the user."""
+
+    url: str
+    expires_at: datetime
+
+
+class UserCreated(ApiModel):
+    user: UserOut
+    invite: InviteLink
+
+
+class InvitationOut(ApiModel):
+    email: str
+    name: str
+    purpose: InvitationPurpose
+    expires_at: datetime
+
+
+class InvitationAccept(ApiModel):
+    password: Password
 
 
 class RoleIn(ApiModel):

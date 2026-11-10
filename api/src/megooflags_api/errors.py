@@ -94,6 +94,11 @@ def last_admin() -> ApiError:
     )
 
 
+def invalid_invitation() -> ApiError:
+    # The same answer for unknown, used, superseded and expired links, so none can be told apart.
+    return ApiError(404, "invalid_invitation", "this link is invalid or has expired")
+
+
 def forbidden(message: str) -> ApiError:
     return ApiError(403, "forbidden", message)
 

@@ -19,6 +19,7 @@ from megooflags_api.db import Base
 from megooflags_api.models.base import TimestampMixin, pg_enum, uuid_pk
 from megooflags_api.models.enums import (
     ApiTokenKind,
+    InvitationPurpose,
     ScopeKind,
     SessionState,
     SubjectKind,
@@ -198,3 +199,24 @@ class ApiToken(Base):
     rotated_from_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("api_token.id", ondelete="SET NULL")
     )
+
+
+class Invitation(Base):
+    """A one-time link to set a password: an invitation or a reset. Only the sha256 is stored."""
+
+    __tablename__ = "invitation"
+    __table_args__ = (UniqueConstraint("token_hash"),)
+    __mapper_args__ = {"eager_defaults": True}
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    token_hash: Mapped[str] = mapped_column(String(64))
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), index=True
+    )
+    purpose: Mapped[InvitationPurpose] = mapped_column(
+        pg_enum(InvitationPurpose, "invitation_purpose")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Set when the link is used, or when a newer link for the same user supersedes it.
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

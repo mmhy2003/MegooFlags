@@ -4,6 +4,7 @@ from megooflags_api.models.audit import AuditEntry
 from megooflags_api.models.flag import Flag, Variation
 from megooflags_api.models.identity import (
     ApiToken,
+    Invitation,
     OrgSettings,
     Role,
     RoleBinding,
@@ -38,6 +39,7 @@ __all__ = [
     "FlagPrerequisite",
     "FlagRule",
     "FlagTarget",
+    "Invitation",
     "OrgSettings",
     "Project",
     "Role",

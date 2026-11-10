@@ -29,6 +29,7 @@ from megooflags_api.routers import (
     sdk_keys,
     segments,
     setup,
+    users,
 )
 from megooflags_api.services.changes import ChangeBus
 from megooflags_api.services.events import (
@@ -119,6 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Public or self-checking routes (PUBLIC_ROUTES): no get_principal on the router.
     app.include_router(setup.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
+    app.include_router(users.public_router, prefix="/api")
     for module in (
         projects,
         environments,
@@ -129,7 +131,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sdk_keys,
     ):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_actor)])
-    app.include_router(roles.router, prefix="/api", dependencies=[Depends(get_principal)])
+    for module in (roles, users):
+        app.include_router(module.router, prefix="/api", dependencies=[Depends(get_principal)])
     app.include_router(sdk.router)
     app.include_router(ofrep.router)
     app.state.tracer_provider = configure_tracing(app, app.state.engine)

@@ -1,14 +1,19 @@
-"""Users: lookup by id or email (case-insensitive), creation and password changes."""
+"""Users: lookup by id or email (case-insensitive), listing, creation, password changes and
+disabling."""
 
 import uuid
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.auth.passwords import check_password_policy, hash_password
+from megooflags_api.auth.sessions import end_sessions
 from megooflags_api.errors import key_conflict, not_found
 from megooflags_api.models import User
+from megooflags_api.models.enums import UserStatus
 from megooflags_api.schemas.identity import UserOut
+from megooflags_api.services.bindings import active_org_admin_ids, guard_last_admin
+from megooflags_api.services.pagination import decode_cursor, page_slice
 
 
 async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
@@ -24,6 +29,23 @@ async def get_user(session: AsyncSession, user_id: uuid.UUID) -> User:
     if user is None:
         raise not_found("user", str(user_id))
     return user
+
+
+async def list_users(
+    session: AsyncSession, q: str | None, cursor: str | None, limit: int
+) -> tuple[list[UserOut], str | None]:
+    """Users by lower(email); `q` matches part of the email or name, ignoring case."""
+    sort_key = func.lower(User.email)
+    query = select(User).order_by(sort_key).limit(limit + 1)
+    if q:
+        query = query.where(
+            or_(User.email.icontains(q, autoescape=True), User.name.icontains(q, autoescape=True))
+        )
+    if cursor is not None:
+        query = query.where(sort_key > decode_cursor(cursor))
+    rows = list(await session.scalars(query))
+    page, next_cursor = page_slice(rows, limit, lambda u: u.email.lower())
+    return [user_out(u) for u in page], next_cursor
 
 
 async def create_user(session: AsyncSession, email: str, name: str, password: str | None) -> User:
@@ -45,6 +67,21 @@ async def create_user(session: AsyncSession, email: str, name: str, password: st
 async def set_password(session: AsyncSession, user: User, password: str) -> None:
     check_password_policy(password)
     user.password_hash = hash_password(password)
+    await session.flush()
+
+
+async def disable_user(session: AsyncSession, user: User) -> None:
+    """Disable a user and end their sessions; 409 last_admin if they are the last org admin."""
+    was_admin = user.id in await active_org_admin_ids(session)
+    user.status = UserStatus.DISABLED
+    await end_sessions(session, user.id)
+    await session.flush()
+    if was_admin:
+        await guard_last_admin(session)
+
+
+async def enable_user(session: AsyncSession, user: User) -> None:
+    user.status = UserStatus.ACTIVE
     await session.flush()
 
 

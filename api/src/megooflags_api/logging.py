@@ -67,6 +67,17 @@ def configure_logging(settings: Settings) -> None:
     logging.config.dictConfig(logging_config(settings.log_level, settings.log_format))
 
 
+def _loggable_path(scope: Scope, route: str) -> str:
+    """The request path, with a `{token}` path parameter (an invitation link, which is a
+    credential) shown as its template."""
+    path: str = scope["path"]
+    token = scope.get("path_params", {}).get("token")
+    if "{token}" not in route or not token:
+        return path
+    head, _, tail = path.rpartition(token)
+    return f"{head}{{token}}{tail}"
+
+
 class AccessLogMiddleware:
     """Logs every HTTP request; health and metrics probes at DEBUG so they stay quiet."""
 
@@ -88,7 +99,7 @@ class AccessLogMiddleware:
                 logging.DEBUG if route in QUIET_ROUTES else logging.INFO,
                 "%s %s %s",
                 scope["method"],
-                scope["path"],
+                _loggable_path(scope, route),
                 status.code,
                 extra={
                     "method": scope["method"],

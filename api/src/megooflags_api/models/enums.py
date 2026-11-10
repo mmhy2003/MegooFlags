@@ -63,3 +63,8 @@ class SessionState(StrEnum):
 class ApiTokenKind(StrEnum):
     SERVICE = "service"  # has its own role bindings
     PERSONAL = "personal"  # a permission subset, capped by its owner's rights
+
+
+class InvitationPurpose(StrEnum):
+    INVITE = "invite"  # a new user sets their first password
+    RESET = "reset"  # an admin-issued password reset

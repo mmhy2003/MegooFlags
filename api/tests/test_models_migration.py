@@ -3,6 +3,7 @@ from megooflags_api.db import Base
 from megooflags_api.models.enums import (
     ApiTokenKind,
     FlagType,
+    InvitationPurpose,
     Operator,
     ScopeKind,
     SdkKeyKind,
@@ -40,6 +41,7 @@ def test_metadata_has_all_tables() -> None:
         "session",
         "api_token",
         "audit_entry",
+        "invitation",
     }
 
 
@@ -69,3 +71,4 @@ def test_enum_values() -> None:
     assert [s.value for s in ScopeKind] == ["org", "project", "environment"]
     assert [s.value for s in SessionState] == ["pending_mfa", "enrol_mfa", "active"]
     assert [k.value for k in ApiTokenKind] == ["service", "personal"]
+    assert [p.value for p in InvitationPurpose] == ["invite", "reset"]
