@@ -4,6 +4,47 @@
  */
 
 export interface paths {
+    "/api/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Entries
+         * @description Newest first. Without org-wide `audit.read`, only entries of the caller's projects.
+         */
+        get: operations["list_entries_api_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Entries
+         * @description The same entries and filters as `GET /audit`, without paging. CSV cells that a
+         *     spreadsheet would run as a formula get a leading `'`.
+         */
+        get: operations["export_entries_api_audit_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/me": {
         parameters: {
             query?: never;
@@ -948,6 +989,55 @@ export interface components {
          * @enum {string}
          */
         ApiTokenKind: "service" | "personal";
+        /** AuditActor */
+        AuditActor: {
+            /** Auth Method */
+            auth_method: string | null;
+            /** Id */
+            id: string | null;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+        };
+        /**
+         * AuditEntryOut
+         * @description `project` and `environment` are keys; null once that project or environment is deleted.
+         */
+        AuditEntryOut: {
+            /** Action */
+            action: string;
+            actor: components["schemas"]["AuditActor"];
+            /** After */
+            after: {
+                [key: string]: unknown;
+            } | null;
+            /** Before */
+            before: {
+                [key: string]: unknown;
+            } | null;
+            /** Environment */
+            environment: string | null;
+            /** Id */
+            id: number;
+            /** Ip */
+            ip: string | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Project */
+            project: string | null;
+            /** Request Id */
+            request_id: string | null;
+            /** Resource Key */
+            resource_key: string;
+            /** Resource Type */
+            resource_type: string;
+            /** User Agent */
+            user_agent: string | null;
+        };
         /** BindingIn */
         BindingIn: {
             /** Env */
@@ -1470,6 +1560,13 @@ export interface components {
          * @enum {string}
          */
         Operator: "in" | "not_in" | "contains" | "starts_with" | "ends_with" | "matches" | "lt" | "lte" | "gt" | "gte" | "semver_eq" | "semver_lt" | "semver_gt" | "before" | "after" | "in_segment";
+        /** Page[AuditEntryOut] */
+        Page_AuditEntryOut_: {
+            /** Items */
+            items: components["schemas"]["AuditEntryOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** Page[BindingOut] */
         Page_BindingOut_: {
             /** Items */
@@ -2162,6 +2259,166 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_entries_api_audit_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+                /** @description An actor id, or an exact label. */
+                actor?: string | null;
+                action?: string | null;
+                resource_type?: string | null;
+                /** @description A project key. */
+                project?: string | null;
+                /** @description An environment key; needs `project`. */
+                env?: string | null;
+                /** @description Inclusive. */
+                from?: string | null;
+                /** @description Exclusive. */
+                to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AuditEntryOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    export_entries_api_audit_export_get: {
+        parameters: {
+            query?: {
+                format?: "csv" | "ndjson";
+                /** @description An actor id, or an exact label. */
+                actor?: string | null;
+                action?: string | null;
+                resource_type?: string | null;
+                /** @description A project key. */
+                project?: string | null;
+                /** @description An environment key; needs `project`. */
+                env?: string | null;
+                /** @description Inclusive. */
+                from?: string | null;
+                /** @description Exclusive. */
+                to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every matching entry, newest first, as an attachment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": unknown;
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     me_api_auth_me_get: {
         parameters: {
             query?: never;

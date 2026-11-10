@@ -4,18 +4,23 @@ Entries are written in the change's own transaction and are never updated or del
 """
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import Depends, Request
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
+from sqlalchemy import RowMapping, Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.auth.principal import Principal
 from megooflags_api.db import SessionDep
-from megooflags_api.models import AuditEntry
+from megooflags_api.errors import validation_error
+from megooflags_api.models import AuditEntry, Environment, Project
+from megooflags_api.schemas.audit import AuditActor, AuditEntryOut
+from megooflags_api.services.pagination import decode_cursor, page_slice
 
 SECRET_FIELDS = frozenset(
     {
@@ -39,6 +44,8 @@ SECRET_FIELDS = frozenset(
     }
 )
 REDACTED = "***"
+# Rows fetched per query while exporting.
+EXPORT_BATCH = 1000
 
 
 @dataclass(frozen=True)
@@ -147,3 +154,116 @@ async def get_auditor(session: SessionDep, request: Request) -> Auditor:
 
 
 AuditDep = Annotated[Auditor, Depends(get_auditor)]
+
+
+@dataclass(frozen=True)
+class AuditFilters:
+    """`actor` is an actor id or an exact label; `occurred_from` is inclusive, `occurred_to`
+    exclusive."""
+
+    actor: str | None = None
+    action: str | None = None
+    resource_type: str | None = None
+    project_id: uuid.UUID | None = None
+    environment_id: uuid.UUID | None = None
+    occurred_from: datetime | None = None
+    occurred_to: datetime | None = None
+
+
+def _entry_out(row: RowMapping) -> AuditEntryOut:
+    return AuditEntryOut(
+        id=row["id"],
+        occurred_at=row["occurred_at"],
+        actor=AuditActor(
+            kind=row["actor_kind"],
+            id=row["actor_id"],
+            label=row["actor_label"],
+            auth_method=row["auth_method"],
+        ),
+        ip=row["ip"],
+        user_agent=row["user_agent"],
+        request_id=row["request_id"],
+        action=row["action"],
+        resource_type=row["resource_type"],
+        resource_key=row["resource_key"],
+        project=row["project"],
+        environment=row["environment"],
+        before=row["before"],
+        after=row["after"],
+    )
+
+
+def _select(filters: AuditFilters, scope: set[uuid.UUID] | None) -> Select[Any]:
+    """Newest first; entries outside `scope` (None means org-wide) are left out, and so are
+    org-level entries when there is a scope. Plain columns, so exports don't fill the session."""
+    query = (
+        select(
+            *AuditEntry.__table__.columns,
+            Project.key.label("project"),
+            Environment.key.label("environment"),
+        )
+        .outerjoin(Project, Project.id == AuditEntry.project_id)
+        .outerjoin(Environment, Environment.id == AuditEntry.environment_id)
+        .order_by(AuditEntry.id.desc())
+    )
+    if scope is not None:
+        query = query.where(AuditEntry.project_id.in_(scope))
+    if filters.actor is not None:
+        try:
+            query = query.where(AuditEntry.actor_id == uuid.UUID(filters.actor))
+        except ValueError:
+            query = query.where(AuditEntry.actor_label == filters.actor)
+    if filters.action is not None:
+        query = query.where(AuditEntry.action == filters.action)
+    if filters.resource_type is not None:
+        query = query.where(AuditEntry.resource_type == filters.resource_type)
+    if filters.project_id is not None:
+        query = query.where(AuditEntry.project_id == filters.project_id)
+    if filters.environment_id is not None:
+        query = query.where(AuditEntry.environment_id == filters.environment_id)
+    if filters.occurred_from is not None:
+        query = query.where(AuditEntry.occurred_at >= filters.occurred_from)
+    if filters.occurred_to is not None:
+        query = query.where(AuditEntry.occurred_at < filters.occurred_to)
+    return query
+
+
+def _cursor_id(cursor: str) -> int:
+    key = decode_cursor(cursor)
+    if not (key.isascii() and key.isdigit()):
+        raise validation_error("invalid cursor", "cursor")
+    return int(key)
+
+
+async def query(
+    session: AsyncSession,
+    filters: AuditFilters,
+    scope: set[uuid.UUID] | None,
+    cursor: str | None,
+    limit: int,
+) -> tuple[list[AuditEntryOut], str | None]:
+    """One page, newest first, keyed on the id."""
+    statement = _select(filters, scope).limit(limit + 1)
+    if cursor is not None:
+        statement = statement.where(AuditEntry.id < _cursor_id(cursor))
+    rows = list((await session.execute(statement)).mappings())
+    page, next_cursor = page_slice(rows, limit, lambda row: str(row["id"]))
+    return [_entry_out(row) for row in page], next_cursor
+
+
+async def iter_export(
+    session: AsyncSession, filters: AuditFilters, scope: set[uuid.UUID] | None
+) -> AsyncIterator[list[AuditEntryOut]]:
+    """Every matching entry, newest first, in batches of EXPORT_BATCH."""
+    last_id: int | None = None
+    while True:
+        statement = _select(filters, scope).limit(EXPORT_BATCH)
+        if last_id is not None:
+            statement = statement.where(AuditEntry.id < last_id)
+        rows = list((await session.execute(statement)).mappings())
+        if not rows:
+            return
+        yield [_entry_out(row) for row in rows]
+        if len(rows) < EXPORT_BATCH:
+            return
+        last_id = rows[-1]["id"]

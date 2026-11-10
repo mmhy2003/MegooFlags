@@ -16,6 +16,7 @@ from megooflags_api.errors import install_error_handlers
 from megooflags_api.logging import AccessLogMiddleware, configure_logging
 from megooflags_api.routers import (
     api_tokens,
+    audit,
     auth,
     environments,
     evaluate,
@@ -134,6 +135,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         users,
         teams,
         api_tokens,
+        audit,
     ):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_principal)])
     app.include_router(sdk.router)
