@@ -6,18 +6,24 @@ latency is measured from that due time, so a slow server cannot hide its queuein
 --concurrency requests are in flight; when the cap is reached, the next request waits for a free
 slot and that wait counts towards its latency.
 
+One Python process with httpx sends at most a few hundred requests per second, so higher rates need
+--processes: each process sends rps / processes with concurrency / processes in flight, and the
+latencies of all processes are merged.
+
     uv run --project api python scripts/bench_sdk_evaluate.py --url http://localhost:8080 \
-        --key <client or server key> --rps 2000 --duration 30 [--flags a,b]
+        --key <client or server key> --rps 2000 --duration 30 --processes 8 [--flags a,b]
 
 CI does not run it: shared runners are too noisy for latency targets.
 """
 
 import argparse
 import asyncio
+import copy
 import random
 import sys
 import time
 from collections.abc import Sequence
+from concurrent.futures import ProcessPoolExecutor
 
 import httpx
 from latency import percentile
@@ -42,7 +48,22 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Comma-separated flag keys to evaluate (default: every flag)",
     )
+    parser.add_argument(
+        "--processes", type=int, default=1, help="Client processes sharing the load (default 1)"
+    )
     return parser.parse_args(argv)
+
+
+def share(args: argparse.Namespace) -> argparse.Namespace:
+    """The arguments of one of `args.processes` processes that share the load."""
+    part = copy.copy(args)
+    part.rps = args.rps / args.processes
+    part.concurrency = max(1, args.concurrency // args.processes)
+    return part
+
+
+def run_sync(args: argparse.Namespace) -> tuple[list[float], int, float]:
+    return asyncio.run(run(args))
 
 
 async def run(args: argparse.Namespace) -> tuple[list[float], int, float]:
@@ -74,7 +95,7 @@ async def run(args: argparse.Namespace) -> tuple[list[float], int, float]:
                     latencies.append(time.perf_counter() - due)
                 else:
                     errors += 1
-            except httpx.HTTPError:
+            except Exception:  # any failure is an error; it must not abort the run
                 errors += 1
             finally:
                 slots.release()
@@ -97,7 +118,14 @@ async def run(args: argparse.Namespace) -> tuple[list[float], int, float]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    latencies, errors, elapsed = asyncio.run(run(args))
+    if args.processes == 1:
+        results = [run_sync(args)]
+    else:
+        with ProcessPoolExecutor(args.processes) as pool:
+            results = list(pool.map(run_sync, [share(args)] * args.processes))
+    latencies = [latency for result in results for latency in result[0]]
+    errors = sum(result[1] for result in results)
+    elapsed = max(result[2] for result in results)
     done = len(latencies) + errors
     print(f"requests {done} in {elapsed:.1f} s: {done / elapsed:.0f} RPS achieved")
     print(f"errors   {errors}")

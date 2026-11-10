@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -278,6 +279,57 @@ async def test_max_age_expired_checks_fingerprint(app: FastAPI, api: httpx.Async
     assert len(statements) == 1
     assert third is first
     assert again == []  # the fingerprint check renewed checked_at
+
+
+async def test_concurrent_stale_lookups_check_fingerprint_once(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await setup_demo(api)
+    clock = FakeClock()
+    cache = RulesetCache(clock=clock)
+    first, _ = await entry(app, cache)
+    async with app.state.sessionmaker() as session:
+        environment = await load_environment(session)
+
+    async def get() -> CachedRuleset:
+        async with app.state.sessionmaker() as session:
+            return await cache.get_entry(session, environment, max_age=1.0)
+
+    clock.now += 1.5
+    with count_statements(app.state.engine) as statements:
+        results = await asyncio.gather(*(get() for _ in range(10)))
+
+    assert all(r is first for r in results)
+    assert len(statements) == 1
+
+
+async def test_rebuild_does_not_block_event_loop(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup_demo(api)
+    parse = ruleset_cache.parse_ruleset
+
+    def slow_parse(raw: dict[str, Any]) -> Ruleset:
+        time.sleep(0.3)  # stands in for parsing a large ruleset
+        return parse(raw)
+
+    monkeypatch.setattr(ruleset_cache, "parse_ruleset", slow_parse)
+    ticks = 0
+
+    async def ticker() -> None:
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    task = asyncio.create_task(ticker())
+    try:
+        result, _ = await entry(app, RulesetCache(), max_age=0.0)
+    finally:
+        task.cancel()
+
+    assert result.ruleset.environment == "production"
+    assert ticks >= 20  # 0.3 s of parsing would allow none while it blocks the loop
 
 
 async def test_invalidate_forces_check(app: FastAPI, api: httpx.AsyncClient) -> None:

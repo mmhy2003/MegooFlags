@@ -14,6 +14,7 @@ import uuid
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,6 +54,16 @@ class _Entry:
     checked_at: float
 
 
+def _prepare(raw: dict[str, Any], fingerprint: str) -> CachedRuleset:
+    body = json.dumps(raw, separators=(",", ":"), ensure_ascii=False).encode()
+    return CachedRuleset(
+        fingerprint=fingerprint,
+        ruleset=parse_ruleset(raw),
+        body=body,
+        etag='"' + hashlib.sha256(body).hexdigest()[:32] + '"',
+    )
+
+
 class RulesetCache:
     """Parsed rulesets per environment, rebuilt only when the fingerprint changes."""
 
@@ -73,44 +84,69 @@ class RulesetCache:
         self, session: AsyncSession, environment: EnvRef, max_age: float = 0.0
     ) -> CachedRuleset:
         """The ruleset of `environment`, trusted without a query for `max_age` seconds."""
-        entry = self._entries.get(environment.id)
-        if entry is not None and max_age > 0 and self._clock() - entry.checked_at < max_age:
-            self._entries.move_to_end(environment.id)
-            return entry.cached
-        # Read before the build: a commit in between only causes one extra rebuild later.
-        started = self._clock()
-        fingerprint: str = await session.scalar(
-            FINGERPRINT,
-            {"environment_id": environment.id, "project_id": environment.project_id},
-        )
-        hit = self._lookup(environment.id, fingerprint, started)
+        hit = self._fresh(environment.id, max_age)
         if hit is not None:
             return hit
         lock = self._locks.setdefault(environment.id, asyncio.Lock())
+        if max_age > 0:
+            # Single flight: one fingerprint check per environment at a time, and the lookups
+            # that waited for it reuse its result instead of each running the query.
+            async with lock:
+                hit = self._fresh(environment.id, max_age)
+                if hit is not None:
+                    return hit
+                started, fingerprint = await self._fingerprint(session, environment)
+                hit = self._lookup(environment.id, fingerprint, started)
+                if hit is not None:
+                    return hit
+                return await self._rebuild(session, environment, fingerprint, started)
+        # max_age=0 always checks, so a write is seen by the next read; checks run in parallel.
+        started, fingerprint = await self._fingerprint(session, environment)
+        hit = self._lookup(environment.id, fingerprint, started)
+        if hit is not None:
+            return hit
         async with lock:
             hit = self._lookup(environment.id, fingerprint, started)  # another request rebuilt it
             if hit is not None:
                 return hit
-            raw = await build_ruleset(session, environment)
-            body = json.dumps(raw, separators=(",", ":"), ensure_ascii=False).encode()
-            cached = CachedRuleset(
-                fingerprint=fingerprint,
-                ruleset=parse_ruleset(raw),
-                body=body,
-                etag='"' + hashlib.sha256(body).hexdigest()[:32] + '"',
-            )
-            self._entries[environment.id] = _Entry(cached, environment.project_id, started)
-            self._entries.move_to_end(environment.id)
-            while len(self._entries) > self._max:
-                evicted, _ = self._entries.popitem(last=False)
-                self._locks.pop(evicted, None)
-            return cached
+            return await self._rebuild(session, environment, fingerprint, started)
 
     def invalidate(self, project_id: uuid.UUID) -> None:
         """Make the next lookup of every environment of `project_id` check its fingerprint."""
         for entry in self._entries.values():
             if entry.project_id == project_id:
                 entry.checked_at = float("-inf")
+
+    def _fresh(self, environment_id: uuid.UUID, max_age: float) -> CachedRuleset | None:
+        entry = self._entries.get(environment_id)
+        if entry is None or max_age <= 0 or self._clock() - entry.checked_at >= max_age:
+            return None
+        self._entries.move_to_end(environment_id)
+        return entry.cached
+
+    async def _fingerprint(self, session: AsyncSession, environment: EnvRef) -> tuple[float, str]:
+        # Read before the build: a commit in between only causes one extra rebuild later.
+        started = self._clock()
+        fingerprint: str = await session.scalar(
+            FINGERPRINT,
+            {"environment_id": environment.id, "project_id": environment.project_id},
+        )
+        return started, fingerprint
+
+    async def _rebuild(
+        self, session: AsyncSession, environment: EnvRef, fingerprint: str, started: float
+    ) -> CachedRuleset:
+        """Build and store the ruleset; the caller holds the environment's lock."""
+        raw = await build_ruleset(session, environment)
+        # Parsing, encoding and hashing 10k flags takes hundreds of milliseconds: keep them off
+        # the event loop so other requests on this replica are served meanwhile.
+        cached = await asyncio.to_thread(_prepare, raw, fingerprint)
+        self._entries[environment.id] = _Entry(cached, environment.project_id, started)
+        self._entries.move_to_end(environment.id)
+        while len(self._entries) > self._max:
+            evicted, _ = self._entries.popitem(last=False)
+            self._locks.pop(evicted, None)
+        return cached
 
     def _lookup(
         self, environment_id: uuid.UUID, fingerprint: str, checked_at: float
