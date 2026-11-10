@@ -30,3 +30,8 @@ class Operator(StrEnum):
 class SegmentTargetKind(StrEnum):
     INCLUDED = "included"
     EXCLUDED = "excluded"
+
+
+class SdkKeyKind(StrEnum):
+    SERVER = "server"
+    CLIENT = "client"

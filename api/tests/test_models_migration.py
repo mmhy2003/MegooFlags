@@ -1,6 +1,6 @@
 import megooflags_api.models  # noqa: F401
 from megooflags_api.db import Base
-from megooflags_api.models.enums import FlagType, Operator
+from megooflags_api.models.enums import FlagType, Operator, SdkKeyKind
 
 
 def test_metadata_has_all_tables() -> None:
@@ -19,6 +19,9 @@ def test_metadata_has_all_tables() -> None:
         "segment",
         "segment_target",
         "segment_rule",
+        "sdk_key",
+        "exposure_event",
+        "evaluation_count",
     }
 
 
@@ -42,3 +45,4 @@ def test_enum_values() -> None:
         "after",
         "in_segment",
     ]
+    assert [k.value for k in SdkKeyKind] == ["server", "client"]
