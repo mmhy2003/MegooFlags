@@ -130,6 +130,28 @@ def mfa_enrolment_required() -> ApiError:
     )
 
 
+def invalid_code() -> ApiError:
+    return ApiError(401, "invalid_code", "the code is wrong, expired or already used")
+
+
+def reauth_required() -> ApiError:
+    return ApiError(
+        403,
+        "reauth_required",
+        "verify a second factor again (sign in anew) and retry within 10 minutes",
+    )
+
+
+def totp_exists() -> ApiError:
+    return ApiError(409, "totp_exists", "an authenticator app is already set up; remove it first")
+
+
+def mfa_required_by_org() -> ApiError:
+    return ApiError(
+        409, "mfa_required_by_org", "the organisation requires a second factor; keep at least one"
+    )
+
+
 def csrf_failed() -> ApiError:
     return ApiError(403, "csrf_failed", "the request origin is not allowed")
 

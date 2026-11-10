@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
@@ -6,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+import pyotp
 import pytest
 import uvicorn
 from fastapi import FastAPI
@@ -121,6 +123,30 @@ async def sign_in(
 
 def bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def totp_code(secret: str, steps: int = 0) -> str:
+    """The TOTP code `steps` 30-second steps from now."""
+    return pyotp.TOTP(secret).at(time.time() + 30 * steps)
+
+
+def wrong_totp_code(secret: str) -> str:
+    """A code that no step the server accepts (previous, current, next) produces."""
+    valid = {totp_code(secret, steps) for steps in (-1, 0, 1, 2)}
+    return next(c for c in ("000000", "111111", "222222", "333333", "444444") if c not in valid)
+
+
+async def enrol_totp(client: httpx.AsyncClient) -> tuple[str, list[str]]:
+    """Enrol and confirm TOTP for the signed-in `client`; returns the secret and recovery codes.
+
+    The current step is used up, so the next MFA sign-in needs `totp_code(secret, 1)`.
+    """
+    r = await client.post("/api/account/totp")
+    assert r.status_code == 201, r.text
+    secret: str = r.json()["secret"]
+    r = await client.post("/api/account/totp/confirm", json={"code": totp_code(secret)})
+    assert r.status_code == 200, r.text
+    return secret, r.json()["recovery_codes"]
 
 
 async def audit_entries(app: FastAPI, action: str | None = None) -> list[dict[str, Any]]:

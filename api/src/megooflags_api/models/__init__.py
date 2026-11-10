@@ -6,12 +6,15 @@ from megooflags_api.models.identity import (
     ApiToken,
     Invitation,
     OrgSettings,
+    RecoveryCode,
     Role,
     RoleBinding,
     Team,
     TeamMember,
+    TotpCredential,
     User,
     UserSession,
+    WebauthnCredential,
 )
 from megooflags_api.models.project import Environment, Project
 from megooflags_api.models.sdk import EvaluationCount, ExposureEvent, SdkKey
@@ -42,6 +45,7 @@ __all__ = [
     "Invitation",
     "OrgSettings",
     "Project",
+    "RecoveryCode",
     "Role",
     "RoleBinding",
     "RolloutWeight",
@@ -51,7 +55,9 @@ __all__ = [
     "SegmentTarget",
     "Team",
     "TeamMember",
+    "TotpCredential",
     "User",
     "UserSession",
     "Variation",
+    "WebauthnCredential",
 ]

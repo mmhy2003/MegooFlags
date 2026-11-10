@@ -1,4 +1,4 @@
-"""Roles (`/roles`) and role bindings (`/bindings`)."""
+"""Roles (`/roles`), role bindings (`/bindings`) and the org settings (`/settings`)."""
 
 import uuid
 from typing import Annotated
@@ -12,9 +12,10 @@ from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES
 from megooflags_api.models import RoleBinding
 from megooflags_api.models.enums import ScopeKind, SubjectKind
+from megooflags_api.schemas.auth import OrgSettingsIn, OrgSettingsOut
 from megooflags_api.schemas.common import Page
 from megooflags_api.schemas.identity import BindingIn, BindingOut, RoleIn, RoleOut, RoleUpdate
-from megooflags_api.services import bindings, roles
+from megooflags_api.services import bindings, org_settings, roles
 from megooflags_api.services.audit import AuditDep, snapshot
 from megooflags_api.services.lookup import get_project
 
@@ -22,6 +23,7 @@ router = APIRouter(responses=ERROR_RESPONSES)
 
 Authenticated = Annotated[Authz, Depends(authenticated())]
 ManageRoles = Annotated[Authz, Depends(require(Permission.ROLE_MANAGE))]
+ManageOrg = Annotated[Authz, Depends(require(Permission.ORG_MANAGE))]
 
 MANAGED_BY: dict[SubjectKind, Permission] = {
     SubjectKind.USER: Permission.MEMBER_MANAGE,
@@ -148,3 +150,25 @@ async def delete_binding(
     )
     await session.commit()
     return Response(status_code=204)
+
+
+@router.get("/settings", tags=["settings"])
+async def read_settings(session: SessionDep, authz: Authenticated) -> OrgSettingsOut:
+    return org_settings.org_settings_out(await org_settings.get_org_settings(session))
+
+
+@router.put("/settings", tags=["settings"])
+async def update_settings(
+    session: SessionDep, authz: ManageOrg, audit: AuditDep, body: OrgSettingsIn
+) -> OrgSettingsOut:
+    """`require_mfa`: users who sign in with a password must set up a second factor before they
+    can do anything else. SSO users rely on their identity provider instead."""
+    row = await org_settings.get_org_settings(session, for_update=True)
+    before = org_settings.org_settings_out(row)
+    await org_settings.update_org_settings(session, row, body)
+    out = org_settings.org_settings_out(row)
+    await audit.record(
+        "settings.update", "settings", "org", before=snapshot(before), after=snapshot(out)
+    )
+    await session.commit()
+    return out

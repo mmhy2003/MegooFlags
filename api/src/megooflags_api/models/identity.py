@@ -2,10 +2,12 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
+    LargeBinary,
     SmallInteger,
     String,
     Text,
@@ -199,6 +201,55 @@ class ApiToken(Base):
     rotated_from_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("api_token.id", ondelete="SET NULL")
     )
+
+
+class TotpCredential(Base):
+    """A user's TOTP secret, encrypted with the SecretBox. Unconfirmed until a code is checked."""
+
+    __tablename__ = "totp_credential"
+    __mapper_args__ = {"eager_defaults": True}
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), primary_key=True
+    )
+    secret_encrypted: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The last 30-second step a code was accepted for; it and earlier steps are refused (replay).
+    last_used_step: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class RecoveryCode(Base):
+    """A single-use recovery code. Only the sha256 of the normalised code is stored."""
+
+    __tablename__ = "recovery_code"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), index=True
+    )
+    code_hash: Mapped[str] = mapped_column(String(64))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WebauthnCredential(Base):
+    """A passkey registered by a user."""
+
+    __tablename__ = "webauthn_credential"
+    __table_args__ = (UniqueConstraint("credential_id"),)
+    __mapper_args__ = {"eager_defaults": True}
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), index=True
+    )
+    credential_id: Mapped[bytes] = mapped_column(LargeBinary)
+    public_key: Mapped[bytes] = mapped_column(LargeBinary)
+    sign_count: Mapped[int] = mapped_column(BigInteger)
+    transports: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    name: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Invitation(Base):

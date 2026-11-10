@@ -162,8 +162,10 @@ async def rotate(
     state: SessionState,
     settings: Settings,
     mfa_verified: bool = False,
+    auth_method: str | None = None,
 ) -> tuple[UserSession, str]:
-    """Replace a session with a new one (new token, new lifetime) for the same user and method.
+    """Replace a session with a new one (new token, new lifetime) for the same user, keeping its
+    auth method unless `auth_method` is given.
 
     The old row is deleted. Flushes; the caller commits.
     """
@@ -172,7 +174,7 @@ async def rotate(
         request,
         row.user_id,
         state=state,
-        auth_method=row.auth_method,
+        auth_method=row.auth_method if auth_method is None else auth_method,
         settings=settings,
         mfa_verified_at=datetime.now(UTC) if mfa_verified else row.mfa_verified_at,
     )

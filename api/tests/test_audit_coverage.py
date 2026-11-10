@@ -20,9 +20,11 @@ from helpers import (
     create_flag,
     create_project,
     create_sdk_key,
+    enrol_totp,
     seed_service_token,
     seed_user,
     sign_in,
+    totp_code,
 )
 from sqlalchemy import select
 
@@ -201,6 +203,37 @@ async def other_session(client: httpx.AsyncClient, app: FastAPI) -> Params:
     return {"id": other_id}
 
 
+async def totp_started(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """Signed in, with a TOTP enrolment waiting for its confirmation code."""
+    await signed_in(client, app)
+    r = await client.post("/api/account/totp")
+    assert r.status_code == 201, r.text
+    return {"secret": r.json()["secret"]}
+
+
+async def totp_enrolled(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """Signed in with TOTP confirmed just now (a recent verification)."""
+    await signed_in(client, app)
+    secret, codes = await enrol_totp(client)
+    return {"secret": secret, "recovery_code": codes[0]}
+
+
+async def mfa_pending(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """Signed in with a password; the second factor is still to come."""
+    params = await totp_enrolled(client, app)
+    assert (await sign_in(client)).json()["status"] == "mfa_required"
+    return params
+
+
+async def mfa_user(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """A viewer with TOTP; `client` (an admin) is left as it was."""
+    params = await user(client, app)
+    async with client_from(app, ORIGIN) as other:
+        assert (await sign_in(other, "dev@example.com")).status_code == 200
+        await enrol_totp(other)
+    return params
+
+
 async def personal_token(client: httpx.AsyncClient, app: FastAPI) -> Params:
     await signed_in(client, app)
     r = await client.post("/api/account/tokens", json=PERSONAL_TOKEN)
@@ -215,6 +248,19 @@ async def create_binding(client: httpx.AsyncClient, params: Params) -> httpx.Res
 
 async def add_member(client: httpx.AsyncClient, params: Params) -> httpx.Response:
     return await client.post("/api/teams/platform/members", json={"user_id": params["id"]})
+
+
+def with_totp_code(path: str, *, steps: int = 0) -> Call:
+    """POST `path` with the TOTP code for `steps` from now, which `prepare` cannot know yet."""
+
+    async def call(client: httpx.AsyncClient, params: Params) -> httpx.Response:
+        return await client.post(path, json={"code": totp_code(params["secret"], steps)})
+
+    return call
+
+
+async def use_recovery_code(client: httpx.AsyncClient, params: Params) -> httpx.Response:
+    return await client.post("/api/auth/mfa/recovery", json={"code": params["recovery_code"]})
 
 
 async def binding_target(client: httpx.AsyncClient, app: FastAPI) -> Params:
@@ -251,6 +297,20 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
             client="anon",
         ),
         sample("POST", "/api/auth/sign-out", "auth.sign_out", signed_in, client="session"),
+        # The confirmation used up the current step, so sign-in uses the next one.
+        (
+            ("POST", "/api/auth/mfa/totp"),
+            Sample(
+                mfa_pending,
+                with_totp_code("/api/auth/mfa/totp", steps=1),
+                "auth.sign_in",
+                "session",
+            ),
+        ),
+        (
+            ("POST", "/api/auth/mfa/recovery"),
+            Sample(mfa_pending, use_recovery_code, "auth.sign_in", "session"),
+        ),
         # The signed-in user's account
         sample(
             "PUT",
@@ -287,6 +347,26 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
             "/api/account/tokens/{id}",
             "account.token.revoke",
             personal_token,
+            client="session",
+        ),
+        sample("POST", "/api/account/totp", "account.totp.enrol", signed_in, client="session"),
+        (
+            ("POST", "/api/account/totp/confirm"),
+            Sample(
+                totp_started,
+                with_totp_code("/api/account/totp/confirm"),
+                "account.totp.confirm",
+                "session",
+            ),
+        ),
+        sample(
+            "DELETE", "/api/account/totp", "account.totp.remove", totp_enrolled, client="session"
+        ),
+        sample(
+            "POST",
+            "/api/account/recovery-codes",
+            "account.recovery_codes.regenerate",
+            totp_enrolled,
             client="session",
         ),
         sample(
@@ -383,6 +463,9 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
         sample("POST", "/api/users/{id}/disable", "user.disable", user),
         sample("POST", "/api/users/{id}/enable", "user.enable", disabled_user),
         sample("POST", "/api/users/{id}/reset-link", "user.reset_link", user),
+        sample("DELETE", "/api/users/{id}/mfa", "user.mfa_reset", mfa_user),
+        # Settings
+        sample("PUT", "/api/settings", "settings.update", nothing, {"require_mfa": True}),
         # Teams
         sample("POST", "/api/teams", "team.create", nothing, {"key": "platform", "name": "P"}),
         sample("PATCH", "/api/teams/{key}", "team.update", team, {"name": "Platform team"}),

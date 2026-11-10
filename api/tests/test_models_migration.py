@@ -42,6 +42,9 @@ def test_metadata_has_all_tables() -> None:
         "api_token",
         "audit_entry",
         "invitation",
+        "totp_credential",
+        "recovery_code",
+        "webauthn_credential",
     }
 
 

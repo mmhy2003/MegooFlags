@@ -5,8 +5,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 
+from megooflags_api.auth import mfa
 from megooflags_api.auth.rbac import Permission
 from megooflags_api.auth.require import Authz, require
+from megooflags_api.auth.sessions import end_sessions
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES, ErrorBody
 from megooflags_api.models import Invitation
@@ -133,6 +135,24 @@ async def reset_link(
     )
     await session.commit()
     return invite_link(request, invitation, token)
+
+
+@router.delete("/{id}/mfa", status_code=204)
+async def reset_mfa(
+    session: SessionDep, authz: ManageMembers, audit: AuditDep, id: uuid.UUID
+) -> Response:
+    """Remove all of the user's second factors and recovery codes, and end their sessions; they
+    sign in with their password alone next time (and enrol again if the org requires MFA)."""
+    user = await users.get_user(session, id)
+    before = await mfa.user_factors(session, user.id)
+    await mfa.clear_factors(session, user.id)
+    await end_sessions(session, user.id)
+    after = await mfa.user_factors(session, user.id)
+    await audit.record(
+        "user.mfa_reset", "user", user.email, before=snapshot(before), after=snapshot(after)
+    )
+    await session.commit()
+    return Response(status_code=204)
 
 
 @public_router.get("/{token}")

@@ -1,7 +1,8 @@
-"""The signed-in user's own account (`/account/*`): password change, sessions and personal API
-tokens.
+"""The signed-in user's own account (`/account/*`): password change, sessions, TOTP, recovery
+codes and personal API tokens.
 
-Every route needs a signed-in session; API tokens get 403.
+Every route needs a signed-in session; API tokens get 403. The TOTP routes also accept a session
+that must enrol a factor before it can do anything else (the org's `require_mfa`).
 """
 
 import uuid
@@ -11,29 +12,42 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import delete, select
 
-from megooflags_api.auth import sessions
+from megooflags_api.auth import mfa, sessions
 from megooflags_api.auth.passwords import verify_password
 from megooflags_api.auth.rbac import Permission
 from megooflags_api.auth.require import Authz, authenticated
+from megooflags_api.crypto import SecretBoxDep
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import (
     ERROR_RESPONSES,
     exceeds_owner_rights,
+    forbidden,
+    invalid_code,
     invalid_credentials,
+    mfa_required_by_org,
     no_password,
     not_found,
+    reauth_required,
+    totp_exists,
     unauthorized,
 )
-from megooflags_api.models import User, UserSession
+from megooflags_api.models import TotpCredential, User, UserSession
 from megooflags_api.models.enums import SessionState
 from megooflags_api.routers.auth import set_session_cookie
-from megooflags_api.schemas.auth import PasswordChange, SessionOut
+from megooflags_api.schemas.auth import (
+    CodeIn,
+    PasswordChange,
+    RecoveryCodes,
+    SessionOut,
+    TotpConfirmed,
+    TotpEnrolment,
+)
 from megooflags_api.schemas.tokens import (
     PersonalTokenCreate,
     PersonalTokenCreated,
     PersonalTokenOut,
 )
-from megooflags_api.services import api_tokens
+from megooflags_api.services import api_tokens, org_settings
 from megooflags_api.services.audit import AuditDep, snapshot
 from megooflags_api.services.lookup import get_environment, get_project
 from megooflags_api.services.users import set_password
@@ -41,6 +55,7 @@ from megooflags_api.services.users import set_password
 router = APIRouter(prefix="/account", tags=["account"], responses=ERROR_RESPONSES)
 
 SignedIn = Annotated[Authz, Depends(authenticated(session_only=True))]
+MayEnrol = Annotated[Authz, Depends(authenticated(allow_enrolment=True, session_only=True))]
 
 
 async def _current(session: SessionDep, authz: Authz) -> tuple[User, UserSession]:
@@ -145,6 +160,121 @@ async def revoke_session(
     await session.commit()
     if id == authz.principal.session_id:
         sessions.clear_cookie(response, request)
+
+
+async def _locked_totp(session: SessionDep, user: User) -> TotpCredential | None:
+    return await session.scalar(
+        select(TotpCredential).where(TotpCredential.user_id == user.id).with_for_update()
+    )
+
+
+@router.post("/totp", status_code=201)
+async def enrol_totp(
+    session: SessionDep, authz: MayEnrol, audit: AuditDep, box: SecretBoxDep
+) -> TotpEnrolment:
+    """Start setting up an authenticator app: add the secret (or scan `otpauth_url` as a QR
+    code), then confirm with a code. Starting again replaces an unconfirmed secret; a confirmed
+    one must be removed first (409 totp_exists)."""
+    assert box is not None, "the lifespan refuses to start without MEGOOFLAGS_SECRET_KEY"
+    user, _ = await _current(session, authz)
+    cred = await _locked_totp(session, user)
+    if cred is not None and cred.confirmed_at is not None:
+        raise totp_exists()
+    secret = mfa.new_totp_secret()
+    if cred is None:
+        session.add(TotpCredential(user_id=user.id, secret_encrypted=box.encrypt(secret)))
+    else:
+        cred.secret_encrypted = box.encrypt(secret)
+        cred.last_used_step = None
+    await session.flush()
+    await audit.record("account.totp.enrol", "user", user.email)
+    await session.commit()
+    return TotpEnrolment(secret=secret, otpauth_url=mfa.otpauth_url(secret, user.email))
+
+
+@router.post("/totp/confirm")
+async def confirm_totp(
+    session: SessionDep,
+    authz: MayEnrol,
+    audit: AuditDep,
+    box: SecretBoxDep,
+    request: Request,
+    response: Response,
+    body: CodeIn,
+) -> TotpConfirmed:
+    """Finish setting up the authenticator app with a code from it. Returns ten recovery codes
+    when you have none left. A session that had to enrol a factor becomes a full one, with a new
+    cookie."""
+    assert box is not None, "the lifespan refuses to start without MEGOOFLAGS_SECRET_KEY"
+    user, row = await _current(session, authz)
+    cred = await _locked_totp(session, user)
+    if cred is None:
+        raise not_found("TOTP enrolment", user.email)
+    if cred.confirmed_at is not None:
+        raise totp_exists()
+    step = mfa.verify_totp(cred, body.code, box)
+    if step is None:
+        raise invalid_code()
+    now = datetime.now(UTC)
+    cred.confirmed_at = now
+    cred.last_used_step = step
+    codes = None
+    if (await mfa.user_factors(session, user.id)).recovery_codes_left == 0:
+        codes = await mfa.replace_recovery_codes(session, user.id)
+    token = None
+    if row.state == SessionState.ENROL_MFA:
+        _, token = await sessions.rotate(
+            session,
+            request,
+            row,
+            state=SessionState.ACTIVE,
+            settings=request.app.state.settings,
+            mfa_verified=True,
+        )
+    else:
+        row.mfa_verified_at = now
+    await audit.record("account.totp.confirm", "user", user.email)
+    await session.commit()
+    if token is not None:
+        set_session_cookie(response, request, token)
+    return TotpConfirmed(recovery_codes=codes)
+
+
+@router.delete("/totp", status_code=204)
+async def remove_totp(session: SessionDep, authz: MayEnrol, audit: AuditDep) -> None:
+    """Remove the authenticator app. If it is your last factor, your recovery codes go too; you
+    must have verified a factor in the last 10 minutes (403 reauth_required), and the org must
+    not require MFA (409 mfa_required_by_org)."""
+    user, row = await _current(session, authz)
+    cred = await _locked_totp(session, user)
+    if cred is None:
+        raise not_found("TOTP", user.email)
+    no_passkeys = (await mfa.user_factors(session, user.id)).passkeys == 0
+    if cred.confirmed_at is not None and no_passkeys:
+        if await org_settings.require_mfa(session):
+            raise mfa_required_by_org()
+        if not mfa.recently_verified(row):
+            raise reauth_required()
+    await mfa.remove_totp(session, user.id, with_recovery_codes=no_passkeys)
+    await audit.record("account.totp.remove", "user", user.email)
+    await session.commit()
+
+
+@router.post("/recovery-codes")
+async def regenerate_recovery_codes(
+    session: SessionDep, authz: SignedIn, audit: AuditDep
+) -> RecoveryCodes:
+    """Replace your recovery codes with ten new ones, shown once. Needs a factor verified in the
+    last 10 minutes (403 reauth_required)."""
+    user, row = await _current(session, authz)
+    if not mfa.has_factor(await mfa.user_factors(session, user.id)):
+        raise forbidden("set up an authenticator app or a passkey first")
+    if not mfa.recently_verified(row):
+        raise reauth_required()
+    codes = await mfa.replace_recovery_codes(session, user.id)
+    await audit.record("account.recovery_codes.regenerate", "user", user.email)
+    await session.commit()
+    return RecoveryCodes(recovery_codes=codes)
 
 
 @router.get("/tokens")

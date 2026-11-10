@@ -50,6 +50,39 @@ class MeOut(ApiModel):
     require_mfa: bool
 
 
+class TotpEnrolment(ApiModel):
+    """The new secret, shown once: type it in, or scan `otpauth_url` as a QR code."""
+
+    secret: str
+    otpauth_url: str
+
+
+class CodeIn(ApiModel):
+    """A TOTP code, or a recovery code (`xxxxx-xxxxx`, any case)."""
+
+    code: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
+
+
+class RecoveryCodes(ApiModel):
+    """Single-use codes, shown once; each replaces the second factor for one sign-in."""
+
+    recovery_codes: list[str]
+
+
+class TotpConfirmed(ApiModel):
+    """`recovery_codes` is set when the account had none left, shown once."""
+
+    recovery_codes: list[str] | None
+
+
+class OrgSettingsOut(ApiModel):
+    require_mfa: bool
+
+
+class OrgSettingsIn(ApiModel):
+    require_mfa: bool
+
+
 class PasswordChange(ApiModel):
     current_password: Password
     new_password: Password
