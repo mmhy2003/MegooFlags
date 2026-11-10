@@ -1,6 +1,14 @@
 {
   "components": {
     "schemas": {
+      "ApiTokenKind": {
+        "enum": [
+          "service",
+          "personal"
+        ],
+        "title": "ApiTokenKind",
+        "type": "string"
+      },
       "BindingIn": {
         "additionalProperties": false,
         "properties": {
@@ -1659,6 +1667,35 @@
         "title": "Page[TeamOut]",
         "type": "object"
       },
+      "Page_TokenOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TokenOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "Page[TokenOut]",
+        "type": "object"
+      },
       "Page_UserOut_": {
         "additionalProperties": false,
         "properties": {
@@ -2641,6 +2678,42 @@
         "title": "Serve",
         "type": "object"
       },
+      "ServiceTokenCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "bindings": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TokenBindingIn"
+            },
+            "title": "Bindings",
+            "type": "array"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ServiceTokenCreate",
+        "type": "object"
+      },
       "SessionState": {
         "enum": [
           "pending_mfa",
@@ -2918,6 +2991,163 @@
           "enabled"
         ],
         "title": "ToggleIn",
+        "type": "object"
+      },
+      "TokenBindingIn": {
+        "additionalProperties": false,
+        "properties": {
+          "env": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Env"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          },
+          "role": {
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+            "title": "Role",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ScopeKind"
+          }
+        },
+        "required": [
+          "scope",
+          "role"
+        ],
+        "title": "TokenBindingIn",
+        "type": "object"
+      },
+      "TokenCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "secret": {
+            "description": "The API token. Shown only once.",
+            "title": "Secret",
+            "type": "string"
+          },
+          "token": {
+            "$ref": "#/components/schemas/TokenOut"
+          }
+        },
+        "required": [
+          "token",
+          "secret"
+        ],
+        "title": "TokenCreated",
+        "type": "object"
+      },
+      "TokenOut": {
+        "additionalProperties": false,
+        "properties": {
+          "bindings": {
+            "items": {
+              "$ref": "#/components/schemas/BindingOut"
+            },
+            "title": "Bindings",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ApiTokenKind"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "rotated_from_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotated From Id"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "prefix",
+          "created_at",
+          "expires_at",
+          "revoked_at",
+          "last_used_at",
+          "rotated_from_id",
+          "bindings"
+        ],
+        "title": "TokenOut",
         "type": "object"
       },
       "UserCreate": {
@@ -7459,6 +7689,265 @@
         "summary": "Remove Member",
         "tags": [
           "teams"
+        ]
+      }
+    },
+    "/api/tokens": {
+      "get": {
+        "operationId": "list_tokens_api_tokens_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_TokenOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Tokens",
+        "tags": [
+          "tokens"
+        ]
+      },
+      "post": {
+        "description": "Create a service token holding `bindings`. The secret is returned only here.",
+        "operationId": "create_token_api_tokens_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceTokenCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Create Token",
+        "tags": [
+          "tokens"
+        ]
+      }
+    },
+    "/api/tokens/{id}": {
+      "delete": {
+        "description": "Revoke the token at once. Its role bindings stay, so the record still shows them.",
+        "operationId": "revoke_token_api_tokens__id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Revoke Token",
+        "tags": [
+          "tokens"
+        ]
+      },
+      "get": {
+        "operationId": "read_token_api_tokens__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Read Token",
+        "tags": [
+          "tokens"
         ]
       }
     },

@@ -13,7 +13,6 @@ from megooflags_api.db import SessionDep
 from megooflags_api.errors import mfa_enrolment_required, mfa_required, unauthorized
 from megooflags_api.models import User
 from megooflags_api.models.enums import ApiTokenKind, SessionState, UserStatus
-from megooflags_api.services.api_tokens import resolve_token, touch_last_used
 
 
 class PrincipalKind(StrEnum):
@@ -48,6 +47,10 @@ def check_session_state(
 
 
 async def _from_token(session: AsyncSession, token: str) -> Principal:
+    # Imported here: services.api_tokens imports the schemas, which import auth.rbac, which
+    # imports this module.
+    from megooflags_api.services.api_tokens import resolve_token, touch_last_used
+
     row = await resolve_token(session, token)
     if row is None:
         raise unauthorized("invalid API token")

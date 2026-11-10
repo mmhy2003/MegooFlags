@@ -7,8 +7,12 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from megooflags_api.errors import not_found, validation_error
 from megooflags_api.models import ApiToken, User
-from megooflags_api.models.enums import ApiTokenKind
+from megooflags_api.models.enums import ApiTokenKind, SubjectKind
+from megooflags_api.schemas.tokens import TokenOut
+from megooflags_api.services.bindings import bindings_of
+from megooflags_api.services.pagination import decode_cursor, page_slice
 from megooflags_api.services.sdk_keys import BASE62, hash_key
 
 PREFIX = "mf_api_"
@@ -75,6 +79,66 @@ async def create_personal_token(
             expires_at=expires_at,
         ),
     )
+
+
+async def tokens_out(session: AsyncSession, rows: list[ApiToken]) -> list[TokenOut]:
+    """The tokens with their role bindings, loaded in one query."""
+    held = await bindings_of(session, SubjectKind.SERVICE_TOKEN, [row.id for row in rows])
+    return [
+        TokenOut(
+            id=row.id,
+            kind=row.kind,
+            name=row.name,
+            prefix=row.prefix,
+            created_at=row.created_at,
+            expires_at=row.expires_at,
+            revoked_at=row.revoked_at,
+            last_used_at=row.last_used_at,
+            rotated_from_id=row.rotated_from_id,
+            bindings=held[row.id],
+        )
+        for row in rows
+    ]
+
+
+async def token_out(session: AsyncSession, row: ApiToken) -> TokenOut:
+    return (await tokens_out(session, [row]))[0]
+
+
+async def list_service_tokens(
+    session: AsyncSession, cursor: str | None, limit: int
+) -> tuple[list[TokenOut], str | None]:
+    """Service tokens by id, revoked and expired ones included."""
+    query = (
+        select(ApiToken)
+        .where(ApiToken.kind == ApiTokenKind.SERVICE)
+        .order_by(ApiToken.id)
+        .limit(limit + 1)
+    )
+    if cursor is not None:
+        try:
+            after = uuid.UUID(decode_cursor(cursor))
+        except ValueError:
+            raise validation_error("invalid cursor", "cursor") from None
+        query = query.where(ApiToken.id > after)
+    rows = list(await session.scalars(query))
+    page, next_cursor = page_slice(rows, limit, lambda row: str(row.id))
+    return await tokens_out(session, page), next_cursor
+
+
+async def get_service_token(session: AsyncSession, token_id: uuid.UUID) -> ApiToken:
+    """404 for an unknown id and for personal tokens."""
+    row = await session.get(ApiToken, token_id)
+    if row is None or row.kind != ApiTokenKind.SERVICE:
+        raise not_found("token", str(token_id))
+    return row
+
+
+async def revoke(session: AsyncSession, row: ApiToken) -> None:
+    """Revoke at once; revoking again keeps the first `revoked_at`."""
+    if row.revoked_at is None:
+        row.revoked_at = datetime.now(UTC)
+        await session.flush()
 
 
 async def resolve_token(session: AsyncSession, token: str) -> ApiToken | None:

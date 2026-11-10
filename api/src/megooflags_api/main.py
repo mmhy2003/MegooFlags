@@ -16,6 +16,7 @@ from megooflags_api.deps import get_actor
 from megooflags_api.errors import install_error_handlers
 from megooflags_api.logging import AccessLogMiddleware, configure_logging
 from megooflags_api.routers import (
+    api_tokens,
     auth,
     environments,
     evaluate,
@@ -132,7 +133,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sdk_keys,
     ):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_actor)])
-    for module in (roles, users, teams):
+    for module in (roles, users, teams, api_tokens):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_principal)])
     app.include_router(sdk.router)
     app.include_router(ofrep.router)

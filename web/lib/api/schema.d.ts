@@ -640,6 +640,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tokens */
+        get: operations["list_tokens_api_tokens_get"];
+        put?: never;
+        /**
+         * Create Token
+         * @description Create a service token holding `bindings`. The secret is returned only here.
+         */
+        post: operations["create_token_api_tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Token */
+        get: operations["read_token_api_tokens__id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Token
+         * @description Revoke the token at once. Its role bindings stay, so the record still shows them.
+         */
+        delete: operations["revoke_token_api_tokens__id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users": {
         parameters: {
             query?: never;
@@ -897,6 +939,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ApiTokenKind
+         * @enum {string}
+         */
+        ApiTokenKind: "service" | "personal";
         /** BindingIn */
         BindingIn: {
             /** Env */
@@ -1468,6 +1515,13 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** Page[TokenOut] */
+        Page_TokenOut_: {
+            /** Items */
+            items: components["schemas"]["TokenOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** Page[UserOut] */
         Page_UserOut_: {
             /** Items */
@@ -1839,6 +1893,18 @@ export interface components {
             /** Variation */
             variation?: string | null;
         };
+        /** ServiceTokenCreate */
+        ServiceTokenCreate: {
+            /**
+             * Bindings
+             * @default []
+             */
+            bindings: components["schemas"]["TokenBindingIn"][];
+            /** Expires At */
+            expires_at?: string | null;
+            /** Name */
+            name: string;
+        };
         /**
          * SessionState
          * @enum {string}
@@ -1947,6 +2013,53 @@ export interface components {
             enabled: boolean;
             /** Version */
             version?: number | null;
+        };
+        /** TokenBindingIn */
+        TokenBindingIn: {
+            /** Env */
+            env?: string | null;
+            /** Project */
+            project?: string | null;
+            /** Role */
+            role: string;
+            scope: components["schemas"]["ScopeKind"];
+        };
+        /** TokenCreated */
+        TokenCreated: {
+            /**
+             * Secret
+             * @description The API token. Shown only once.
+             */
+            secret: string;
+            token: components["schemas"]["TokenOut"];
+        };
+        /** TokenOut */
+        TokenOut: {
+            /** Bindings */
+            bindings: components["schemas"]["BindingOut"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["ApiTokenKind"];
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /** Prefix */
+            prefix: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Rotated From Id */
+            rotated_from_id: string | null;
         };
         /** UserCreate */
         UserCreate: {
@@ -4986,6 +5099,203 @@ export interface operations {
             path: {
                 key: string;
                 user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_tokens_api_tokens_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_TokenOut_"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_token_api_tokens_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenCreated"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_token_api_tokens__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_token_api_tokens__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
             };
             cookie?: never;
         };

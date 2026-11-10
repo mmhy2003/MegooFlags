@@ -108,6 +108,23 @@ async def binding_out(session: AsyncSession, binding_id: uuid.UUID) -> BindingOu
     return _out(row)
 
 
+async def bindings_of(
+    session: AsyncSession, subject_kind: SubjectKind, subject_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[BindingOut]]:
+    """Each subject's bindings, by creation, in one query; subjects without any get []."""
+    found: dict[uuid.UUID, list[BindingOut]] = {id: [] for id in subject_ids}
+    if not subject_ids:
+        return found
+    rows = await session.execute(
+        _out_query()
+        .where(RoleBinding.subject_kind == subject_kind, RoleBinding.subject_id.in_(subject_ids))
+        .order_by(RoleBinding.created_at, RoleBinding.id)
+    )
+    for row in rows.all():
+        found[row[0].subject_id].append(_out(row))
+    return found
+
+
 async def get_binding(session: AsyncSession, binding_id: uuid.UUID) -> RoleBinding:
     binding = await session.get(RoleBinding, binding_id)
     if binding is None:
