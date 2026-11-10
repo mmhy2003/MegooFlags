@@ -10,6 +10,9 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
 
+# Before the app is imported: megooflags_api.main builds an app from the environment.
+os.environ.setdefault("MEGOOFLAGS_SECRET_KEY", "test-secret-key-0123456789abcdef0123456789")
+
 from megooflags_api.main import create_app
 from megooflags_api.settings import Settings
 

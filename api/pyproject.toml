@@ -18,6 +18,7 @@ dependencies = [
   "opentelemetry-instrumentation-fastapi>=0.66b2",
   "opentelemetry-instrumentation-sqlalchemy>=0.66b2",
   "valkey>=6.1",
+  "cryptography>=50.0.2",
 ]
 
 [dependency-groups]

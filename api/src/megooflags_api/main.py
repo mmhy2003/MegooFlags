@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI
 
 from megooflags_api import __version__, metrics
 from megooflags_api.cors import SdkCorsMiddleware
+from megooflags_api.crypto import SecretBox, require_secret_key
 from megooflags_api.db import create_engine, create_sessionmaker
 from megooflags_api.deps import get_actor
 from megooflags_api.errors import install_error_handlers
@@ -53,6 +54,7 @@ async def shutdown_jobs(app: FastAPI) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    require_secret_key(app.state.settings)
     await check_valkey(app.state.valkey, app.state.settings.valkey_url)
     tasks = [asyncio.create_task(job) for job in background_jobs(app)]
     try:
@@ -75,6 +77,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging(settings)
     app = FastAPI(title="MegooFlags API", version=__version__, lifespan=lifespan)
     app.state.settings = settings
+    # None without a key, so export_openapi works; the lifespan refuses to start without one.
+    app.state.secret_box = (
+        SecretBox(settings.secret_key.get_secret_value()) if settings.secret_key else None
+    )
     app.state.engine = create_engine(settings)
     app.state.sessionmaker = create_sessionmaker(app.state.engine)
     app.state.valkey = create_valkey(settings.valkey_url)

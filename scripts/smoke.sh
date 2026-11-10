@@ -14,6 +14,7 @@ esac
 root="$(cd "$(dirname "$0")/.." && pwd)"
 export MEGOOFLAGS_HTTP_PORT="${MEGOOFLAGS_HTTP_PORT:-8080}"
 export MEGOOFLAGS_HTTPS_PORT="${MEGOOFLAGS_HTTPS_PORT:-8443}"
+export MEGOOFLAGS_SECRET_KEY="${MEGOOFLAGS_SECRET_KEY:-$(openssl rand -hex 32)}"
 compose=(docker compose -p megooflags-smoke -f "$root/deploy/docker-compose.yml" -f "$root/deploy/compose.ci.yml")
 workdir="$(mktemp -d)"
 
