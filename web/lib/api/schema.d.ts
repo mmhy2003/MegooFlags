@@ -78,6 +78,26 @@ export interface paths {
         patch: operations["update_environment_api_projects__project__environments__env__patch"];
         trace?: never;
     };
+    "/api/projects/{project}/environments/{env}/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate Flags
+         * @description Evaluate flags for a context exactly as SDKs do; results are sorted by key.
+         */
+        post: operations["evaluate_flags_api_projects__project__environments__env__evaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project}/flags": {
         parameters: {
             query?: never;
@@ -460,6 +480,44 @@ export interface components {
             details?: components["schemas"]["JsonValue"];
             /** Message */
             message: string;
+        };
+        /** EvaluateIn */
+        EvaluateIn: {
+            /** Context */
+            context: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /**
+             * Flags
+             * @description Flag keys to evaluate; every non-archived flag when omitted.
+             */
+            flags?: string[] | null;
+        };
+        /** EvaluateOut */
+        EvaluateOut: {
+            /** Results */
+            results: components["schemas"]["EvaluationResult"][];
+        };
+        /**
+         * EvaluationResult
+         * @description An OpenFeature resolution detail. `value` is null when the flag is not found.
+         */
+        EvaluationResult: {
+            /** Error Code */
+            error_code: string | null;
+            /** Error Message */
+            error_message: string | null;
+            /** Key */
+            key: string;
+            /** Metadata */
+            metadata: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Reason */
+            reason: string;
+            value: components["schemas"]["JsonValue"];
+            /** Variant */
+            variant: string | null;
         };
         /** FlagConfigIn */
         FlagConfigIn: {
@@ -1442,6 +1500,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnvironmentOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    evaluate_flags_api_projects__project__environments__env__evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluateOut"];
                 };
             };
             /** @description Not Found */
