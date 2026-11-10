@@ -56,6 +56,9 @@ class StreamHub:
         self._last_etag: dict[uuid.UUID, str] = {}
         self._pending: set[uuid.UUID] = set()
         self._flush: asyncio.Task[None] | None = None
+        # Refreshes run one at a time, so a slow one never offers a ruleset older than one a
+        # concurrent refresh (debounced flush, re-check) already offered.
+        self._refresh_lock = asyncio.Lock()
 
     @property
     def subscriber_count(self) -> int:
@@ -116,27 +119,31 @@ class StreamHub:
     async def refresh(self, env_ids: Iterable[uuid.UUID]) -> None:
         """Offer each environment's ruleset to its subscribers when its ETag changed, or
         `Revoked` when the environment is gone. Errors are logged, never raised."""
-        for env_id in env_ids:
-            subs = self._subscribers.get(env_id)
-            if not subs:
-                continue
-            environment = next(iter(subs)).principal.environment
-            item: StreamItem
-            try:
-                async with self._sessionmaker() as session:
-                    exists = await session.scalar(
-                        select(Environment.id).where(Environment.id == env_id)
-                    )
-                    if exists is None:
-                        item = Revoked()
-                    else:
-                        item = await self._cache.get_entry(session, environment, max_age=0)
-            except Exception:
-                logger.exception("refreshing the streams of environment %s failed", env_id)
-                continue
-            if isinstance(item, CachedRuleset):
-                if item.etag == self._last_etag.get(env_id):
-                    continue
-                self._last_etag[env_id] = item.etag
-            for sub in list(self._subscribers.get(env_id, ())):
-                sub.offer(item)
+        async with self._refresh_lock:
+            for env_id in env_ids:
+                await self._refresh_one(env_id)
+
+    async def _refresh_one(self, env_id: uuid.UUID) -> None:
+        subs = self._subscribers.get(env_id)
+        if not subs:
+            return
+        environment = next(iter(subs)).principal.environment
+        item: StreamItem
+        try:
+            async with self._sessionmaker() as session:
+                exists = await session.scalar(
+                    select(Environment.id).where(Environment.id == env_id)
+                )
+                if exists is None:
+                    item = Revoked()
+                else:
+                    item = await self._cache.get_entry(session, environment, max_age=0)
+        except Exception:
+            logger.exception("refreshing the streams of environment %s failed", env_id)
+            return
+        if isinstance(item, CachedRuleset):
+            if item.etag == self._last_etag.get(env_id):
+                return
+            self._last_etag[env_id] = item.etag
+        for sub in list(self._subscribers.get(env_id, ())):
+            sub.offer(item)

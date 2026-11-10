@@ -9,6 +9,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import httpx
 import pytest
@@ -16,7 +17,7 @@ from fastapi import FastAPI
 from helpers import count_statements, create_sdk_key, next_events, running
 from sqlalchemy import text
 from test_sdk import FLAGS, bearer, setup_demo
-from test_stream import STREAM, kill
+from test_stream import STREAM, cached, kill, principal
 from valkey.asyncio import Valkey
 
 from megooflags_api.main import create_app
@@ -197,3 +198,43 @@ async def test_resubscribe_error_keeps_listening(caplog: pytest.LogCaptureFixtur
         await client_b.aclose()
 
     assert any(r.levelno == logging.ERROR and r.exc_info for r in caplog.records)
+
+
+class FakeSession:
+    async def __aenter__(self) -> "FakeSession":
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        pass
+
+    async def scalar(self, statement: Any) -> uuid.UUID:
+        return uuid.uuid4()  # the environment exists
+
+
+async def test_recheck_and_flush_never_offer_stale() -> None:
+    """A re-check that read the old ruleset must not offer it after a flush offered the new one."""
+    old, new = cached('"old"'), cached('"new"')
+    gate = asyncio.Event()
+    reads = 0
+
+    class SlowFirstRead(RulesetCache):
+        async def get_entry(self, *args: Any, **kwargs: Any) -> Any:
+            nonlocal reads
+            reads += 1
+            if reads == 1:
+                await gate.wait()
+                return old
+            return new
+
+    hub = StreamHub(FakeSession, SlowFirstRead(), debounce=0.01)  # type: ignore[arg-type]
+    p = principal()
+    sub = hub.subscribe(p)
+    recheck = asyncio.create_task(hub.recheck_all())
+    await asyncio.sleep(0.01)  # the re-check now waits inside its read of the old ruleset
+    hub.notify_project(p.environment.project_id)
+    await asyncio.sleep(0.05)  # the flush would read and offer the new ruleset meanwhile
+    gate.set()
+    await recheck
+    await asyncio.sleep(0.1)  # a flush that waited for the re-check has run by now
+
+    assert sub.queue.get_nowait() is new
