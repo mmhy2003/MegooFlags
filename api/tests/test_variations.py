@@ -1,4 +1,8 @@
+from datetime import datetime
+from typing import Any
+
 import httpx
+import pytest
 from helpers import assert_error, create_flag, create_project
 
 COLOR = "/api/projects/demo/flags/color"
@@ -157,3 +161,35 @@ async def test_unknown_flag_404(api: httpx.AsyncClient) -> None:
     r = await api.post("/api/projects/demo/flags/nope/variations", json={"key": "c", "value": 1})
 
     assert_error(r, 404, "not_found")
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("POST", "/variations", {"key": "d", "value": "yellow"}),
+        ("PATCH", "/variations/b", {"value": "lime"}),
+        ("DELETE", "/variations/c", None),
+    ],
+)
+async def test_variation_writes_bump_flag_updated_at(
+    api: httpx.AsyncClient, method: str, path: str, body: dict[str, Any] | None
+) -> None:
+    await create_project(api)
+    await create_flag(
+        api,
+        key="color",
+        type="string",
+        variations=[
+            {"key": "a", "value": "red"},
+            {"key": "b", "value": "green"},
+            {"key": "c", "value": "blue"},
+        ],
+        off_variation="a",
+    )
+    before = datetime.fromisoformat((await api.get(COLOR)).json()["updated_at"])
+
+    r = await api.request(method, f"{COLOR}{path}", json=body)
+
+    assert r.is_success, r.text
+    after = datetime.fromisoformat((await api.get(COLOR)).json()["updated_at"])
+    assert after > before
