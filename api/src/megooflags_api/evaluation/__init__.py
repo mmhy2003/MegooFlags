@@ -19,6 +19,7 @@ from megooflags_api.evaluation.model import (
     Variation,
     Weight,
 )
+from megooflags_api.evaluation.parse import RulesetError, parse_ruleset
 
 __all__ = [
     "FLAG_TYPES",
@@ -31,6 +32,7 @@ __all__ = [
     "Resolution",
     "Rollout",
     "Rule",
+    "RulesetError",
     "Ruleset",
     "Segment",
     "SegmentRule",
@@ -38,4 +40,5 @@ __all__ = [
     "Target",
     "Variation",
     "Weight",
+    "parse_ruleset",
 ]
