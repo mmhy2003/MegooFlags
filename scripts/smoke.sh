@@ -58,6 +58,27 @@ check /healthz '"status":"ok"'
 check /readyz '"status":"ready"'
 check / 'MegooFlags'
 
+# First-run setup makes the first admin and signs them in; their session mints an org admin
+# service token for the management API.
+jar="$workdir/cookies"
+password="smoke-$(openssl rand -hex 16)"
+curl -fsS "${tls[@]}" -c "$jar" -o /dev/null -H "Origin: ${base}" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"admin@example.com\",\"name\":\"Smoke Admin\",\"password\":\"${password}\"}" \
+  "${base}/api/setup" || fail "POST /api/setup failed"
+echo "POST /api/setup OK"
+created=$(curl -fsS "${tls[@]}" -b "$jar" -H "Origin: ${base}" -H 'Content-Type: application/json' \
+  -d '{"name":"smoke","bindings":[{"role":"admin","scope":"org"}]}' "${base}/api/tokens") \
+  || fail "POST /api/tokens failed"
+token=$(python3 -c 'import json, sys; print(json.load(sys.stdin)["secret"])' <<<"$created")
+echo "POST /api/tokens OK"
+
+code=$(curl -sS "${tls[@]}" -o /dev/null -w '%{http_code}' "${base}/api/projects")
+[ "$code" = 401 ] || fail "GET /api/projects without credentials returned $code, expected 401"
+code=$(curl -sS "${tls[@]}" -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${token}" \
+  "${base}/api/projects")
+[ "$code" = 200 ] || fail "GET /api/projects with the token returned $code, expected 200"
+echo "GET /api/projects needs credentials OK"
+
 code=$(curl -sS "${tls[@]}" -o /dev/null -w '%{http_code}' "${base}/metrics")
 [ "$code" = 404 ] || fail "/metrics through Caddy returned $code, expected 404"
 echo "GET /metrics via Caddy is 404 OK"
@@ -88,7 +109,7 @@ echo "JSON access logs on $replicas replica(s) OK"
 if [ "$mode" = http ]; then
   docker run --rm --network megooflags-smoke_default -v "$root/scripts:/scripts:ro" megooflags-api:ci \
     python /scripts/propagation_test.py --host api --port 8000 --replicas "$replicas" --iterations 20 \
-    || fail "kill switch propagation p95 is 5 s or more"
+    --token "$token" || fail "kill switch propagation p95 is 5 s or more"
   echo "propagation OK"
 fi
 

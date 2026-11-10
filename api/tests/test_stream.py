@@ -7,7 +7,14 @@ from contextlib import asynccontextmanager
 import httpx
 import pytest
 from fastapi import FastAPI
-from helpers import SseEvent, create_project, create_sdk_key, next_events, running
+from helpers import (
+    SseEvent,
+    create_project,
+    create_sdk_key,
+    next_events,
+    running,
+    seed_service_token,
+)
 from test_sdk import FLAGS, RULESET, bearer, setup_demo
 
 from megooflags_api.evaluation import parse_ruleset
@@ -24,8 +31,20 @@ pytestmark = pytest.mark.usefixtures("valkey_up")
 
 @asynccontextmanager
 async def serving(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
-    async with running(app) as url, httpx.AsyncClient(base_url=url, timeout=10) as client:
+    """A served app and a client with an org admin service token for the management API."""
+    headers = bearer(await seed_service_token(app))
+    async with (
+        running(app) as url,
+        httpx.AsyncClient(base_url=url, timeout=10, headers=headers) as client,
+    ):
         yield client
+
+
+@asynccontextmanager
+async def without_credentials(client: httpx.AsyncClient) -> AsyncIterator[httpx.AsyncClient]:
+    """A client for the same server that sends no credentials of its own."""
+    async with httpx.AsyncClient(base_url=client.base_url, timeout=10) as plain:
+        yield plain
 
 
 @asynccontextmanager
@@ -85,7 +104,10 @@ async def test_client_gets_changed(app: FastAPI) -> None:
     async with serving(app) as client:
         await setup_demo(client)
         key = (await create_sdk_key(client, "client"))["key"]
-        async with stream(client, params={"key": key}) as lines:
+        async with (
+            without_credentials(client) as plain,
+            stream(plain, params={"key": key}) as lines,
+        ):
             (first,) = await next_events(lines, 1, 2)
             await kill(client)
             (second,) = await next_events(lines, 1, 2)
@@ -177,15 +199,16 @@ async def test_server_key_in_query_401(app: FastAPI) -> None:
     async with serving(app) as client:
         await create_project(client)
         key = (await create_sdk_key(client, "server"))["key"]
-        r = await client.get(STREAM, params={"key": key})
+        async with without_credentials(client) as plain:
+            r = await plain.get(STREAM, params={"key": key})
 
     assert r.status_code == 401
     assert r.json()["code"] == "unauthorized"
 
 
 async def test_no_key_401(app: FastAPI) -> None:
-    async with serving(app) as client:
-        r = await client.get(STREAM)
+    async with serving(app) as client, without_credentials(client) as plain:
+        r = await plain.get(STREAM)
 
     assert r.status_code == 401
     assert r.json()["code"] == "unauthorized"

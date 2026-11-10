@@ -275,8 +275,8 @@ async def test_viewer_reads_but_cannot_write(app: FastAPI, admin: httpx.AsyncCli
         assert_error(r, 403, "forbidden")
 
 
-async def test_teams_need_credentials(api: httpx.AsyncClient) -> None:
-    assert_error(await api.get("/api/teams"), 401, "unauthorized")
+async def test_teams_need_credentials(anon: httpx.AsyncClient) -> None:
+    assert_error(await anon.get("/api/teams"), 401, "unauthorized")
 
 
 # Audit

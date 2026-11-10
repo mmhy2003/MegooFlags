@@ -2,7 +2,6 @@ import httpx
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from megooflags_api.deps import get_actor
 from megooflags_api.errors import integrity_error_status_code, not_found
 from megooflags_api.main import create_app
 from megooflags_api.schemas.common import ApiModel, Key
@@ -64,10 +63,6 @@ def test_integrity_error_codes() -> None:
     assert integrity_error_status_code("23503") == (409, "in_use")
     assert integrity_error_status_code("23514") == (422, "validation_error")
     assert integrity_error_status_code(None) == (500, "internal_error")
-
-
-async def test_get_actor_is_none() -> None:
-    assert await get_actor() is None
 
 
 async def test_session_dependency(app: FastAPI) -> None:

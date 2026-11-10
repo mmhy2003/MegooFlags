@@ -189,7 +189,9 @@ async def test_cors_preflight(api: httpx.AsyncClient) -> None:
     assert "access-control-allow-credentials" not in r.headers
 
 
-async def test_cors_on_client_endpoints_only(api: httpx.AsyncClient) -> None:
+async def test_cors_on_client_endpoints_only(
+    api: httpx.AsyncClient, anon: httpx.AsyncClient
+) -> None:
     await setup_demo(api)
     client = (await create_sdk_key(api, "client"))["key"]
     server = (await create_sdk_key(api, "server"))["key"]
@@ -201,7 +203,7 @@ async def test_cors_on_client_endpoints_only(api: httpx.AsyncClient) -> None:
     assert r.headers["access-control-expose-headers"] == "ETag, Retry-After"
     assert "access-control-allow-credentials" not in r.headers
 
-    r = await api.post(EVALUATE, json={"context": {}}, headers=origin)
+    r = await anon.post(EVALUATE, json={"context": {}}, headers=origin)
     assert_error(r, 401, "unauthorized")
     assert r.headers["access-control-allow-origin"] == "*"
 

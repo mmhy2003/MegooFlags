@@ -60,7 +60,7 @@ async def test_flag_list_statement_count_is_constant(app: FastAPI, api: httpx.As
     assert len(small["items"]) == 10
     assert len(large["items"]) == 500
     assert all(len(item["environments"]) == 3 for item in large["items"])
-    assert small_count == large_count <= 4
+    assert small_count == large_count <= 5  # 3, plus the API token and its role bindings
     assert following_count == large_count
     assert following["items"][0]["key"] == "flag-00501"
     assert len(following["items"]) == 500
@@ -75,7 +75,7 @@ async def test_tag_and_owner_filter_constant(app: FastAPI, api: httpx.AsyncClien
 
     assert len(tagged["items"]) == 500
     assert all(item["tags"] == ["checkout"] for item in tagged["items"])
-    assert tagged_count == unfiltered_count <= 4
+    assert tagged_count == unfiltered_count <= 5  # 3, plus the API token and its role bindings
     assert len(owned["items"]) == 500
     assert all(item["owner"] == "team-3" for item in owned["items"])
     assert owned_count == unfiltered_count

@@ -1,5 +1,10 @@
-from fastapi import APIRouter, Query, Response
+import uuid
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, Query, Response
+
+from megooflags_api.auth.rbac import Permission
+from megooflags_api.auth.require import Authz, authenticated, require
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES
 from megooflags_api.schemas.common import Page
@@ -11,21 +16,32 @@ from megooflags_api.schemas.projects import (
 )
 from megooflags_api.services import projects
 from megooflags_api.services.changes import ChangesDep
-from megooflags_api.services.lookup import get_project
 
 router = APIRouter(tags=["projects"], responses=ERROR_RESPONSES)
+
+Authenticated = Annotated[Authz, Depends(authenticated())]
+ReadProject = Annotated[Authz, Depends(require(Permission.PROJECT_READ))]
+ManageProject = Annotated[Authz, Depends(require(Permission.PROJECT_MANAGE))]
+CreateProject = Annotated[Authz, Depends(require(Permission.PROJECT_CREATE))]
 
 
 @router.get("/projects")
 async def list_projects(
-    session: SessionDep, cursor: str | None = None, limit: int = Query(50, ge=1, le=500)
+    session: SessionDep,
+    authz: Authenticated,
+    cursor: str | None = None,
+    limit: int = Query(50, ge=1, le=500),
 ) -> Page[ProjectSummary]:
-    items, next_cursor = await projects.list_projects(session, cursor, limit)
+    items, next_cursor = await projects.list_projects(
+        session, cursor, limit, authz.authorizer.visible_project_ids()
+    )
     return Page[ProjectSummary](items=items, next_cursor=next_cursor)
 
 
 @router.post("/projects", status_code=201)
-async def create_project(session: SessionDep, bus: ChangesDep, body: ProjectCreate) -> ProjectOut:
+async def create_project(
+    session: SessionDep, authz: CreateProject, bus: ChangesDep, body: ProjectCreate
+) -> ProjectOut:
     project = await projects.create_project(session, body)
     out = await projects.project_out(session, project)
     await session.commit()
@@ -34,27 +50,37 @@ async def create_project(session: SessionDep, bus: ChangesDep, body: ProjectCrea
 
 
 @router.get("/projects/{project}")
-async def read_project(session: SessionDep, project: str) -> ProjectOut:
-    return await projects.project_out(session, await get_project(session, project))
+async def read_project(session: SessionDep, authz: ReadProject, project: str) -> ProjectOut:
+    assert authz.project is not None
+    return await projects.project_out(session, authz.project, _visible_envs(authz))
 
 
 @router.patch("/projects/{project}")
 async def update_project(
-    session: SessionDep, bus: ChangesDep, project: str, body: ProjectUpdate
+    session: SessionDep, authz: ManageProject, bus: ChangesDep, project: str, body: ProjectUpdate
 ) -> ProjectOut:
-    row = await get_project(session, project)
+    row = authz.project
+    assert row is not None
     await projects.update_project(session, row, body)
-    out = await projects.project_out(session, row)
+    out = await projects.project_out(session, row, _visible_envs(authz))
     await session.commit()
     await bus.publish(row.id)
     return out
 
 
 @router.delete("/projects/{project}", status_code=204)
-async def delete_project(session: SessionDep, bus: ChangesDep, project: str) -> Response:
-    row = await get_project(session, project)
+async def delete_project(
+    session: SessionDep, authz: ManageProject, bus: ChangesDep, project: str
+) -> Response:
+    row = authz.project
+    assert row is not None
     project_id = row.id
     await projects.delete_project(session, row)
     await session.commit()
     await bus.publish(project_id)
     return Response(status_code=204)
+
+
+def _visible_envs(authz: Authz) -> set[uuid.UUID] | None:
+    assert authz.project is not None
+    return authz.authorizer.visible_environment_ids(authz.project.id)

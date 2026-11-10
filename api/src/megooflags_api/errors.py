@@ -144,6 +144,8 @@ def integrity_error_status_code(sqlstate: str | None) -> tuple[int, str]:
 
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {"model": ErrorBody},
+    403: {"model": ErrorBody},
     404: {"model": ErrorBody},
     409: {"model": ErrorBody},
     422: {"model": ErrorBody},

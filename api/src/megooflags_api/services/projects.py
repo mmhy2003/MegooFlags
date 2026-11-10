@@ -1,5 +1,7 @@
 """Project CRUD. A new project gets its environments in the same transaction."""
 
+import uuid
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,9 +58,12 @@ async def create_project(session: AsyncSession, body: ProjectCreate) -> Project:
 
 
 async def list_projects(
-    session: AsyncSession, cursor: str | None, limit: int
+    session: AsyncSession, cursor: str | None, limit: int, visible: set[uuid.UUID] | None = None
 ) -> tuple[list[ProjectSummary], str | None]:
+    """A page of projects; `visible` limits it to those ids (None means all)."""
     query = select(Project).order_by(Project.key).limit(limit + 1)
+    if visible is not None:
+        query = query.where(Project.id.in_(visible))
     if cursor is not None:
         query = query.where(Project.key > decode_cursor(cursor))
     rows = list(await session.scalars(query))
@@ -66,12 +71,18 @@ async def list_projects(
     return [ProjectSummary.model_validate(p, from_attributes=True) for p in page], next_cursor
 
 
-async def project_out(session: AsyncSession, project: Project) -> ProjectOut:
-    environments = await session.scalars(
+async def project_out(
+    session: AsyncSession, project: Project, visible: set[uuid.UUID] | None = None
+) -> ProjectOut:
+    """The project with its environments; `visible` limits them to those ids (None means all)."""
+    query = (
         select(Environment)
         .where(Environment.project_id == project.id)
         .order_by(Environment.sort_order, Environment.key)
     )
+    if visible is not None:
+        query = query.where(Environment.id.in_(visible))
+    environments = await session.scalars(query)
     summary = ProjectSummary.model_validate(project, from_attributes=True)
     return ProjectOut(
         **summary.model_dump(),

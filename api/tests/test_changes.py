@@ -126,7 +126,9 @@ async def test_publish_failure_does_not_fail_write(app: FastAPI, api: httpx.Asyn
     broken = create_app(Settings(valkey_url=UNREACHABLE))
     try:
         transport = httpx.ASGITransport(app=broken)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test", headers=api.headers
+        ) as client:
             r = await client.post("/api/projects/demo/flags/new-ui/environments/production/kill")
     finally:
         await broken.state.valkey.aclose()

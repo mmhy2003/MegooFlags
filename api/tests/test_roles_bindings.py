@@ -161,9 +161,9 @@ async def test_viewer_cannot_write_roles(app: FastAPI, admin: httpx.AsyncClient)
         assert_error(await viewer.delete("/api/roles/flag-ops"), 403, "forbidden")
 
 
-async def test_roles_need_credentials(api: httpx.AsyncClient) -> None:
-    assert_error(await api.get("/api/roles"), 401, "unauthorized")
-    assert_error(await api.get("/api/bindings"), 401, "unauthorized")
+async def test_roles_need_credentials(anon: httpx.AsyncClient) -> None:
+    assert_error(await anon.get("/api/roles"), 401, "unauthorized")
+    assert_error(await anon.get("/api/bindings"), 401, "unauthorized")
 
 
 # Bindings

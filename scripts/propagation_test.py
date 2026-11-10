@@ -7,6 +7,7 @@ Stdlib only, so it runs inside the API image on the compose network.
 
 import argparse
 import json
+import os
 import queue
 import socket
 import sys
@@ -107,17 +108,20 @@ def wait_for(updates: "queue.Queue[Update]", expected: bool, timeout: float, nam
 
 
 def run(args: argparse.Namespace, ips: list[str], api: str, project: str) -> list[float]:
+    token = args.token
     flag_env = f"{api}/projects/{project}/flags/{FLAG}/environments/{ENV}"
     call(
         "POST",
         f"{api}/projects/{project}/flags",
         {"key": FLAG, "name": "Kill me", "type": "boolean"},
+        key=token,
     )
-    call("POST", f"{flag_env}/toggle", {"enabled": True})
+    call("POST", f"{flag_env}/toggle", {"enabled": True}, key=token)
     created = call(
         "POST",
         f"{api}/projects/{project}/environments/{ENV}/sdk-keys",
         {"name": "propagation", "kind": "server"},
+        key=token,
     )
     key = created["key"]
 
@@ -129,24 +133,36 @@ def run(args: argparse.Namespace, ips: list[str], api: str, project: str) -> lis
 
     samples: list[float] = []
     for _ in range(args.iterations):
-        call("POST", f"{flag_env}/toggle", {"enabled": True})
+        call("POST", f"{flag_env}/toggle", {"enabled": True}, key=token)
         for ip, updates in queues.items():
             wait_for(updates, True, args.timeout, ip)
         t0 = time.monotonic()
-        call("POST", f"{flag_env}/kill")
+        call("POST", f"{flag_env}/kill", key=token)
         for ip, updates in queues.items():
             samples.append(wait_for(updates, False, args.timeout, ip) - t0)
     return samples
 
 
-def main(argv: list[str] | None = None) -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--host", default="api")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--replicas", type=int, default=3)
     parser.add_argument("--iterations", type=int, default=20)
     parser.add_argument("--timeout", type=float, default=10.0)
+    parser.add_argument(
+        "--token",
+        default=os.environ.get("MEGOOFLAGS_API_TOKEN"),
+        help="API token for the management API (default: $MEGOOFLAGS_API_TOKEN)",
+    )
     args = parser.parse_args(argv)
+    if not args.token:
+        parser.error("--token or MEGOOFLAGS_API_TOKEN is required")
+    return args
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
 
     ips = replica_ips(args.host, args.port)
     if len(ips) != args.replicas:
@@ -158,6 +174,7 @@ def main(argv: list[str] | None = None) -> int:
         "POST",
         f"{api}/projects",
         {"key": project, "name": project, "environments": [{"key": ENV, "name": "Production"}]},
+        key=args.token,
     )
     try:
         samples = run(args, ips, api, project)
@@ -165,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"propagation: {exc}", file=sys.stderr)
         return 1
     finally:
-        call("DELETE", f"{api}/projects/{project}")
+        call("DELETE", f"{api}/projects/{project}", key=args.token)
 
     p50, p95 = percentile(samples, 0.5), percentile(samples, 0.95)
     print(f"propagation: n={len(samples)} p50={p50:.3f}s p95={p95:.3f}s max={max(samples):.3f}s")

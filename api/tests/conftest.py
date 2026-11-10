@@ -8,7 +8,7 @@ from pathlib import Path
 import httpx
 import pytest
 from fastapi import FastAPI
-from helpers import ORIGIN, reset_database
+from helpers import ORIGIN, bearer, reset_database, seed_service_token
 
 # Before the app is imported: megooflags_api.main builds an app from the environment.
 os.environ.setdefault("MEGOOFLAGS_SECRET_KEY", "test-secret-key-0123456789abcdef0123456789")
@@ -65,8 +65,12 @@ async def app(migrated: None) -> AsyncIterator[FastAPI]:
 
 @pytest.fixture
 async def api(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
+    """A client with an org admin service token."""
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    headers = bearer(await seed_service_token(app))
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=headers
+    ) as client:
         yield client
 
 

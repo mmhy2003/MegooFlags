@@ -110,12 +110,14 @@ async def single(
     return await api.post(SINGLE.format(key=flag), json=body, headers=headers)
 
 
-async def test_single_success_with_bearer_and_x_api_key(api: httpx.AsyncClient) -> None:
+async def test_single_success_with_bearer_and_x_api_key(
+    api: httpx.AsyncClient, anon: httpx.AsyncClient
+) -> None:
     await setup_demo(api)
     key = (await create_sdk_key(api, "server"))["key"]
 
     for headers in (bearer(key), {"X-API-Key": key}):
-        r = await single(api, "color", headers, {"targetingKey": "u2"})
+        r = await single(anon, "color", headers, {"targetingKey": "u2"})
         assert r.status_code == 200, r.text
         body = r.json()
         assert body == {
@@ -237,16 +239,16 @@ async def test_bulk_sorted_with_etag_and_304(api: httpx.AsyncClient) -> None:
     assert r.headers["etag"] == etag
 
 
-async def test_auth_errors(api: httpx.AsyncClient) -> None:
+async def test_auth_errors(api: httpx.AsyncClient, anon: httpx.AsyncClient) -> None:
     await setup_demo(api)
     created = await create_sdk_key(api, "client")
     keys = "/api/projects/demo/environments/production/sdk-keys"
     assert (await api.delete(f"{keys}/{created['id']}")).status_code == 204
 
-    assert_error(await api.post(BULK, json={}), 401, "unauthorized")
-    assert_error(await single(api, "color", {}), 401, "unauthorized")
-    assert_error(await api.post(BULK, json={}, headers=bearer(created["key"])), 403, "forbidden")
-    r = await single(api, "color", {"X-API-Key": created["key"]})
+    assert_error(await anon.post(BULK, json={}), 401, "unauthorized")
+    assert_error(await single(anon, "color", {}), 401, "unauthorized")
+    assert_error(await anon.post(BULK, json={}, headers=bearer(created["key"])), 403, "forbidden")
+    r = await single(anon, "color", {"X-API-Key": created["key"]})
     assert_error(r, 403, "forbidden")
 
 

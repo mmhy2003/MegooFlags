@@ -14,7 +14,14 @@ from typing import Any
 import httpx
 import pytest
 from fastapi import FastAPI
-from helpers import count_statements, create_sdk_key, next_events, reset_database, running
+from helpers import (
+    count_statements,
+    create_sdk_key,
+    next_events,
+    reset_database,
+    running,
+    seed_service_token,
+)
 from test_sdk import FLAGS, bearer, setup_demo
 from test_stream import STREAM, cached, kill, principal
 from valkey.asyncio import Valkey
@@ -34,15 +41,17 @@ async def replicas(
     settings_b: Settings,
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient, httpx.AsyncClient, str]]:
     """Two apps on the same Postgres and Valkey, served; "demo" is set up through A.
-    Yields app A, a client for A, a client for B and a server key."""
+    Yields app A, a client for A (with an admin service token), a client for B (no
+    credentials, for SDK streams) and a server key."""
     app_a = create_app(Settings())
     app_b = create_app(settings_b)
     await reset_database(app_a)
+    token = await seed_service_token(app_a)
     try:
         async with (
             running(app_a) as url_a,
             running(app_b) as url_b,
-            httpx.AsyncClient(base_url=url_a, timeout=10) as a,
+            httpx.AsyncClient(base_url=url_a, timeout=10, headers=bearer(token)) as a,
             httpx.AsyncClient(base_url=url_b, timeout=10) as b,
         ):
             await setup_demo(a)
