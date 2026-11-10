@@ -16,6 +16,7 @@ from megooflags_api.schemas.flags import (
     VariationUpdate,
 )
 from megooflags_api.services import flags, variations
+from megooflags_api.services.changes import ChangesDep
 from megooflags_api.services.lookup import get_flag, get_project, get_variation
 
 router = APIRouter(tags=["flags"], responses=ERROR_RESPONSES)
@@ -50,10 +51,13 @@ async def list_flags(
 
 
 @router.post("/projects/{project}/flags", status_code=201)
-async def create_flag(session: SessionDep, project: str, body: FlagCreate) -> FlagOut:
+async def create_flag(
+    session: SessionDep, bus: ChangesDep, project: str, body: FlagCreate
+) -> FlagOut:
     row = await flags.create_flag(session, await get_project(session, project), body)
     out = await flags.flag_out(session, row)
     await session.commit()
+    await bus.publish(row.project_id)
     return out
 
 
@@ -64,69 +68,84 @@ async def read_flag(session: SessionDep, project: str, flag: str) -> FlagOut:
 
 
 @router.patch("/projects/{project}/flags/{flag}")
-async def update_flag(session: SessionDep, project: str, flag: str, body: FlagUpdate) -> FlagOut:
+async def update_flag(
+    session: SessionDep, bus: ChangesDep, project: str, flag: str, body: FlagUpdate
+) -> FlagOut:
     row = await get_flag(session, await get_project(session, project), flag)
     await flags.update_flag(session, row, body)
     out = await flags.flag_out(session, row)
     await session.commit()
+    await bus.publish(row.project_id)
     return out
 
 
 @router.post("/projects/{project}/flags/{flag}/archive")
-async def archive_flag(session: SessionDep, project: str, flag: str) -> FlagOut:
+async def archive_flag(session: SessionDep, bus: ChangesDep, project: str, flag: str) -> FlagOut:
     row = await get_flag(session, await get_project(session, project), flag)
     await flags.archive_flag(session, row)
     out = await flags.flag_out(session, row)
     await session.commit()
+    await bus.publish(row.project_id)
     return out
 
 
 @router.post("/projects/{project}/flags/{flag}/restore")
-async def restore_flag(session: SessionDep, project: str, flag: str) -> FlagOut:
+async def restore_flag(session: SessionDep, bus: ChangesDep, project: str, flag: str) -> FlagOut:
     row = await get_flag(session, await get_project(session, project), flag)
     await flags.restore_flag(session, row)
     out = await flags.flag_out(session, row)
     await session.commit()
+    await bus.publish(row.project_id)
     return out
 
 
 @router.delete("/projects/{project}/flags/{flag}", status_code=204)
-async def delete_flag(session: SessionDep, project: str, flag: str) -> Response:
+async def delete_flag(session: SessionDep, bus: ChangesDep, project: str, flag: str) -> Response:
     row = await get_flag(session, await get_project(session, project), flag)
+    project_id = row.project_id
     await flags.delete_flag(session, row)
     await session.commit()
+    await bus.publish(project_id)
     return Response(status_code=204)
 
 
 @router.post("/projects/{project}/flags/{flag}/variations", status_code=201)
 async def add_variation(
-    session: SessionDep, project: str, flag: str, body: VariationIn
+    session: SessionDep, bus: ChangesDep, project: str, flag: str, body: VariationIn
 ) -> VariationOut:
     flag_row = await get_flag(session, await get_project(session, project), flag)
     row = await variations.add_variation(session, flag_row, body)
     out = VariationOut.model_validate(row, from_attributes=True)
     await session.commit()
+    await bus.publish(flag_row.project_id)
     return out
 
 
 @router.patch("/projects/{project}/flags/{flag}/variations/{variation}")
 async def update_variation(
-    session: SessionDep, project: str, flag: str, variation: str, body: VariationUpdate
+    session: SessionDep,
+    bus: ChangesDep,
+    project: str,
+    flag: str,
+    variation: str,
+    body: VariationUpdate,
 ) -> VariationOut:
     flag_row = await get_flag(session, await get_project(session, project), flag)
     row = await get_variation(session, flag_row, variation)
     await variations.update_variation(session, flag_row, row, body)
     out = VariationOut.model_validate(row, from_attributes=True)
     await session.commit()
+    await bus.publish(flag_row.project_id)
     return out
 
 
 @router.delete("/projects/{project}/flags/{flag}/variations/{variation}", status_code=204)
 async def delete_variation(
-    session: SessionDep, project: str, flag: str, variation: str
+    session: SessionDep, bus: ChangesDep, project: str, flag: str, variation: str
 ) -> Response:
     flag_row = await get_flag(session, await get_project(session, project), flag)
     row = await get_variation(session, flag_row, variation)
     await variations.delete_variation(session, flag_row, row)
     await session.commit()
+    await bus.publish(flag_row.project_id)
     return Response(status_code=204)

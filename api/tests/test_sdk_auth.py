@@ -107,6 +107,10 @@ async def test_revoked_after_use_cached_until_forgotten(
     headers = bearer(created["key"])
     assert (await sdk.get("/t/server", headers=headers)).status_code == 200
 
+    async def message_not_delivered(key_id: uuid.UUID) -> None:
+        pass
+
+    app.state.change_bus.publish_key_revoked = message_not_delivered
     assert (await sdk.delete(f"{KEYS}/{created['id']}")).status_code == 204
     assert (await sdk.get("/t/server", headers=headers)).status_code == 200
     app.state.key_resolver.forget(uuid.UUID(created["id"]))

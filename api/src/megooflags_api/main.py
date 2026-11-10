@@ -22,6 +22,7 @@ from megooflags_api.routers import (
     sdk_keys,
     segments,
 )
+from megooflags_api.services.changes import ChangeBus
 from megooflags_api.services.rate_limit import RateLimiter
 from megooflags_api.services.ruleset_cache import RulesetCache
 from megooflags_api.services.sdk_keys import KeyResolver
@@ -31,7 +32,7 @@ from megooflags_api.valkey import check_valkey, create_valkey
 
 
 def background_jobs(app: FastAPI) -> list[Coroutine[Any, Any, None]]:
-    return []
+    return [app.state.change_bus.run()]
 
 
 async def shutdown_jobs(app: FastAPI) -> None:
@@ -66,6 +67,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.ruleset_cache = RulesetCache()
     app.state.key_resolver = KeyResolver()
     app.state.rate_limiter = RateLimiter(app.state.valkey, settings.client_rate_limit_per_minute)
+    app.state.change_bus = ChangeBus(app.state.valkey, settings.valkey_url)
+    app.state.change_bus.on_project.append(app.state.ruleset_cache.invalidate)
+    app.state.change_bus.on_key_revoked.append(app.state.key_resolver.forget)
     install_error_handlers(app)
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(metrics.MetricsMiddleware)

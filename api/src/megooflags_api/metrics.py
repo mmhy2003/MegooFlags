@@ -17,6 +17,10 @@ IN_PROGRESS = Gauge("megooflags_http_requests_in_progress", "HTTP requests in pr
 RATE_LIMIT_ERRORS = Counter(
     "megooflags_rate_limit_errors", "Client rate-limit checks that failed open (Valkey errors)."
 )
+CHANGE_PUBLISH_ERRORS = Counter(
+    "megooflags_change_publish_errors",
+    "Change messages that could not be published to Valkey (the periodic re-check delivers them).",
+)
 BUILD_INFO = Gauge("megooflags_build_info", "MegooFlags API build.", ["version"])
 BUILD_INFO.labels(version=__version__).set(1)
 
