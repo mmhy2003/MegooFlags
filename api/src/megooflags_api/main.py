@@ -24,7 +24,11 @@ from megooflags_api.routers import (
     segments,
 )
 from megooflags_api.services.changes import ChangeBus
-from megooflags_api.services.events import EvaluationCounter, run_retention
+from megooflags_api.services.events import (
+    EvaluationCounter,
+    EventsBodyLimitMiddleware,
+    run_retention,
+)
 from megooflags_api.services.rate_limit import RateLimiter
 from megooflags_api.services.ruleset_cache import RulesetCache
 from megooflags_api.services.sdk_keys import KeyResolver
@@ -57,6 +61,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        await app.state.ruleset_cache.aclose()
         await shutdown_jobs(app)
         await app.state.valkey.aclose()
         if app.state.tracer_provider is not None:
@@ -73,7 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = create_engine(settings)
     app.state.sessionmaker = create_sessionmaker(app.state.engine)
     app.state.valkey = create_valkey(settings.valkey_url)
-    app.state.ruleset_cache = RulesetCache()
+    app.state.ruleset_cache = RulesetCache(app.state.sessionmaker)
     app.state.key_resolver = KeyResolver()
     app.state.rate_limiter = RateLimiter(app.state.valkey, settings.client_rate_limit_per_minute)
     app.state.change_bus = ChangeBus(app.state.valkey, settings.valkey_url)
@@ -85,6 +90,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.change_bus.on_resubscribe.append(app.state.stream_hub.recheck_all)
     app.state.evaluation_counter = EvaluationCounter()
     install_error_handlers(app)
+    app.add_middleware(EventsBodyLimitMiddleware)
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(metrics.MetricsMiddleware)
     app.add_middleware(SdkCorsMiddleware)

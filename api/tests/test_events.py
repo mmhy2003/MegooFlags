@@ -14,8 +14,11 @@ from test_ofrep import setup_demo
 from megooflags_api.models.project import Environment
 from megooflags_api.models.sdk import EvaluationCount, ExposureEvent
 from megooflags_api.services.events import (
+    BODY_TOO_LARGE,
+    MAX_BODY_BYTES,
     RETENTION_LOCK_ID,
     EvaluationCounter,
+    EventsBodyLimitMiddleware,
     delete_expired,
 )
 from megooflags_api.settings import Settings
@@ -307,3 +310,59 @@ async def test_retention(app: FastAPI, api: httpx.AsyncClient) -> None:
         await session.commit()
 
     assert [e.flag_key for e in await exposures(app)] == ["new"]
+
+
+def chunked(size: int, chunk: int = 64 * 1024) -> AsyncIterator[bytes]:
+    """A JSON body of about `size` bytes, sent without a Content-Length."""
+
+    async def chunks() -> AsyncIterator[bytes]:
+        yield b'{"exposures": [], "pad": "'
+        for _ in range(size // chunk):
+            yield b"x" * chunk
+        yield b'"}'
+
+    return chunks()
+
+
+async def test_oversized_chunked_body(app: FastAPI, api: httpx.AsyncClient) -> None:
+    key = await server_key(api)
+    headers = {"Content-Type": "application/json"}
+
+    r = await api.post(EVENTS, content=chunked(2 * MAX_BODY_BYTES), headers=headers)
+    assert_error(r, 401, "unauthorized")
+
+    r = await api.post(
+        EVENTS, content=chunked(2 * MAX_BODY_BYTES), headers={**headers, **bearer(key)}
+    )
+    assert_error(r, 413, "payload_too_large")
+
+
+async def test_body_limit_stops_reading() -> None:
+    received = 0
+    seen: dict[str, Any] = {}
+
+    async def receive() -> dict[str, Any]:
+        nonlocal received
+        received += 64 * 1024
+        return {"type": "http.request", "body": b"x" * 64 * 1024, "more_body": True}
+
+    async def inner(scope: dict[str, Any], receive: Any, send: Any) -> None:
+        seen["too_large"] = scope.get(BODY_TOO_LARGE)
+        seen["body"] = await receive()
+
+    limit = EventsBodyLimitMiddleware(inner)
+    scope = {"type": "http", "method": "POST", "path": EVENTS, "headers": []}
+    await limit(scope, receive, None)
+
+    assert received <= MAX_BODY_BYTES + 64 * 1024
+    assert seen == {
+        "too_large": True,
+        "body": {"type": "http.request", "body": b"{}", "more_body": False},
+    }
+
+    async def unread() -> dict[str, Any]:
+        raise AssertionError("a body declared too large must not be read")
+
+    declared = [(b"content-length", str(MAX_BODY_BYTES + 1).encode())]
+    await limit({**scope, "headers": declared}, unread, None)
+    assert seen["too_large"] is True

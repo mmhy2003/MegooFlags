@@ -56,6 +56,7 @@ async def app(migrated: None) -> AsyncIterator[FastAPI]:
     try:
         yield app
     finally:
+        await app.state.ruleset_cache.aclose()
         await app.state.valkey.aclose()
         await app.state.engine.dispose()
 

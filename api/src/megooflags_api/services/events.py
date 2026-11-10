@@ -15,6 +15,8 @@ from fastapi import Request
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from starlette.datastructures import Headers
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from megooflags_api.errors import payload_too_large
 from megooflags_api.models import EvaluationCount, ExposureEvent
@@ -23,6 +25,8 @@ from megooflags_api.schemas.events import ExposureIn
 logger = logging.getLogger(__name__)
 
 MAX_BODY_BYTES = 1_000_000
+EVENTS_PATH = "/sdk/v1/events"
+BODY_TOO_LARGE = "megooflags.body_too_large"
 RETENTION_LOCK_ID = 7_808_001
 CountKey = tuple[uuid.UUID, str, str, datetime]  # environment, flag key, variant or "", hour
 
@@ -32,8 +36,51 @@ def truncate_hour(value: datetime) -> datetime:
     return value.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
 
 
+class EventsBodyLimitMiddleware:
+    """Reads at most `MAX_BODY_BYTES` of an events body, so a large body is never buffered.
+
+    A larger body is replaced by `{}` and flagged in the scope: the route still checks the key
+    first, so anonymous callers get 401, and `limit_body_size` then answers 413.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["method"] != "POST" or scope["path"] != EVENTS_PATH:
+            await self.app(scope, receive, send)
+            return
+        messages: list[Message] = []
+        size = 0
+        too_large = _content_length(scope) > MAX_BODY_BYTES
+        while not too_large:
+            message = await receive()
+            messages.append(message)
+            if message["type"] != "http.request":
+                break
+            size += len(message.get("body", b""))
+            too_large = size > MAX_BODY_BYTES
+            if not message.get("more_body", False):
+                break
+        if too_large:
+            scope[BODY_TOO_LARGE] = True
+            messages = [{"type": "http.request", "body": b"{}", "more_body": False}]
+
+        async def replay() -> Message:
+            return messages.pop(0) if messages else await receive()
+
+        await self.app(scope, replay, send)
+
+
+def _content_length(scope: Scope) -> int:
+    try:
+        return int(Headers(scope=scope).get("content-length", "0"))
+    except ValueError:
+        return 0
+
+
 async def limit_body_size(request: Request) -> None:
-    if len(await request.body()) > MAX_BODY_BYTES:
+    if request.scope.get(BODY_TOO_LARGE):
         raise payload_too_large(f"the request body exceeds {MAX_BODY_BYTES} bytes")
 
 
