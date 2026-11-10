@@ -84,6 +84,16 @@ def already_set_up() -> ApiError:
     return ApiError(409, "already_set_up", "this instance already has a user; sign in instead")
 
 
+def builtin_role(key: str) -> ApiError:
+    return ApiError(409, "builtin_role", f"role '{key}' is built in and cannot be changed")
+
+
+def last_admin() -> ApiError:
+    return ApiError(
+        409, "last_admin", "this would leave no active user with the admin role at org scope"
+    )
+
+
 def forbidden(message: str) -> ApiError:
     return ApiError(403, "forbidden", message)
 

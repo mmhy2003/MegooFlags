@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import Depends, FastAPI
 
 from megooflags_api import __version__, metrics
+from megooflags_api.auth.principal import get_principal
 from megooflags_api.auth.throttle import AuthThrottle
 from megooflags_api.cors import SdkCorsMiddleware
 from megooflags_api.crypto import SecretBox, require_secret_key
@@ -23,6 +24,7 @@ from megooflags_api.routers import (
     health,
     ofrep,
     projects,
+    roles,
     sdk,
     sdk_keys,
     segments,
@@ -127,6 +129,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sdk_keys,
     ):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_actor)])
+    app.include_router(roles.router, prefix="/api", dependencies=[Depends(get_principal)])
     app.include_router(sdk.router)
     app.include_router(ofrep.router)
     app.state.tracer_provider = configure_tracing(app, app.state.engine)

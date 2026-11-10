@@ -215,30 +215,33 @@ def _scope_of(project_id: uuid.UUID | None, environment_id: uuid.UUID | None) ->
     return ScopeKind.PROJECT if project_id is not None else ScopeKind.ORG
 
 
+def own_bindings(principal: Principal) -> ColumnElement[bool]:
+    """Matches the role bindings that apply to the principal: a service token's own, or the
+    user's (a personal token's owner's) and their teams'."""
+    if principal.kind == PrincipalKind.SERVICE_TOKEN:
+        return (RoleBinding.subject_kind == SubjectKind.SERVICE_TOKEN) & (
+            RoleBinding.subject_id == principal.id
+        )
+    teams = select(TeamMember.team_id).where(TeamMember.user_id == principal.user_id)
+    return or_(
+        (RoleBinding.subject_kind == SubjectKind.USER)
+        & (RoleBinding.subject_id == principal.user_id),
+        (RoleBinding.subject_kind == SubjectKind.TEAM) & RoleBinding.subject_id.in_(teams),
+    )
+
+
 async def load_authorizer(session: AsyncSession, principal: Principal) -> Authorizer:
     """The principal's authorizer, from one SELECT of its role bindings.
 
     A user gets its own and its teams' bindings; a service token its own; a personal token its
     owner's, capped by the token's permissions and scope.
     """
-    subject: ColumnElement[bool]
-    if principal.kind == PrincipalKind.SERVICE_TOKEN:
-        subject = (RoleBinding.subject_kind == SubjectKind.SERVICE_TOKEN) & (
-            RoleBinding.subject_id == principal.id
-        )
-    else:
-        teams = select(TeamMember.team_id).where(TeamMember.user_id == principal.user_id)
-        subject = or_(
-            (RoleBinding.subject_kind == SubjectKind.USER)
-            & (RoleBinding.subject_id == principal.user_id),
-            (RoleBinding.subject_kind == SubjectKind.TEAM) & RoleBinding.subject_id.in_(teams),
-        )
     rows = await session.execute(
         select(
             RoleBinding.scope, RoleBinding.project_id, RoleBinding.environment_id, Role.permissions
         )
         .join(Role, Role.id == RoleBinding.role_id)
-        .where(subject)
+        .where(own_bindings(principal))
     )
     authorizer = Authorizer(
         Grant(scope, project_id, environment_id, _permissions(permissions))
