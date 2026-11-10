@@ -80,7 +80,10 @@ class ChangeBus:
                     await pubsub.subscribe(CHANNEL)
                     backoff = BACKOFF_MIN
                     for callback in self.on_resubscribe:
-                        await callback()
+                        try:
+                            await callback()
+                        except Exception:
+                            logger.exception("resubscribe callback failed")
                     async for message in pubsub.listen():
                         if message["type"] == "message":
                             self.dispatch(message["data"])

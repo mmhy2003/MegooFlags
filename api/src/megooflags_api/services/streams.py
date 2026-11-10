@@ -95,6 +95,18 @@ class StreamHub:
                 if sub.principal.key_id == key_id:
                     sub.offer(Revoked())
 
+    async def recheck_all(self) -> None:
+        """Refresh every subscribed environment; covers change messages that never arrived."""
+        await self.refresh(list(self._subscribers))
+
+    async def run_recheck_loop(self, interval: float) -> None:
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await self.recheck_all()
+            except Exception:
+                logger.exception("re-checking the open streams failed")
+
     async def _run_flush(self) -> None:
         while self._pending:
             await asyncio.sleep(self._debounce)

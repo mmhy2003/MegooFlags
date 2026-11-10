@@ -33,7 +33,10 @@ from megooflags_api.valkey import check_valkey, create_valkey
 
 
 def background_jobs(app: FastAPI) -> list[Coroutine[Any, Any, None]]:
-    return [app.state.change_bus.run()]
+    return [
+        app.state.change_bus.run(),
+        app.state.stream_hub.run_recheck_loop(app.state.settings.stream_recheck_seconds),
+    ]
 
 
 async def shutdown_jobs(app: FastAPI) -> None:
@@ -74,6 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.stream_hub = StreamHub(app.state.sessionmaker, app.state.ruleset_cache)
     app.state.change_bus.on_project.append(app.state.stream_hub.notify_project)
     app.state.change_bus.on_key_revoked.append(app.state.stream_hub.notify_key_revoked)
+    app.state.change_bus.on_resubscribe.append(app.state.stream_hub.recheck_all)
     install_error_handlers(app)
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(metrics.MetricsMiddleware)
