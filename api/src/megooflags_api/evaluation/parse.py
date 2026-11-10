@@ -91,8 +91,7 @@ def _known(value: Any, variations: dict[str, Variation], path: str) -> str:
 def parse_ruleset(data: Any) -> Ruleset:
     """Validate `data` and build a Ruleset. Raises RulesetError naming the bad JSON path."""
     root = _dict(data, "ruleset")
-    version = _get(root, "schema_version", "")
-    if isinstance(version, bool) or version != SCHEMA_VERSION:
+    if _int(_get(root, "schema_version", ""), "schema_version") != SCHEMA_VERSION:
         raise _fail("schema_version", f"must be {SCHEMA_VERSION}")
     project = _str(_get(root, "project", ""), "project")
     environment = _str(_get(root, "environment", ""), "environment")
@@ -111,7 +110,7 @@ def _flag(key: str, value: Any, path: str) -> Flag:
     obj = _dict(value, path)
     if _get(obj, "key", path) != key:
         raise _fail(f"{path}.key", f"must equal '{key}'")
-    flag_type = _get(obj, "type", path)
+    flag_type = _str(_get(obj, "type", path), f"{path}.type")
     if flag_type not in FLAG_TYPES:
         raise _fail(f"{path}.type", f"must be one of {sorted(FLAG_TYPES)}")
     variations = _variations(_get(obj, "variations", path), f"{path}.variations")
@@ -213,7 +212,7 @@ def _clauses(value: Any, path: str, *, segment: bool) -> tuple[Clause, ...]:
 def _clause(value: Any, path: str, *, segment: bool) -> Clause:
     obj = _dict(value, path)
     attribute = _str(_get(obj, "attribute", path), f"{path}.attribute")
-    operator = _get(obj, "operator", path)
+    operator = _str(_get(obj, "operator", path), f"{path}.operator")
     if operator not in operators.OPERATORS:
         raise _fail(f"{path}.operator", f"unknown operator {operator!r}")
     if segment and operator == "in_segment":

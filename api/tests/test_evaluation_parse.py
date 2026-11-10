@@ -215,6 +215,7 @@ ERRORS: list[tuple[str, Mutation | Any, str]] = [
     ("schema_version_missing", _del(("schema_version",)), "schema_version"),
     ("schema_version_2", _set(("schema_version",), 2), "schema_version"),
     ("schema_version_true", _set(("schema_version",), True), "schema_version"),
+    ("schema_version_float", _set(("schema_version",), 1.0), "schema_version"),
     ("project", _set(("project",), 1), "project"),
     ("environment", _del(("environment",)), "environment"),
     ("flags", _set(("flags",), []), "flags"),
@@ -223,6 +224,7 @@ ERRORS: list[tuple[str, Mutation | Any, str]] = [
     ("flag_not_dict", _set(B, "x"), "flags.b"),
     ("flag_key", _set((*B, "key"), "c"), "flags.b.key"),
     ("flag_type", _set((*B, "type"), "int"), "flags.b.type"),
+    ("flag_type_list", _set((*B, "type"), []), "flags.b.type"),
     ("flag_enabled", _set((*B, "enabled"), 1), "flags.b.enabled"),
     ("flag_version_bool", _set((*B, "version"), True), "flags.b.version"),
     ("flag_version_str", _set((*B, "version"), "1"), "flags.b.version"),
@@ -362,6 +364,16 @@ ERRORS: list[tuple[str, Mutation | Any, str]] = [
         "clause_attribute",
         _set((*B, "rules", 0, "clauses", 0, "attribute"), 1),
         "flags.b.rules[0].clauses[0].attribute",
+    ),
+    (
+        "clause_operator_list",
+        _set((*B, "rules", 0, "clauses", 0, "operator"), ["in"]),
+        "flags.b.rules[0].clauses[0].operator",
+    ),
+    (
+        "clause_operator_dict",
+        _set((*B, "rules", 0, "clauses", 0, "operator"), {}),
+        "flags.b.rules[0].clauses[0].operator",
     ),
     (
         "clause_operator",
