@@ -4,7 +4,10 @@ from typing import Any
 import httpx
 from fastapi import FastAPI
 from helpers import count_statements, create_flag, create_project
-from sqlalchemy import text
+from sqlalchemy import select, text
+
+from megooflags_api.models import Environment, Project
+from megooflags_api.services.ruleset import build_ruleset
 
 FLAGS = "/api/projects/big/flags"
 FLAG_COUNT = 10_000
@@ -119,3 +122,31 @@ async def test_create_flag_in_big_project(app: FastAPI, api: httpx.AsyncClient) 
             )
         )
     assert rows == 4
+
+
+async def build_production(app: FastAPI, project: str) -> tuple[dict[str, Any], int]:
+    async with app.state.sessionmaker() as session:
+        environment = await session.scalar(
+            select(Environment)
+            .join(Project, Project.id == Environment.project_id)
+            .where(Project.key == project, Environment.key == "production")
+        )
+        assert environment is not None
+        with count_statements(app.state.engine) as statements:
+            ruleset = await build_ruleset(session, environment)
+    return ruleset, len(statements)
+
+
+async def test_build_ruleset_statement_count_is_constant(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await create_project(api, "demo")
+    await create_flag(api, "demo")
+    await seed_big_project(app, api)
+
+    small, small_count = await build_production(app, "demo")
+    big, big_count = await build_production(app, "big")
+
+    assert len(small["flags"]) == 1
+    assert len(big["flags"]) == FLAG_COUNT
+    assert small_count == big_count <= 14

@@ -1,6 +1,8 @@
 from typing import Any
 
+import httpx
 import pytest
+from helpers import assert_error, create_flag, create_project
 from pydantic import ValidationError
 
 from megooflags_api.errors import ApiError
@@ -21,6 +23,18 @@ CASES: list[tuple[str, list[Any], bool]] = [
     ("ends_with", [1], False),
     ("matches", ["^a.*"], True),
     ("matches", ["("], False),
+    ("matches", ["a(?=b)"], False),
+    ("matches", ["(?<!a)b"], False),
+    ("matches", ["(a)\\1"], False),
+    ("matches", ["(?P<x>a)(?P=x)"], False),
+    ("matches", ["(?>a)"], False),
+    ("matches", ["a*+"], False),
+    ("matches", ["a{2}+"], False),
+    ("matches", ["(a)?(?(1)b|c)"], False),
+    ("matches", ["[(?=]x"], True),
+    ("matches", ["\\(\\?=a"], True),
+    ("matches", ["(?P<x>a)b"], True),
+    ("matches", ["\\d+\\.\\d+"], True),
     ("lt", [1, 2.5], True),
     ("lt", ["1"], False),
     ("lt", [True], False),
@@ -36,6 +50,7 @@ CASES: list[tuple[str, list[Any], bool]] = [
     ("semver_eq", ["1.2.3", "1.0.0-rc.1+b5"], True),
     ("semver_eq", ["1.2"], False),
     ("semver_eq", ["v1.2.3"], False),
+    ("semver_eq", ["1.2.3\n"], False),
     ("semver_lt", ["1.2.3", "1.0.0-rc.1+b5"], True),
     ("semver_lt", ["1.2"], False),
     ("semver_lt", ["v1.2.3"], False),
@@ -99,3 +114,24 @@ def test_values_must_not_be_empty() -> None:
 
 def test_attribute_defaults_to_key() -> None:
     assert ClauseIn(operator=Operator.IN, values=["a"]).attribute == "key"
+
+
+async def test_put_config_refuses_lookahead(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_flag(api)
+    body = {
+        "version": 1,
+        "enabled": True,
+        "rules": [
+            {
+                "clauses": [{"attribute": "email", "operator": "matches", "values": ["a(?=b)"]}],
+                "variation": "true",
+            }
+        ],
+        "fallthrough": {"variation": "false"},
+    }
+
+    r = await api.put("/api/projects/demo/flags/new-ui/environments/production", json=body)
+
+    error = assert_error(r, 422, "validation_error")
+    assert error["details"] == {"path": "rules[0].clauses[0].values[0]"}

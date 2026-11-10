@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "description": "Resolution reasons: STATIC, DEFAULT and DISABLED, a missing off variation, and JSON null variation values.",
+  "ruleset": {
+    "schema_version": 1,
+    "project": "conformance",
+    "environment": "test",
+    "flags": {
+      "static": {
+        "key": "static", "type": "string", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": "on"}, {"key": "off", "value": "off"}],
+        "off_variation": "off", "prerequisites": [], "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "with-rule": {
+        "key": "with-rule", "type": "string", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": "on"}, {"key": "off", "value": "off"}],
+        "off_variation": "off", "prerequisites": [], "targets": [],
+        "rules": [
+          {
+            "description": "pro plan",
+            "clauses": [{"attribute": "plan", "operator": "in", "values": ["pro"], "negate": false}],
+            "serve": {"variation": "on"}
+          }
+        ],
+        "fallthrough": {"variation": "off"}
+      },
+      "with-target": {
+        "key": "with-target", "type": "string", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": "on"}, {"key": "off", "value": "off"}],
+        "off_variation": "off", "prerequisites": [],
+        "targets": [{"variation": "on", "values": ["alice"]}],
+        "rules": [],
+        "fallthrough": {"variation": "off"}
+      },
+      "disabled": {
+        "key": "disabled", "type": "string", "enabled": false, "version": 1,
+        "variations": [{"key": "on", "value": "on"}, {"key": "off", "value": "off"}],
+        "off_variation": "off", "prerequisites": [],
+        "targets": [{"variation": "on", "values": ["alice"]}],
+        "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "disabled-no-off": {
+        "key": "disabled-no-off", "type": "string", "enabled": false, "version": 1,
+        "variations": [{"key": "on", "value": "on"}, {"key": "off", "value": "off"}],
+        "off_variation": null, "prerequisites": [], "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "prerequisite-no-off": {
+        "key": "prerequisite-no-off", "type": "string", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": "on"}, {"key": "off", "value": "off"}],
+        "off_variation": null,
+        "prerequisites": [{"flag": "ghost", "variation": "on"}],
+        "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "null-value": {
+        "key": "null-value", "type": "json", "enabled": true, "version": 1,
+        "variations": [{"key": "none", "value": null}, {"key": "some", "value": {"a": 1}}],
+        "off_variation": "none", "prerequisites": [], "targets": [], "rules": [],
+        "fallthrough": {"variation": "none"}
+      }
+    },
+    "segments": {}
+  },
+  "tests": [
+    {"name": "static", "flag": "static", "context": {"key": "u1"}, "default": "x",
+     "expected": {"value": "on", "variant": "on", "reason": "STATIC", "error_code": null, "metadata": {}}},
+    {"name": "default-with-rules", "flag": "with-rule", "context": {"key": "u1"}, "default": "x",
+     "expected": {"value": "off", "variant": "off", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "default-with-targets", "flag": "with-target", "context": {"key": "u1"}, "default": "x",
+     "expected": {"value": "off", "variant": "off", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "disabled", "flag": "disabled", "context": {"key": "u1"}, "default": "x",
+     "expected": {"value": "off", "variant": "off", "reason": "DISABLED", "error_code": null, "metadata": {}}},
+    {"name": "disabled-ignores-targets", "flag": "disabled", "context": {"key": "alice"}, "default": "x",
+     "expected": {"value": "off", "variant": "off", "reason": "DISABLED", "error_code": null, "metadata": {}}},
+    {"name": "disabled-without-off-variation", "flag": "disabled-no-off", "context": {"key": "u1"}, "default": "x",
+     "expected": {"value": "x", "variant": null, "reason": "DISABLED", "error_code": null, "metadata": {}}},
+    {"name": "prerequisite-failed-without-off-variation", "flag": "prerequisite-no-off", "context": {"key": "u1"}, "default": "x",
+     "expected": {"value": "x", "variant": null, "reason": "PREREQUISITE_FAILED", "error_code": null, "metadata": {"prerequisite": "ghost"}}},
+    {"name": "json-null-value", "flag": "null-value", "context": {"key": "u1"}, "default": {"d": true}, "expected_type": "json",
+     "expected": {"value": null, "variant": "none", "reason": "STATIC", "error_code": null, "metadata": {}}}
+  ]
+}

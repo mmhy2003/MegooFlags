@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "description": "Percentage rollouts (T-5): sticky buckets from \"<flag_key>.<bucketing value>\" with no rule salt, weight boundaries, custom bucket_by and missing bucketing values. Buckets used here are in ../bucketing.json (rollout.user-1 = 2613, rollout.user-3 = 82799, rollout.42 = 59948, rollout.acme = 98311, rollout.globex = 90023, zero-first.user-1 = 46165).",
+  "ruleset": {
+    "schema_version": 1,
+    "project": "conformance",
+    "environment": "test",
+    "flags": {
+      "rollout": {
+        "key": "rollout",
+        "type": "string",
+        "enabled": true,
+        "version": 1,
+        "variations": [{"key": "a", "value": "a"}, {"key": "b", "value": "b"}],
+        "off_variation": "a",
+        "prerequisites": [],
+        "targets": [],
+        "rules": [
+          {
+            "description": "pro: same weights as the fallthrough",
+            "clauses": [{"attribute": "plan", "operator": "in", "values": ["pro"], "negate": false}],
+            "serve": {"rollout": {"bucket_by": "key", "weights": [{"variation": "a", "weight": 50000}, {"variation": "b", "weight": 50000}]}}
+          },
+          {
+            "description": "upper boundary: a gets exactly the buckets below user-1's",
+            "clauses": [{"attribute": "plan", "operator": "in", "values": ["edge-hi"], "negate": false}],
+            "serve": {"rollout": {"bucket_by": "key", "weights": [{"variation": "a", "weight": 2613}, {"variation": "b", "weight": 97387}]}}
+          },
+          {
+            "description": "lower boundary: a also gets user-1's bucket",
+            "clauses": [{"attribute": "plan", "operator": "in", "values": ["edge-lo"], "negate": false}],
+            "serve": {"rollout": {"bucket_by": "key", "weights": [{"variation": "a", "weight": 2614}, {"variation": "b", "weight": 97386}]}}
+          },
+          {
+            "description": "enterprise: bucket by org",
+            "clauses": [{"attribute": "plan", "operator": "in", "values": ["enterprise"], "negate": false}],
+            "serve": {"rollout": {"bucket_by": "org", "weights": [{"variation": "a", "weight": 95000}, {"variation": "b", "weight": 5000}]}}
+          }
+        ],
+        "fallthrough": {"rollout": {"bucket_by": "key", "weights": [{"variation": "a", "weight": 50000}, {"variation": "b", "weight": 50000}]}}
+      },
+      "zero-first": {
+        "key": "zero-first",
+        "type": "string",
+        "enabled": true,
+        "version": 1,
+        "variations": [{"key": "a", "value": "a"}, {"key": "b", "value": "b"}, {"key": "c", "value": "c"}],
+        "off_variation": "a",
+        "prerequisites": [],
+        "targets": [],
+        "rules": [],
+        "fallthrough": {"rollout": {"bucket_by": "key", "weights": [{"variation": "a", "weight": 0}, {"variation": "b", "weight": 1}, {"variation": "c", "weight": 99999}]}}
+      }
+    },
+    "segments": {}
+  },
+  "tests": [
+    {"name": "fallthrough-split-low", "flag": "rollout", "context": {"key": "user-1"}, "default": "x",
+     "expected": {"value": "a", "variant": "a", "reason": "SPLIT", "error_code": null, "metadata": {}}},
+    {"name": "fallthrough-split-high", "flag": "rollout", "context": {"key": "user-3"}, "default": "x",
+     "expected": {"value": "b", "variant": "b", "reason": "SPLIT", "error_code": null, "metadata": {}}},
+    {"name": "rule-rollout", "flag": "rollout", "context": {"key": "user-3", "plan": "pro"}, "default": "x",
+     "expected": {"value": "b", "variant": "b", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 0}}},
+    {"name": "same-bucket-in-rule-and-fallthrough", "flag": "rollout", "context": {"key": "user-1", "plan": "pro"}, "default": "x",
+     "expected": {"value": "a", "variant": "a", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 0}}},
+    {"name": "boundary-bucket-equals-first-weight", "flag": "rollout", "context": {"key": "user-1", "plan": "edge-hi"}, "default": "x",
+     "expected": {"value": "b", "variant": "b", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 1}}},
+    {"name": "boundary-bucket-below-first-weight", "flag": "rollout", "context": {"key": "user-1", "plan": "edge-lo"}, "default": "x",
+     "expected": {"value": "a", "variant": "a", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 2}}},
+    {"name": "missing-attribute-first-non-zero-weight", "flag": "zero-first", "context": {}, "default": "x",
+     "expected": {"value": "b", "variant": "b", "reason": "SPLIT", "error_code": null, "metadata": {}}},
+    {"name": "bool-value-counts-as-missing", "flag": "zero-first", "context": {"key": true}, "default": "x",
+     "expected": {"value": "b", "variant": "b", "reason": "SPLIT", "error_code": null, "metadata": {}}},
+    {"name": "null-value-counts-as-missing", "flag": "zero-first", "context": {"key": null}, "default": "x",
+     "expected": {"value": "b", "variant": "b", "reason": "SPLIT", "error_code": null, "metadata": {}}},
+    {"name": "present-value-is-hashed", "flag": "zero-first", "context": {"key": "user-1"}, "default": "x",
+     "expected": {"value": "c", "variant": "c", "reason": "SPLIT", "error_code": null, "metadata": {}}},
+    {"name": "bucket-by-org-acme", "flag": "rollout", "context": {"key": "user-1", "plan": "enterprise", "org": "acme"}, "default": "x",
+     "expected": {"value": "b", "variant": "b", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 3}}},
+    {"name": "bucket-by-org-globex", "flag": "rollout", "context": {"key": "user-1", "plan": "enterprise", "org": "globex"}, "default": "x",
+     "expected": {"value": "a", "variant": "a", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 3}}},
+    {"name": "bucket-by-org-ignores-key", "flag": "rollout", "context": {"key": "user-3", "plan": "enterprise", "org": "acme"}, "default": "x",
+     "expected": {"value": "b", "variant": "b", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 3}}},
+    {"name": "integer-value-as-integer", "flag": "rollout", "context": {"key": 42}, "default": "x",
+     "expected": {"value": "b", "variant": "b", "reason": "SPLIT", "error_code": null, "metadata": {}}},
+    {"name": "integer-value-as-string", "flag": "rollout", "context": {"key": "42"}, "default": "x",
+     "expected": {"value": "b", "variant": "b", "reason": "SPLIT", "error_code": null, "metadata": {}}},
+    {"name": "integral-float-value", "flag": "rollout", "context": {"key": 42.0}, "default": "x",
+     "expected": {"value": "b", "variant": "b", "reason": "SPLIT", "error_code": null, "metadata": {}}}
+  ]
+}

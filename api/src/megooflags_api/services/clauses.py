@@ -11,16 +11,20 @@ from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.errors import invalid_reference, validation_error
+from megooflags_api.evaluation.operators import RFC3339, SEMVER
 from megooflags_api.models import Clause, ClauseSegment, Segment
 from megooflags_api.models.enums import Operator
 from megooflags_api.schemas.targeting import ClauseIn, ClauseOut
 
-SEMVER = re.compile(
-    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
-    r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
-    r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
+NON_PORTABLE_GROUPS = (
+    ("(?=", "lookahead is not portable"),
+    ("(?!", "lookahead is not portable"),
+    ("(?<=", "lookbehind is not portable"),
+    ("(?<!", "lookbehind is not portable"),
+    ("(?>", "atomic groups are not portable"),
+    ("(?(", "conditionals are not portable"),
+    ("(?P=", "backreferences are not portable"),
 )
-RFC3339 = re.compile(r"^\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$")
 
 STRING_OPERATORS = {Operator.CONTAINS, Operator.STARTS_WITH, Operator.ENDS_WITH}
 NUMBER_OPERATORS = {Operator.LT, Operator.LTE, Operator.GT, Operator.GTE}
@@ -28,16 +32,48 @@ SEMVER_OPERATORS = {Operator.SEMVER_EQ, Operator.SEMVER_LT, Operator.SEMVER_GT}
 DATE_OPERATORS = {Operator.BEFORE, Operator.AFTER}
 
 
+def regex_portability_error(pattern: str) -> str | None:
+    """Why `pattern` is outside the RE2/Python common subset, or None."""
+    i, in_class = 0, False
+    while i < len(pattern):
+        c = pattern[i]
+        if c == "\\":
+            nxt = pattern[i + 1 : i + 2]
+            if not in_class and nxt and nxt in "123456789":
+                return "backreferences are not portable"
+            i += 2
+            continue
+        if in_class:
+            in_class = c != "]"
+            i += 1
+            continue
+        if c == "[":
+            in_class = True
+            i += 1
+            if pattern[i : i + 1] == "^":
+                i += 1
+            if pattern[i : i + 1] == "]":  # a leading ] is literal
+                i += 1
+            continue
+        for prefix, message in NON_PORTABLE_GROUPS:
+            if pattern.startswith(prefix, i):
+                return message
+        if c in "*+?}" and pattern[i + 1 : i + 2] == "+":
+            return "possessive quantifiers are not portable"
+        i += 1
+    return None
+
+
 def _is_regex(value: str) -> bool:
     try:
-        re.compile(value)
+        re.compile(value, re.ASCII)
     except re.error:
         return False
     return True
 
 
 def _is_datetime(value: str) -> bool:
-    if not RFC3339.match(value):
+    if not RFC3339.fullmatch(value):
         return False
     try:
         datetime.fromisoformat(value)
@@ -56,9 +92,11 @@ def _value_error(operator: Operator, value: Any) -> str | None:
         return f"{operator.value} needs finite numbers"
     if not isinstance(value, str):
         return f"{operator.value} needs strings"
-    if operator == Operator.MATCHES and not _is_regex(value):
-        return "invalid regular expression"
-    if operator in SEMVER_OPERATORS and not SEMVER.match(value):
+    if operator == Operator.MATCHES:
+        if not _is_regex(value):
+            return "invalid regular expression"
+        return regex_portability_error(value)
+    if operator in SEMVER_OPERATORS and not SEMVER.fullmatch(value):
         return "invalid semantic version"
     if operator in DATE_OPERATORS and not _is_datetime(value):
         return "invalid RFC 3339 date-time"

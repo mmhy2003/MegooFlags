@@ -10,12 +10,14 @@ from megooflags_api.errors import install_error_handlers
 from megooflags_api.logging import AccessLogMiddleware, configure_logging
 from megooflags_api.routers import (
     environments,
+    evaluate,
     flag_environments,
     flags,
     health,
     projects,
     segments,
 )
+from megooflags_api.services.ruleset_cache import RulesetCache
 from megooflags_api.settings import Settings, get_settings
 from megooflags_api.tracing import configure_tracing
 
@@ -35,12 +37,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = create_engine(settings)
     app.state.sessionmaker = create_sessionmaker(app.state.engine)
+    app.state.ruleset_cache = RulesetCache()
     install_error_handlers(app)
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(metrics.MetricsMiddleware)
     app.include_router(health.router)
     app.include_router(metrics.router)
-    for module in (projects, environments, flags, flag_environments, segments):
+    for module in (projects, environments, flags, flag_environments, segments, evaluate):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_actor)])
     app.state.tracer_provider = configure_tracing(app, app.state.engine)
     return app

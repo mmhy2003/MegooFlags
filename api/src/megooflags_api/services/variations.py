@@ -16,6 +16,10 @@ def _fixed(path: str | None = None) -> ApiError:
     return validation_error("boolean flags have fixed variations", path)
 
 
+def _touch(flag: Flag) -> None:
+    flag.updated_at = func.now()  # the ruleset cache fingerprint watches it
+
+
 async def add_variation(session: AsyncSession, flag: Flag, body: VariationIn) -> Variation:
     """The new variation is listed last."""
     if flag.type == FlagType.BOOLEAN:
@@ -33,6 +37,7 @@ async def add_variation(session: AsyncSession, flag: Flag, body: VariationIn) ->
         sort_order=0 if last is None else last + 1,
     )
     session.add(variation)
+    _touch(flag)
     try:
         await session.flush()
     except IntegrityError as exc:
@@ -55,6 +60,7 @@ async def update_variation(
         variation.name = body.name
     if body.description is not None:
         variation.description = body.description
+    _touch(flag)
     await session.flush()
 
 
@@ -65,4 +71,5 @@ async def delete_variation(session: AsyncSession, flag: Flag, variation: Variati
     if used_by:
         raise in_use(f"variation '{variation.key}' is in use", used_by)
     await session.delete(variation)
+    _touch(flag)
     await session.flush()

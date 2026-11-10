@@ -269,6 +269,123 @@
         "title": "ErrorBody",
         "type": "object"
       },
+      "EvaluateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Context",
+            "type": "object"
+          },
+          "flags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Flag keys to evaluate; every non-archived flag when omitted.",
+            "title": "Flags"
+          }
+        },
+        "required": [
+          "context"
+        ],
+        "title": "EvaluateIn",
+        "type": "object"
+      },
+      "EvaluateOut": {
+        "additionalProperties": false,
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationResult"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "EvaluateOut",
+        "type": "object"
+      },
+      "EvaluationResult": {
+        "additionalProperties": false,
+        "description": "An OpenFeature resolution detail. `value` is null when the flag is not found.",
+        "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Metadata",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "variant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant"
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "variant",
+          "reason",
+          "error_code",
+          "error_message",
+          "metadata"
+        ],
+        "title": "EvaluationResult",
+        "type": "object"
+      },
       "FlagConfigIn": {
         "additionalProperties": false,
         "properties": {
@@ -2307,6 +2424,88 @@
         "summary": "Update Environment",
         "tags": [
           "environments"
+        ]
+      }
+    },
+    "/api/projects/{project}/environments/{env}/evaluate": {
+      "post": {
+        "description": "Evaluate flags for a context exactly as SDKs do; results are sorted by key.",
+        "operationId": "evaluate_flags_api_projects__project__environments__env__evaluate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "env",
+            "required": true,
+            "schema": {
+              "title": "Env",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Evaluate Flags",
+        "tags": [
+          "evaluation"
         ]
       }
     },
