@@ -66,17 +66,20 @@ async def list_keys(session: AsyncSession, environment: Environment) -> Sequence
     return rows.all()
 
 
-async def revoke_key(session: AsyncSession, environment: Environment, key_id: uuid.UUID) -> SdkKey:
-    """Revoking twice keeps the first revoked_at."""
+async def get_key(session: AsyncSession, environment: Environment, key_id: uuid.UUID) -> SdkKey:
     row = await session.scalar(
         select(SdkKey).where(SdkKey.id == key_id, SdkKey.environment_id == environment.id)
     )
     if row is None:
         raise not_found("sdk key", str(key_id))
+    return row
+
+
+async def revoke_key(session: AsyncSession, row: SdkKey) -> None:
+    """Revoking twice keeps the first revoked_at."""
     if row.revoked_at is None:
         row.revoked_at = await session.scalar(select(func.now()))
         await session.flush()
-    return row
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,16 +1,18 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.auth.rbac import Permission
 from megooflags_api.auth.require import Authz, require
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES, not_found, version_conflict
-from megooflags_api.models import Environment, FlagEnvironment, Project
+from megooflags_api.models import Environment, Flag, FlagEnvironment, Project
 from megooflags_api.schemas.common import FlagEnvironmentState
 from megooflags_api.schemas.targeting import CopyIn, FlagConfigIn, FlagConfigOut, ToggleIn
 from megooflags_api.services import targeting
+from megooflags_api.services.audit import AuditDep, Auditor, snapshot
 from megooflags_api.services.changes import ChangesDep
 from megooflags_api.services.flags import environment_states
 from megooflags_api.services.lookup import get_environment, get_flag, get_flag_environment
@@ -47,6 +49,7 @@ async def read_flag_config(
 async def replace_flag_config(
     session: SessionDep,
     authz: WriteConfig,
+    audit: AuditDep,
     bus: ChangesDep,
     project: str,
     flag: str,
@@ -57,16 +60,20 @@ async def replace_flag_config(
     project_row, env_row = _project(authz), _environment(authz)
     flag_row = await get_flag(session, project_row, flag)
     fe = await get_flag_environment(session, flag_row, env_row, lock=True)
+    before = await targeting.load_config(session, flag_row, fe, env_row.key)
     await targeting.replace_config(session, flag_row, fe, body)
+    out = await targeting.load_config(session, flag_row, fe, env_row.key)
+    await _record(audit, "flag.config.update", flag_row, env_row, before, out)
     await session.commit()
     await bus.publish(project_row.id)
-    return await targeting.load_config(session, flag_row, fe, env_row.key)
+    return out
 
 
 @router.post("/projects/{project}/flags/{flag}/environments/{env}/toggle")
 async def toggle_flag(
     session: SessionDep,
     authz: Toggle,
+    audit: AuditDep,
     bus: ChangesDep,
     project: str,
     flag: str,
@@ -79,7 +86,9 @@ async def toggle_flag(
     fe = await get_flag_environment(session, flag_row, env_row, lock=True)
     if body.version is not None and body.version != fe.version:
         raise version_conflict(fe.version)
+    before = _state(fe, env_row.key)
     await targeting.set_enabled(session, fe, body.enabled)
+    await _record(audit, "flag.toggle", flag_row, env_row, before, _state(fe, env_row.key))
     await session.commit()
     await bus.publish(project_row.id)
     return _state(fe, env_row.key)
@@ -87,7 +96,13 @@ async def toggle_flag(
 
 @router.post("/projects/{project}/flags/{flag}/environments/{env}/kill")
 async def kill_flag(
-    session: SessionDep, authz: Toggle, bus: ChangesDep, project: str, flag: str, env: str
+    session: SessionDep,
+    authz: Toggle,
+    audit: AuditDep,
+    bus: ChangesDep,
+    project: str,
+    flag: str,
+    env: str,
 ) -> FlagEnvironmentState:
     """Kill switch: turn the flag off, whatever the version; targeting is left as is.
 
@@ -96,7 +111,9 @@ async def kill_flag(
     project_row, env_row = _project(authz), _environment(authz)
     flag_row = await get_flag(session, project_row, flag)
     fe = await get_flag_environment(session, flag_row, env_row, lock=True)
+    before = _state(fe, env_row.key)
     await targeting.set_enabled(session, fe, False)
+    await _record(audit, "flag.kill", flag_row, env_row, before, _state(fe, env_row.key))
     await session.commit()
     await bus.publish(project_row.id)
     return _state(fe, env_row.key)
@@ -104,7 +121,13 @@ async def kill_flag(
 
 @router.post("/projects/{project}/flags/{flag}/copy")
 async def copy_flag_config(
-    session: SessionDep, authz: ReadProject, bus: ChangesDep, project: str, flag: str, body: CopyIn
+    session: SessionDep,
+    authz: ReadProject,
+    audit: AuditDep,
+    bus: ChangesDep,
+    project: str,
+    flag: str,
+    body: CopyIn,
 ) -> list[FlagEnvironmentState]:
     """Copy targets, rules, rollouts and prerequisites from one environment to others.
 
@@ -118,11 +141,48 @@ async def copy_flag_config(
     targets = [await _visible_environment(session, authz, key) for key in body.to]
     for target in targets:
         authz.check(Permission.FLAG_CONFIG_WRITE, project_row.id, target.id)
+    # Locked in id order before copy_config's prerequisite locks, like a PUT, for the snapshots.
+    rows = await session.scalars(
+        select(FlagEnvironment)
+        .where(
+            FlagEnvironment.flag_id == flag_row.id,
+            FlagEnvironment.environment_id.in_([target.id for target in targets]),
+        )
+        .order_by(FlagEnvironment.id)
+        .with_for_update()
+    )
+    fes = {fe.environment_id: fe for fe in rows.all()}
+    before = {
+        target.id: await targeting.load_config(session, flag_row, fes[target.id], target.key)
+        for target in targets
+    }
     await targeting.copy_config(session, flag_row, source, targets, body.include_enabled)
+    for target in targets:
+        after = await targeting.load_config(session, flag_row, fes[target.id], target.key)
+        await _record(audit, "flag.copy", flag_row, target, before[target.id], after)
     await session.commit()
     await bus.publish(project_row.id)
     states = (await environment_states(session, [flag_row.id]))[flag_row.id]
     return [state for state in states if state.environment in body.to]
+
+
+async def _record(
+    audit: Auditor,
+    action: str,
+    flag: Flag,
+    env: Environment,
+    before: FlagConfigOut | FlagEnvironmentState,
+    after: FlagConfigOut | FlagEnvironmentState,
+) -> None:
+    await audit.record(
+        action,
+        "flag",
+        flag.key,
+        project_id=env.project_id,
+        environment_id=env.id,
+        before=snapshot(before),
+        after=snapshot(after),
+    )
 
 
 def _state(fe: FlagEnvironment, env_key: str) -> FlagEnvironmentState:

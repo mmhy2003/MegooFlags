@@ -15,6 +15,7 @@ from megooflags_api.schemas.projects import (
     ProjectUpdate,
 )
 from megooflags_api.services import projects
+from megooflags_api.services.audit import AuditDep, snapshot
 from megooflags_api.services.changes import ChangesDep
 
 router = APIRouter(tags=["projects"], responses=ERROR_RESPONSES)
@@ -40,10 +41,13 @@ async def list_projects(
 
 @router.post("/projects", status_code=201)
 async def create_project(
-    session: SessionDep, authz: CreateProject, bus: ChangesDep, body: ProjectCreate
+    session: SessionDep, authz: CreateProject, audit: AuditDep, bus: ChangesDep, body: ProjectCreate
 ) -> ProjectOut:
     project = await projects.create_project(session, body)
     out = await projects.project_out(session, project)
+    await audit.record(
+        "project.create", "project", project.key, project_id=project.id, after=snapshot(out)
+    )
     await session.commit()
     await bus.publish(project.id)
     return out
@@ -57,12 +61,26 @@ async def read_project(session: SessionDep, authz: ReadProject, project: str) ->
 
 @router.patch("/projects/{project}")
 async def update_project(
-    session: SessionDep, authz: ManageProject, bus: ChangesDep, project: str, body: ProjectUpdate
+    session: SessionDep,
+    authz: ManageProject,
+    audit: AuditDep,
+    bus: ChangesDep,
+    project: str,
+    body: ProjectUpdate,
 ) -> ProjectOut:
     row = authz.project
     assert row is not None
+    before = await projects.project_out(session, row, _visible_envs(authz))
     await projects.update_project(session, row, body)
     out = await projects.project_out(session, row, _visible_envs(authz))
+    await audit.record(
+        "project.update",
+        "project",
+        row.key,
+        project_id=row.id,
+        before=snapshot(before),
+        after=snapshot(out),
+    )
     await session.commit()
     await bus.publish(row.id)
     return out
@@ -70,11 +88,15 @@ async def update_project(
 
 @router.delete("/projects/{project}", status_code=204)
 async def delete_project(
-    session: SessionDep, authz: ManageProject, bus: ChangesDep, project: str
+    session: SessionDep, authz: ManageProject, audit: AuditDep, bus: ChangesDep, project: str
 ) -> Response:
     row = authz.project
     assert row is not None
     project_id = row.id
+    before = await projects.project_out(session, row, _visible_envs(authz))
+    await audit.record(
+        "project.delete", "project", row.key, project_id=project_id, before=snapshot(before)
+    )
     await projects.delete_project(session, row)
     await session.commit()
     await bus.publish(project_id)

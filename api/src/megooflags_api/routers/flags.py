@@ -7,7 +7,7 @@ from megooflags_api.auth.rbac import Permission
 from megooflags_api.auth.require import Authz, require
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES
-from megooflags_api.models import Project
+from megooflags_api.models import Flag, Project
 from megooflags_api.models.enums import FlagType
 from megooflags_api.schemas.common import Page
 from megooflags_api.schemas.flags import (
@@ -20,6 +20,7 @@ from megooflags_api.schemas.flags import (
     VariationUpdate,
 )
 from megooflags_api.services import flags, variations
+from megooflags_api.services.audit import AuditDep, Auditor, snapshot
 from megooflags_api.services.changes import ChangesDep
 from megooflags_api.services.lookup import get_flag, get_variation
 
@@ -73,10 +74,18 @@ async def list_flags(
 
 @router.post("/projects/{project}/flags", status_code=201)
 async def create_flag(
-    session: SessionDep, authz: CreateFlag, bus: ChangesDep, project: str, body: FlagCreate
+    session: SessionDep,
+    authz: CreateFlag,
+    audit: AuditDep,
+    bus: ChangesDep,
+    project: str,
+    body: FlagCreate,
 ) -> FlagOut:
     row = await flags.create_flag(session, _project(authz), body)
     out = await flags.flag_out(session, row, _visible(authz))
+    await audit.record(
+        "flag.create", "flag", row.key, project_id=row.project_id, after=snapshot(out)
+    )
     await session.commit()
     await bus.publish(row.project_id)
     return out
@@ -92,14 +101,17 @@ async def read_flag(session: SessionDep, authz: ReadProject, project: str, flag:
 async def update_flag(
     session: SessionDep,
     authz: UpdateFlag,
+    audit: AuditDep,
     bus: ChangesDep,
     project: str,
     flag: str,
     body: FlagUpdate,
 ) -> FlagOut:
     row = await get_flag(session, _project(authz), flag)
+    before = await flags.flag_out(session, row, _visible(authz))
     await flags.update_flag(session, row, body)
     out = await flags.flag_out(session, row, _visible(authz))
+    await _record_flag(audit, "flag.update", row, before, out)
     await session.commit()
     await bus.publish(row.project_id)
     return out
@@ -107,11 +119,18 @@ async def update_flag(
 
 @router.post("/projects/{project}/flags/{flag}/archive")
 async def archive_flag(
-    session: SessionDep, authz: ArchiveFlag, bus: ChangesDep, project: str, flag: str
+    session: SessionDep,
+    authz: ArchiveFlag,
+    audit: AuditDep,
+    bus: ChangesDep,
+    project: str,
+    flag: str,
 ) -> FlagOut:
     row = await get_flag(session, _project(authz), flag)
+    before = await flags.flag_out(session, row, _visible(authz))
     await flags.archive_flag(session, row)
     out = await flags.flag_out(session, row, _visible(authz))
+    await _record_flag(audit, "flag.archive", row, before, out)
     await session.commit()
     await bus.publish(row.project_id)
     return out
@@ -119,11 +138,18 @@ async def archive_flag(
 
 @router.post("/projects/{project}/flags/{flag}/restore")
 async def restore_flag(
-    session: SessionDep, authz: ArchiveFlag, bus: ChangesDep, project: str, flag: str
+    session: SessionDep,
+    authz: ArchiveFlag,
+    audit: AuditDep,
+    bus: ChangesDep,
+    project: str,
+    flag: str,
 ) -> FlagOut:
     row = await get_flag(session, _project(authz), flag)
+    before = await flags.flag_out(session, row, _visible(authz))
     await flags.restore_flag(session, row)
     out = await flags.flag_out(session, row, _visible(authz))
+    await _record_flag(audit, "flag.restore", row, before, out)
     await session.commit()
     await bus.publish(row.project_id)
     return out
@@ -131,10 +157,17 @@ async def restore_flag(
 
 @router.delete("/projects/{project}/flags/{flag}", status_code=204)
 async def delete_flag(
-    session: SessionDep, authz: ArchiveFlag, bus: ChangesDep, project: str, flag: str
+    session: SessionDep,
+    authz: ArchiveFlag,
+    audit: AuditDep,
+    bus: ChangesDep,
+    project: str,
+    flag: str,
 ) -> Response:
     row = await get_flag(session, _project(authz), flag)
     project_id = row.project_id
+    before = await flags.flag_out(session, row, _visible(authz))
+    await _record_flag(audit, "flag.delete", row, before, None)
     await flags.delete_flag(session, row)
     await session.commit()
     await bus.publish(project_id)
@@ -145,6 +178,7 @@ async def delete_flag(
 async def add_variation(
     session: SessionDep,
     authz: UpdateFlag,
+    audit: AuditDep,
     bus: ChangesDep,
     project: str,
     flag: str,
@@ -153,6 +187,7 @@ async def add_variation(
     flag_row = await get_flag(session, _project(authz), flag)
     row = await variations.add_variation(session, flag_row, body)
     out = VariationOut.model_validate(row, from_attributes=True)
+    await _record_variation(audit, "flag.variation.create", flag_row, row.key, None, out)
     await session.commit()
     await bus.publish(flag_row.project_id)
     return out
@@ -162,6 +197,7 @@ async def add_variation(
 async def update_variation(
     session: SessionDep,
     authz: UpdateFlag,
+    audit: AuditDep,
     bus: ChangesDep,
     project: str,
     flag: str,
@@ -170,8 +206,10 @@ async def update_variation(
 ) -> VariationOut:
     flag_row = await get_flag(session, _project(authz), flag)
     row = await get_variation(session, flag_row, variation)
+    before = VariationOut.model_validate(row, from_attributes=True)
     await variations.update_variation(session, flag_row, row, body)
     out = VariationOut.model_validate(row, from_attributes=True)
+    await _record_variation(audit, "flag.variation.update", flag_row, row.key, before, out)
     await session.commit()
     await bus.publish(flag_row.project_id)
     return out
@@ -179,11 +217,50 @@ async def update_variation(
 
 @router.delete("/projects/{project}/flags/{flag}/variations/{variation}", status_code=204)
 async def delete_variation(
-    session: SessionDep, authz: UpdateFlag, bus: ChangesDep, project: str, flag: str, variation: str
+    session: SessionDep,
+    authz: UpdateFlag,
+    audit: AuditDep,
+    bus: ChangesDep,
+    project: str,
+    flag: str,
+    variation: str,
 ) -> Response:
     flag_row = await get_flag(session, _project(authz), flag)
     row = await get_variation(session, flag_row, variation)
+    before = VariationOut.model_validate(row, from_attributes=True)
+    await _record_variation(audit, "flag.variation.delete", flag_row, row.key, before, None)
     await variations.delete_variation(session, flag_row, row)
     await session.commit()
     await bus.publish(flag_row.project_id)
     return Response(status_code=204)
+
+
+async def _record_flag(
+    audit: Auditor, action: str, row: Flag, before: FlagOut | None, after: FlagOut | None
+) -> None:
+    await audit.record(
+        action,
+        "flag",
+        row.key,
+        project_id=row.project_id,
+        before=None if before is None else snapshot(before),
+        after=None if after is None else snapshot(after),
+    )
+
+
+async def _record_variation(
+    audit: Auditor,
+    action: str,
+    flag: Flag,
+    variation: str,
+    before: VariationOut | None,
+    after: VariationOut | None,
+) -> None:
+    await audit.record(
+        action,
+        "variation",
+        f"{flag.key}/{variation}",
+        project_id=flag.project_id,
+        before=None if before is None else snapshot(before),
+        after=None if after is None else snapshot(after),
+    )

@@ -16,6 +16,7 @@ from megooflags_api.schemas.segments import (
     SegmentUpdate,
 )
 from megooflags_api.services import segments
+from megooflags_api.services.audit import AuditDep, snapshot
 from megooflags_api.services.changes import ChangesDep
 from megooflags_api.services.lookup import get_segment
 
@@ -47,10 +48,18 @@ async def list_segments(
 
 @router.post("/projects/{project}/segments", status_code=201)
 async def create_segment(
-    session: SessionDep, authz: WriteSegments, bus: ChangesDep, project: str, body: SegmentCreate
+    session: SessionDep,
+    authz: WriteSegments,
+    audit: AuditDep,
+    bus: ChangesDep,
+    project: str,
+    body: SegmentCreate,
 ) -> SegmentOut:
     row = await segments.create_segment(session, _project(authz), body)
     out = await segments.segment_out(session, row)
+    await audit.record(
+        "segment.create", "segment", row.key, project_id=row.project_id, after=snapshot(out)
+    )
     await session.commit()
     await bus.publish(row.project_id)
     return out
@@ -68,14 +77,24 @@ async def read_segment(
 async def replace_segment_config(
     session: SessionDep,
     authz: WriteSegments,
+    audit: AuditDep,
     bus: ChangesDep,
     project: str,
     segment: str,
     body: SegmentConfigIn,
 ) -> SegmentOut:
     row = await get_segment(session, _project(authz), segment)
+    before = await segments.segment_out(session, row)
     await segments.replace_segment_config(session, row, body)
     out = await segments.segment_out(session, row)
+    await audit.record(
+        "segment.config.update",
+        "segment",
+        row.key,
+        project_id=row.project_id,
+        before=snapshot(before),
+        after=snapshot(out),
+    )
     await session.commit()
     await bus.publish(row.project_id)
     return out
@@ -85,14 +104,24 @@ async def replace_segment_config(
 async def update_segment(
     session: SessionDep,
     authz: WriteSegments,
+    audit: AuditDep,
     bus: ChangesDep,
     project: str,
     segment: str,
     body: SegmentUpdate,
 ) -> SegmentOut:
     row = await get_segment(session, _project(authz), segment)
+    before = await segments.segment_out(session, row)
     await segments.update_segment(session, row, body)
     out = await segments.segment_out(session, row)
+    await audit.record(
+        "segment.update",
+        "segment",
+        row.key,
+        project_id=row.project_id,
+        before=snapshot(before),
+        after=snapshot(out),
+    )
     await session.commit()
     await bus.publish(row.project_id)
     return out
@@ -100,10 +129,19 @@ async def update_segment(
 
 @router.delete("/projects/{project}/segments/{segment}", status_code=204)
 async def delete_segment(
-    session: SessionDep, authz: WriteSegments, bus: ChangesDep, project: str, segment: str
+    session: SessionDep,
+    authz: WriteSegments,
+    audit: AuditDep,
+    bus: ChangesDep,
+    project: str,
+    segment: str,
 ) -> Response:
     row = await get_segment(session, _project(authz), segment)
     project_id = row.project_id
+    before = await segments.segment_out(session, row)
+    await audit.record(
+        "segment.delete", "segment", row.key, project_id=project_id, before=snapshot(before)
+    )
     await segments.delete_segment(session, row)
     await session.commit()
     await bus.publish(project_id)
