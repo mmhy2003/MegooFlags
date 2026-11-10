@@ -201,6 +201,13 @@ async def other_session(client: httpx.AsyncClient, app: FastAPI) -> Params:
     return {"id": other_id}
 
 
+async def personal_token(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    await signed_in(client, app)
+    r = await client.post("/api/account/tokens", json=PERSONAL_TOKEN)
+    assert r.status_code == 201, r.text
+    return {"id": r.json()["token"]["id"]}
+
+
 # Calls whose body depends on what `prepare` created.
 async def create_binding(client: httpx.AsyncClient, params: Params) -> httpx.Response:
     return await client.post("/api/bindings", json=binding_body(params["user_id"]))
@@ -222,6 +229,7 @@ FE = f"{F}/environments/{{env}}"
 S = f"{P}/segments/{{segment}}"
 CONFIG = {"version": 1, "enabled": True, "fallthrough": {"variation": "b"}}
 PASSWORD = "a much longer passphrase 42"
+PERSONAL_TOKEN = {"name": "laptop", "permissions": ["project.read"]}
 
 AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
     [
@@ -264,6 +272,21 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
             "/api/account/sessions/others",
             "account.session.revoke",
             other_session,
+            client="session",
+        ),
+        sample(
+            "POST",
+            "/api/account/tokens",
+            "account.token.create",
+            signed_in,
+            PERSONAL_TOKEN,
+            client="session",
+        ),
+        sample(
+            "DELETE",
+            "/api/account/tokens/{id}",
+            "account.token.revoke",
+            personal_token,
             client="session",
         ),
         sample(

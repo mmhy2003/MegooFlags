@@ -8,9 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.errors import key_inactive, not_found, validation_error
-from megooflags_api.models import ApiToken, RoleBinding, User
+from megooflags_api.models import ApiToken, Environment, Project, RoleBinding, User
 from megooflags_api.models.enums import ApiTokenKind, SubjectKind
-from megooflags_api.schemas.tokens import TokenOut
+from megooflags_api.schemas.tokens import PersonalTokenOut, TokenOut
 from megooflags_api.services.bindings import bindings_of
 from megooflags_api.services.pagination import decode_cursor, page_slice
 from megooflags_api.services.sdk_keys import BASE62, hash_key, is_inactive
@@ -79,6 +79,56 @@ async def create_personal_token(
             expires_at=expires_at,
         ),
     )
+
+
+async def personal_tokens_out(
+    session: AsyncSession, owner_id: uuid.UUID, token_id: uuid.UUID | None = None
+) -> list[PersonalTokenOut]:
+    """The owner's personal tokens (or only `token_id`), oldest first, with their scope's keys."""
+    query = (
+        select(ApiToken, Project.key, Environment.key)
+        .outerjoin(Project, Project.id == ApiToken.project_id)
+        .outerjoin(Environment, Environment.id == ApiToken.environment_id)
+        .where(ApiToken.kind == ApiTokenKind.PERSONAL, ApiToken.owner_user_id == owner_id)
+        .order_by(ApiToken.created_at, ApiToken.id)
+    )
+    if token_id is not None:
+        query = query.where(ApiToken.id == token_id)
+    return [
+        PersonalTokenOut(
+            id=row.id,
+            name=row.name,
+            prefix=row.prefix,
+            permissions=row.permissions or [],
+            project=project_key,
+            env=env_key,
+            created_at=row.created_at,
+            expires_at=row.expires_at,
+            revoked_at=row.revoked_at,
+            last_used_at=row.last_used_at,
+        )
+        for row, project_key, env_key in await session.execute(query)
+    ]
+
+
+async def personal_token_out(
+    session: AsyncSession, owner_id: uuid.UUID, token_id: uuid.UUID
+) -> PersonalTokenOut:
+    """One of the owner's personal tokens; 404 for anyone else's."""
+    found = await personal_tokens_out(session, owner_id, token_id)
+    if not found:
+        raise not_found("token", str(token_id))
+    return found[0]
+
+
+async def get_personal_token(
+    session: AsyncSession, owner_id: uuid.UUID, token_id: uuid.UUID
+) -> ApiToken:
+    """404 for an unknown id and for tokens that are not the owner's personal tokens."""
+    row = await session.get(ApiToken, token_id)
+    if row is None or row.kind != ApiTokenKind.PERSONAL or row.owner_user_id != owner_id:
+        raise not_found("token", str(token_id))
+    return row
 
 
 async def tokens_out(session: AsyncSession, rows: list[ApiToken]) -> list[TokenOut]:

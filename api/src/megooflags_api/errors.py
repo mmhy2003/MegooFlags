@@ -72,6 +72,15 @@ def weak_password(message: str) -> ApiError:
     return ApiError(422, "weak_password", message, {"path": "password"})
 
 
+def exceeds_owner_rights(permissions: list[str]) -> ApiError:
+    return ApiError(
+        422,
+        "exceeds_owner_rights",
+        "a personal token cannot hold permissions you do not hold at its scope",
+        {"permissions": list(permissions)},
+    )
+
+
 def unauthorized(message: str) -> ApiError:
     return ApiError(401, "unauthorized", message, headers={"WWW-Authenticate": "Bearer"})
 

@@ -1,4 +1,5 @@
-"""The signed-in user's own account (`/account/*`): password change and sessions.
+"""The signed-in user's own account (`/account/*`): password change, sessions and personal API
+tokens.
 
 Every route needs a signed-in session; API tokens get 403.
 """
@@ -12,10 +13,12 @@ from sqlalchemy import delete, select
 
 from megooflags_api.auth import sessions
 from megooflags_api.auth.passwords import verify_password
+from megooflags_api.auth.rbac import Permission
 from megooflags_api.auth.require import Authz, authenticated
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import (
     ERROR_RESPONSES,
+    exceeds_owner_rights,
     invalid_credentials,
     no_password,
     not_found,
@@ -25,7 +28,14 @@ from megooflags_api.models import User, UserSession
 from megooflags_api.models.enums import SessionState
 from megooflags_api.routers.auth import set_session_cookie
 from megooflags_api.schemas.auth import PasswordChange, SessionOut
-from megooflags_api.services.audit import AuditDep
+from megooflags_api.schemas.tokens import (
+    PersonalTokenCreate,
+    PersonalTokenCreated,
+    PersonalTokenOut,
+)
+from megooflags_api.services import api_tokens
+from megooflags_api.services.audit import AuditDep, snapshot
+from megooflags_api.services.lookup import get_environment, get_project
 from megooflags_api.services.users import set_password
 
 router = APIRouter(prefix="/account", tags=["account"], responses=ERROR_RESPONSES)
@@ -135,3 +145,66 @@ async def revoke_session(
     await session.commit()
     if id == authz.principal.session_id:
         sessions.clear_cookie(response, request)
+
+
+@router.get("/tokens")
+async def list_personal_tokens(session: SessionDep, authz: SignedIn) -> list[PersonalTokenOut]:
+    """Your personal API tokens, oldest first, revoked and expired ones included."""
+    assert authz.principal.user_id is not None
+    return await api_tokens.personal_tokens_out(session, authz.principal.user_id)
+
+
+@router.post("/tokens", status_code=201)
+async def create_personal_token(
+    session: SessionDep, authz: SignedIn, audit: AuditDep, body: PersonalTokenCreate
+) -> PersonalTokenCreated:
+    """Create a token that acts as you with `permissions`, within `project` (and `env`) when
+    given. Each request it makes is also capped by your rights at that time. You can only grant
+    what you hold there now (422 exceeds_owner_rights). The secret is returned only here."""
+    user, _ = await _current(session, authz)
+    owner = authz.authorizer
+    project_id = environment_id = None
+    if body.project is not None:
+        project = await get_project(session, body.project)
+        if not owner.can(Permission.PROJECT_READ, project.id):
+            raise not_found("project", body.project)
+        project_id = project.id
+        if body.env is not None:
+            environment = await get_environment(session, project, body.env)
+            if not owner.can_see_environment(project.id, environment.id):
+                raise not_found("environment", body.env)
+            environment_id = environment.id
+    permissions = sorted(set(body.permissions))
+    refused = [p.value for p in permissions if not owner.can(p, project_id, environment_id)]
+    if refused:
+        raise exceeds_owner_rights(refused)
+    row, secret = await api_tokens.create_personal_token(
+        session,
+        user,
+        body.name,
+        [p.value for p in permissions],
+        project_id,
+        environment_id,
+        body.expires_at,
+    )
+    out = await api_tokens.personal_token_out(session, user.id, row.id)
+    await audit.record("account.token.create", "token", str(row.id), after=snapshot(out))
+    await session.commit()
+    return PersonalTokenCreated(token=out, secret=secret)
+
+
+@router.delete("/tokens/{id}", status_code=204)
+async def revoke_personal_token(
+    session: SessionDep, authz: SignedIn, audit: AuditDep, id: uuid.UUID
+) -> None:
+    """Revoke one of your personal tokens at once."""
+    owner_id = authz.principal.user_id
+    assert owner_id is not None
+    row = await api_tokens.get_personal_token(session, owner_id, id)
+    before = await api_tokens.personal_token_out(session, owner_id, id)
+    await api_tokens.revoke(session, row)
+    after = await api_tokens.personal_token_out(session, owner_id, id)
+    await audit.record(
+        "account.token.revoke", "token", str(id), before=snapshot(before), after=snapshot(after)
+    )
+    await session.commit()
