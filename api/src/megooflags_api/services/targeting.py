@@ -35,7 +35,7 @@ from megooflags_api.services.clauses import (
     resolve_segments,
 )
 from megooflags_api.services.lookup import get_flag_environment
-from megooflags_api.services.prerequisites import check_prerequisites
+from megooflags_api.services.prerequisites import check_prerequisites, lock_prerequisite_graph
 
 
 async def load_config(
@@ -350,6 +350,9 @@ async def copy_config(
     config = await load_config(
         session, flag, await get_flag_environment(session, flag, source), source.key
     )
+    if config.prerequisites:
+        # All targets up front, in order: one by one in replace_config could deadlock two copies.
+        await lock_prerequisite_graph(session, target_ids)
     rows = await session.scalars(
         select(FlagEnvironment)
         .where(FlagEnvironment.flag_id == flag.id, FlagEnvironment.environment_id.in_(target_ids))

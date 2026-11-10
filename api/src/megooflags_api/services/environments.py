@@ -23,6 +23,10 @@ BACKFILL = text(
 async def create_environment(
     session: AsyncSession, project: Project, body: EnvironmentCreate
 ) -> Environment:
+    # A flag created concurrently would miss this environment, and the backfill would miss the
+    # flag: neither sees the other's uncommitted row. create_flag takes FOR SHARE on the project
+    # row, so this waits for flag creates in flight and they wait for it.
+    await session.execute(select(Project.id).where(Project.id == project.id).with_for_update())
     sort_order = body.sort_order
     if sort_order is None:
         last = await session.scalar(

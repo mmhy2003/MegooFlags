@@ -3,7 +3,7 @@
 import uuid
 from collections import defaultdict
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.errors import invalid_reference, prerequisite_cycle, validation_error
@@ -26,6 +26,21 @@ def has_cycle(edges: dict[uuid.UUID, set[uuid.UUID]], start: uuid.UUID) -> bool:
     return False
 
 
+# Transaction-scoped: released at commit or rollback.
+LOCK_GRAPH = text("SELECT pg_advisory_xact_lock(hashtextextended(:env_id, 0))")
+
+
+async def lock_prerequisite_graph(session: AsyncSession, environment_ids: list[uuid.UUID]) -> None:
+    """Serialise prerequisite changes in these environments until the transaction ends.
+
+    Without it, two PUTs (A requires B, B requires A) each check the edges without the other's
+    uncommitted one and both commit a cycle. Locks are taken in a fixed order, so transactions
+    locking several environments (copy_config) cannot deadlock.
+    """
+    for environment_id in sorted(set(environment_ids)):
+        await session.execute(LOCK_GRAPH, {"env_id": str(environment_id)})
+
+
 async def check_prerequisites(
     session: AsyncSession,
     flag: Flag,
@@ -45,14 +60,18 @@ async def check_prerequisites(
                 "a flag cannot be its own prerequisite", f"prerequisites[{i}].flag"
             )
     if not prereqs:
-        return []
+        return []  # removing edges cannot make a cycle, so no lock
 
+    await lock_prerequisite_graph(session, [environment_id])
+    # FOR SHARE waits for an archive in flight and then reads the archived_at it set; archive_flag
+    # locks the flag row, so it waits for this transaction's new edges (see archive_flag).
     flags = {
         key: (id_, archived_at)
         for key, id_, archived_at in await session.execute(
-            select(Flag.key, Flag.id, Flag.archived_at).where(
-                Flag.project_id == flag.project_id, Flag.key.in_(seen)
-            )
+            select(Flag.key, Flag.id, Flag.archived_at)
+            .where(Flag.project_id == flag.project_id, Flag.key.in_(seen))
+            .order_by(Flag.id)
+            .with_for_update(read=True)
         )
     }
     variations = {

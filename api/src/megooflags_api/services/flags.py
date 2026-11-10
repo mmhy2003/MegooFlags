@@ -73,6 +73,11 @@ async def create_flag(session: AsyncSession, project: Project, body: FlagCreate)
     variations = _check_variations(body)
     off_key = _off_variation_key(body, variations)
 
+    # Waits for an environment being created, so CREATE_FLAG_ENVIRONMENTS sees it (see
+    # create_environment). A shared lock: flag creates still run in parallel with each other.
+    await session.execute(
+        select(Project.id).where(Project.id == project.id).with_for_update(read=True)
+    )
     flag = Flag(
         project_id=project.id,
         key=body.key,
@@ -216,6 +221,14 @@ async def _check_not_prerequisite(session: AsyncSession, flag: Flag) -> None:
 
 async def archive_flag(session: AsyncSession, flag: Flag) -> None:
     """Archiving an archived flag keeps its original archived_at."""
+    # check_prerequisites takes FOR SHARE on the prerequisite flags, so a PUT adding this flag as
+    # a prerequisite either commits before the check below or sees the flag archived.
+    await session.execute(
+        select(Flag)
+        .where(Flag.id == flag.id)
+        .with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
     await _check_not_prerequisite(session, flag)
     if flag.archived_at is None:
         flag.archived_at = func.now()
