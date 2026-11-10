@@ -68,6 +68,10 @@ def prerequisite_cycle(message: str, path: str) -> ApiError:
     return ApiError(422, "prerequisite_cycle", message, {"path": path})
 
 
+def weak_password(message: str) -> ApiError:
+    return ApiError(422, "weak_password", message, {"path": "password"})
+
+
 def unauthorized(message: str) -> ApiError:
     return ApiError(401, "unauthorized", message, headers={"WWW-Authenticate": "Bearer"})
 
