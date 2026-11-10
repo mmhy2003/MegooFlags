@@ -17,6 +17,7 @@ from megooflags_api.routers import (
     flag_environments,
     flags,
     health,
+    ofrep,
     projects,
     sdk,
     sdk_keys,
@@ -95,6 +96,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_actor)])
     app.include_router(sdk.router)
+    app.include_router(ofrep.router)
     app.state.tracer_provider = configure_tracing(app, app.state.engine)
     return app
 

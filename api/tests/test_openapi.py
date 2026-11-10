@@ -58,6 +58,12 @@ def test_spec_documents_sdk_api() -> None:
     assert {"/sdk/v1/ruleset", "/sdk/v1/evaluate", "/sdk/v1/stream"} <= spec["paths"].keys()
 
 
+def test_spec_documents_ofrep() -> None:
+    spec = json.loads(render())
+
+    assert {"/ofrep/v1/evaluate/flags", "/ofrep/v1/evaluate/flags/{key}"} <= spec["paths"].keys()
+
+
 def test_committed_spec_is_current() -> None:
     committed = (API_DIR / "openapi.json").read_text(encoding="utf-8")
 
