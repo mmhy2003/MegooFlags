@@ -5,6 +5,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import megooflags_api.models  # noqa: F401
 from alembic import context
 from megooflags_api.db import Base
 from megooflags_api.settings import get_settings

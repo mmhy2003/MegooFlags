@@ -16,6 +16,39 @@ def test_spec_documents_health_endpoints() -> None:
     assert "503" in spec["paths"]["/readyz"]["get"]["responses"]
 
 
+def test_spec_documents_management_api() -> None:
+    spec = json.loads(render())
+    flag = "/api/projects/{project}/flags/{flag}"
+
+    assert {
+        "/api/projects",
+        "/api/projects/{project}",
+        "/api/projects/{project}/environments",
+        "/api/projects/{project}/environments/{env}",
+        "/api/projects/{project}/flags",
+        flag,
+        f"{flag}/archive",
+        f"{flag}/restore",
+        f"{flag}/copy",
+        f"{flag}/variations",
+        f"{flag}/variations/{{variation}}",
+        f"{flag}/environments",
+        f"{flag}/environments/{{env}}",
+        f"{flag}/environments/{{env}}/toggle",
+        f"{flag}/environments/{{env}}/kill",
+        "/api/projects/{project}/segments",
+        "/api/projects/{project}/segments/{segment}",
+    } <= spec["paths"].keys()
+
+    schemas = spec["components"]["schemas"]
+    assert "ErrorBody" in schemas
+    put_responses = spec["paths"][f"{flag}/environments/{{env}}"]["put"]["responses"]
+    for status in ("409", "422"):
+        ref = put_responses[status]["content"]["application/json"]["schema"]["$ref"]
+        assert ref == "#/components/schemas/ErrorBody"
+    assert "from" in schemas["CopyIn"]["properties"]
+
+
 def test_committed_spec_is_current() -> None:
     committed = (API_DIR / "openapi.json").read_text(encoding="utf-8")
 
