@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Compose smoke test: start the stack from locally built megooflags-{api,web}:ci images and check it
-# through Caddy. Mode "http" (default): plain HTTP with two api replicas. Mode "https": automatic HTTPS
-# for localhost, with a certificate from Caddy's internal CA.
+# through Caddy. Mode "http" (default): plain HTTP with three api replicas. Mode "https": automatic HTTPS
+# for localhost, with a certificate from Caddy's internal CA. Mode "http" also runs the kill-switch
+# propagation test (scripts/propagation_test.py) across the replicas.
 set -euo pipefail
 mode="${1:-http}"
 case "$mode" in
-  http) export MEGOOFLAGS_SITE_ADDRESS="" replicas=2 ;;
+  http) export MEGOOFLAGS_SITE_ADDRESS="" replicas=3 ;;
   https) export MEGOOFLAGS_SITE_ADDRESS="localhost" replicas=1 ;;
   *) echo "usage: $0 [http|https]" >&2; exit 2 ;;
 esac
@@ -81,6 +82,13 @@ for id in $ids; do
   docker logs "$id" 2>&1 | grep -q '"route": "other"' || fail "api container $id has no JSON access-log line"
 done
 echo "JSON access logs on $replicas replica(s) OK"
+
+if [ "$mode" = http ]; then
+  docker run --rm --network megooflags-smoke_default -v "$root/scripts:/scripts:ro" megooflags-api:ci \
+    python /scripts/propagation_test.py --host api --port 8000 --replicas "$replicas" --iterations 20 \
+    || fail "kill switch propagation p95 is 5 s or more"
+  echo "propagation OK"
+fi
 
 if [ "$mode" = https ]; then
   redirect=$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "http://localhost:${MEGOOFLAGS_HTTP_PORT}/")
