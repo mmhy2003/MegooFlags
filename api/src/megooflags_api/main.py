@@ -1,5 +1,7 @@
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import Depends, FastAPI
 
@@ -20,14 +22,32 @@ from megooflags_api.routers import (
 from megooflags_api.services.ruleset_cache import RulesetCache
 from megooflags_api.settings import Settings, get_settings
 from megooflags_api.tracing import configure_tracing
+from megooflags_api.valkey import check_valkey, create_valkey
+
+
+def background_jobs(app: FastAPI) -> list[Coroutine[Any, Any, None]]:
+    return []
+
+
+async def shutdown_jobs(app: FastAPI) -> None:
+    pass
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    yield
-    if app.state.tracer_provider is not None:
-        app.state.tracer_provider.shutdown()
-    await app.state.engine.dispose()
+    await check_valkey(app.state.valkey, app.state.settings.valkey_url)
+    tasks = [asyncio.create_task(job) for job in background_jobs(app)]
+    try:
+        yield
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await shutdown_jobs(app)
+        await app.state.valkey.aclose()
+        if app.state.tracer_provider is not None:
+            app.state.tracer_provider.shutdown()
+        await app.state.engine.dispose()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -37,6 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = create_engine(settings)
     app.state.sessionmaker = create_sessionmaker(app.state.engine)
+    app.state.valkey = create_valkey(settings.valkey_url)
     app.state.ruleset_cache = RulesetCache()
     install_error_handlers(app)
     app.add_middleware(AccessLogMiddleware)
