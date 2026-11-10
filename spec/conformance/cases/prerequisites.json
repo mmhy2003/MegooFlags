@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "description": "Prerequisites (F-8): checked in order after the enabled check; the first failing one serves the off variation with PREREQUISITE_FAILED and metadata.prerequisite.",
+  "ruleset": {
+    "schema_version": 1,
+    "project": "conformance",
+    "environment": "test",
+    "flags": {
+      "p-on": {
+        "key": "p-on", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off", "prerequisites": [], "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "p-serves-off": {
+        "key": "p-serves-off", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off", "prerequisites": [], "targets": [], "rules": [],
+        "fallthrough": {"variation": "off"}
+      },
+      "p-disabled": {
+        "key": "p-disabled", "type": "boolean", "enabled": false, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "on", "prerequisites": [], "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "p-targeted": {
+        "key": "p-targeted", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off", "prerequisites": [],
+        "targets": [{"variation": "on", "values": ["vip"]}],
+        "rules": [],
+        "fallthrough": {"variation": "off"}
+      },
+      "needs-on": {
+        "key": "needs-on", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off",
+        "prerequisites": [{"flag": "p-on", "variation": "on"}],
+        "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "needs-wrong-variant": {
+        "key": "needs-wrong-variant", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off",
+        "prerequisites": [{"flag": "p-serves-off", "variation": "on"}],
+        "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "needs-disabled": {
+        "key": "needs-disabled", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off",
+        "prerequisites": [{"flag": "p-disabled", "variation": "on"}],
+        "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "needs-missing": {
+        "key": "needs-missing", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off",
+        "prerequisites": [{"flag": "ghost", "variation": "on"}],
+        "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "needs-targeted": {
+        "key": "needs-targeted", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off",
+        "prerequisites": [{"flag": "p-targeted", "variation": "on"}],
+        "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "chain-c": {
+        "key": "chain-c", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off", "prerequisites": [], "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "chain-b": {
+        "key": "chain-b", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off",
+        "prerequisites": [{"flag": "chain-c", "variation": "on"}],
+        "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "chain-a": {
+        "key": "chain-a", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off",
+        "prerequisites": [{"flag": "chain-b", "variation": "on"}],
+        "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "broken-z": {
+        "key": "broken-z", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off",
+        "prerequisites": [{"flag": "p-serves-off", "variation": "on"}],
+        "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "broken-y": {
+        "key": "broken-y", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off",
+        "prerequisites": [{"flag": "broken-z", "variation": "on"}],
+        "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "multi": {
+        "key": "multi", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off",
+        "prerequisites": [
+          {"flag": "p-on", "variation": "on"},
+          {"flag": "p-serves-off", "variation": "on"},
+          {"flag": "p-disabled", "variation": "on"}
+        ],
+        "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      }
+    },
+    "segments": {}
+  },
+  "tests": [
+    {"name": "pass", "flag": "needs-on", "context": {"key": "u1"}, "default": false,
+     "expected": {"value": true, "variant": "on", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "wrong-variant", "flag": "needs-wrong-variant", "context": {"key": "u1"}, "default": false,
+     "expected": {"value": false, "variant": "off", "reason": "PREREQUISITE_FAILED", "error_code": null, "metadata": {"prerequisite": "p-serves-off"}}},
+    {"name": "disabled-prerequisite", "flag": "needs-disabled", "context": {"key": "u1"}, "default": false,
+     "expected": {"value": false, "variant": "off", "reason": "PREREQUISITE_FAILED", "error_code": null, "metadata": {"prerequisite": "p-disabled"}}},
+    {"name": "missing-prerequisite", "flag": "needs-missing", "context": {"key": "u1"}, "default": false,
+     "expected": {"value": false, "variant": "off", "reason": "PREREQUISITE_FAILED", "error_code": null, "metadata": {"prerequisite": "ghost"}}},
+    {"name": "same-context-passes", "flag": "needs-targeted", "context": {"key": "vip"}, "default": false,
+     "expected": {"value": true, "variant": "on", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "same-context-fails", "flag": "needs-targeted", "context": {"key": "u1"}, "default": false,
+     "expected": {"value": false, "variant": "off", "reason": "PREREQUISITE_FAILED", "error_code": null, "metadata": {"prerequisite": "p-targeted"}}},
+    {"name": "chained-pass", "flag": "chain-a", "context": {"key": "u1"}, "default": false,
+     "expected": {"value": true, "variant": "on", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "chained-fail-reports-direct-prerequisite", "flag": "broken-y", "context": {"key": "u1"}, "default": false,
+     "expected": {"value": false, "variant": "off", "reason": "PREREQUISITE_FAILED", "error_code": null, "metadata": {"prerequisite": "broken-z"}}},
+    {"name": "first-failing-is-reported", "flag": "multi", "context": {"key": "u1"}, "default": false,
+     "expected": {"value": false, "variant": "off", "reason": "PREREQUISITE_FAILED", "error_code": null, "metadata": {"prerequisite": "p-serves-off"}}}
+  ]
+}

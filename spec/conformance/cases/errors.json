@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "description": "Errors: the caller's default with reason ERROR and an error code. Archived flags are not in the ruleset, so they are not found. Cycles are refused on save; the depth guard catches one in a malformed ruleset.",
+  "ruleset": {
+    "schema_version": 1,
+    "project": "conformance",
+    "environment": "test",
+    "flags": {
+      "text": {
+        "key": "text", "type": "string", "enabled": true, "version": 1,
+        "variations": [{"key": "hello", "value": "hello"}],
+        "off_variation": "hello", "prerequisites": [], "targets": [], "rules": [],
+        "fallthrough": {"variation": "hello"}
+      },
+      "cycle-a": {
+        "key": "cycle-a", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off",
+        "prerequisites": [{"flag": "cycle-b", "variation": "on"}],
+        "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      },
+      "cycle-b": {
+        "key": "cycle-b", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+        "off_variation": "off",
+        "prerequisites": [{"flag": "cycle-a", "variation": "on"}],
+        "targets": [], "rules": [],
+        "fallthrough": {"variation": "on"}
+      }
+    },
+    "segments": {}
+  },
+  "tests": [
+    {"name": "flag-not-found", "flag": "nope", "context": {"key": "u1"}, "default": "dflt",
+     "expected": {"value": "dflt", "variant": null, "reason": "ERROR", "error_code": "FLAG_NOT_FOUND", "metadata": {}}},
+    {"name": "archived-flag-is-absent", "flag": "old-archived", "context": {"key": "u1"}, "default": false,
+     "expected": {"value": false, "variant": null, "reason": "ERROR", "error_code": "FLAG_NOT_FOUND", "metadata": {}}},
+    {"name": "type-mismatch", "flag": "text", "context": {"key": "u1"}, "default": true, "expected_type": "boolean",
+     "expected": {"value": true, "variant": null, "reason": "ERROR", "error_code": "TYPE_MISMATCH", "metadata": {}}},
+    {"name": "matching-type", "flag": "text", "context": {"key": "u1"}, "default": "dflt", "expected_type": "string",
+     "expected": {"value": "hello", "variant": "hello", "reason": "STATIC", "error_code": null, "metadata": {}}},
+    {"name": "json-never-mismatches", "flag": "text", "context": {"key": "u1"}, "default": {"d": 1}, "expected_type": "json",
+     "expected": {"value": "hello", "variant": "hello", "reason": "STATIC", "error_code": null, "metadata": {}}},
+    {"name": "invalid-context-string", "flag": "text", "context": "oops", "default": "dflt",
+     "expected": {"value": "dflt", "variant": null, "reason": "ERROR", "error_code": "INVALID_CONTEXT", "metadata": {}}},
+    {"name": "invalid-context-array", "flag": "text", "context": [{"key": "u1"}], "default": "dflt",
+     "expected": {"value": "dflt", "variant": null, "reason": "ERROR", "error_code": "INVALID_CONTEXT", "metadata": {}}},
+    {"name": "cyclic-prerequisite", "flag": "cycle-a", "context": {"key": "u1"}, "default": false,
+     "expected": {"value": false, "variant": null, "reason": "ERROR", "error_code": "GENERAL", "metadata": {}}}
+  ]
+}

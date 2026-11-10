@@ -144,7 +144,6 @@ def clauses(data: dict[str, Any]) -> Iterator[dict[str, Any]]:
             yield from segment_rule["clauses"]
 
 
-@pytest.mark.xfail(strict=True, reason="segments, rollouts and error cases arrive in step 7")
 def test_suite_is_complete() -> None:
     operators = {c["operator"] for p in CASE_FILES for c in clauses(load(p)["ruleset"])}
     expected = [case["expected"] for p in CASE_FILES for case in load(p)["tests"]]

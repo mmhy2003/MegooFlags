@@ -24,6 +24,7 @@
     {"input": "rollout.alice", "bucket": 89502},
     {"input": "rollout.42", "bucket": 59948},
     {"input": "rollout.acme", "bucket": 98311},
-    {"input": "rollout.globex", "bucket": 90023}
+    {"input": "rollout.globex", "bucket": 90023},
+    {"input": "zero-first.user-1", "bucket": 46165}
   ]
 }
