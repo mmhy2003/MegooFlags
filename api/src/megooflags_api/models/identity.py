@@ -1,0 +1,131 @@
+import uuid
+from datetime import datetime
+
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.orm import Mapped, mapped_column
+
+from megooflags_api.db import Base
+from megooflags_api.models.base import TimestampMixin, pg_enum, uuid_pk
+from megooflags_api.models.enums import ScopeKind, SubjectKind, UserStatus
+
+
+class User(Base):
+    __tablename__ = "user"
+    __mapper_args__ = {"eager_defaults": True}
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    email: Mapped[str] = mapped_column(String(320))
+    name: Mapped[str] = mapped_column(String(200))
+    password_hash: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[UserStatus] = mapped_column(
+        pg_enum(UserStatus, "user_status"),
+        default=UserStatus.ACTIVE,
+        server_default=UserStatus.ACTIVE.value,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("uq_user_email_lower", func.lower(email), unique=True),)
+
+
+class Team(Base):
+    __tablename__ = "team"
+    __table_args__ = (UniqueConstraint("key"),)
+    __mapper_args__ = {"eager_defaults": True}
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    key: Mapped[str] = mapped_column(String(100))
+    name: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TeamMember(Base):
+    __tablename__ = "team_member"
+
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    # "manual", or "sso:<provider key>" for memberships managed by group sync.
+    source: Mapped[str] = mapped_column(Text, default="manual", server_default="manual")
+
+
+class Role(TimestampMixin, Base):
+    __tablename__ = "role"
+    __table_args__ = (UniqueConstraint("key"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    key: Mapped[str] = mapped_column(String(100))
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    builtin: Mapped[bool] = mapped_column(default=False, server_default="false")
+    permissions: Mapped[list[str]] = mapped_column(ARRAY(Text))
+
+
+class RoleBinding(Base):
+    """Gives a user, team or service token a role at org, project or environment scope."""
+
+    __tablename__ = "role_binding"
+    __table_args__ = (
+        CheckConstraint(
+            "(scope = 'org' AND project_id IS NULL AND environment_id IS NULL)"
+            " OR (scope = 'project' AND project_id IS NOT NULL AND environment_id IS NULL)"
+            " OR (scope = 'environment' AND project_id IS NOT NULL"
+            " AND environment_id IS NOT NULL)",
+            name="scope_matches",
+        ),
+        UniqueConstraint(
+            "subject_kind",
+            "subject_id",
+            "role_id",
+            "scope",
+            "project_id",
+            "environment_id",
+            name="uq_role_binding_subject_role_scope",
+            postgresql_nulls_not_distinct=True,
+        ),
+        Index(None, "subject_kind", "subject_id"),
+    )
+    __mapper_args__ = {"eager_defaults": True}
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    subject_kind: Mapped[SubjectKind] = mapped_column(pg_enum(SubjectKind, "subject_kind"))
+    subject_id: Mapped[uuid.UUID]
+    role_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("role.id", ondelete="RESTRICT"))
+    scope: Mapped[ScopeKind] = mapped_column(pg_enum(ScopeKind, "scope_kind"))
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("project.id", ondelete="CASCADE")
+    )
+    environment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("environment.id", ondelete="CASCADE")
+    )
+    # "manual", or "sso:<provider key>" for bindings managed by SSO.
+    source: Mapped[str] = mapped_column(Text, default="manual", server_default="manual")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OrgSettings(Base):
+    """Instance-wide settings: a single row with id 1."""
+
+    __tablename__ = "org_settings"
+    __table_args__ = (CheckConstraint("id = 1", name="single_row"),)
+    __mapper_args__ = {"eager_defaults": True}
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    require_mfa: Mapped[bool] = mapped_column(default=False, server_default="false")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

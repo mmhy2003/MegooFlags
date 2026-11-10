@@ -8,8 +8,21 @@ import httpx
 import pytest
 import uvicorn
 from fastapi import FastAPI
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine
+
+# Empties every table the tests write to, keeping the built-in roles and the org_settings row.
+RESET_SQL = [
+    'TRUNCATE project, "user", team, role_binding CASCADE',
+    "DELETE FROM role WHERE NOT builtin",
+    "UPDATE org_settings SET require_mfa = false",
+]
+
+
+async def reset_database(app: FastAPI) -> None:
+    async with app.state.engine.begin() as conn:
+        for statement in RESET_SQL:
+            await conn.execute(text(statement))
 
 
 async def create_project(

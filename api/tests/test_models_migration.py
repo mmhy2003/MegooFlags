@@ -1,6 +1,13 @@
 import megooflags_api.models  # noqa: F401
 from megooflags_api.db import Base
-from megooflags_api.models.enums import FlagType, Operator, SdkKeyKind
+from megooflags_api.models.enums import (
+    FlagType,
+    Operator,
+    ScopeKind,
+    SdkKeyKind,
+    SubjectKind,
+    UserStatus,
+)
 
 
 def test_metadata_has_all_tables() -> None:
@@ -22,6 +29,12 @@ def test_metadata_has_all_tables() -> None:
         "sdk_key",
         "exposure_event",
         "evaluation_count",
+        "user",
+        "team",
+        "team_member",
+        "role",
+        "role_binding",
+        "org_settings",
     }
 
 
@@ -46,3 +59,6 @@ def test_enum_values() -> None:
         "in_segment",
     ]
     assert [k.value for k in SdkKeyKind] == ["server", "client"]
+    assert [s.value for s in UserStatus] == ["active", "disabled"]
+    assert [k.value for k in SubjectKind] == ["user", "team", "service_token"]
+    assert [s.value for s in ScopeKind] == ["org", "project", "environment"]

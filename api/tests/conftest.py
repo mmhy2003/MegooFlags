@@ -8,7 +8,7 @@ from pathlib import Path
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import text
+from helpers import reset_database
 
 # Before the app is imported: megooflags_api.main builds an app from the environment.
 os.environ.setdefault("MEGOOFLAGS_SECRET_KEY", "test-secret-key-0123456789abcdef0123456789")
@@ -54,8 +54,7 @@ def migrated() -> None:
 @pytest.fixture
 async def app(migrated: None) -> AsyncIterator[FastAPI]:
     app = create_app(Settings())
-    async with app.state.engine.begin() as conn:
-        await conn.execute(text("TRUNCATE project CASCADE"))  # every table hangs off project
+    await reset_database(app)
     try:
         yield app
     finally:

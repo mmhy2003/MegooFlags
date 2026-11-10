@@ -35,3 +35,20 @@ class SegmentTargetKind(StrEnum):
 class SdkKeyKind(StrEnum):
     SERVER = "server"
     CLIENT = "client"
+
+
+class UserStatus(StrEnum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
+class SubjectKind(StrEnum):
+    USER = "user"
+    TEAM = "team"
+    SERVICE_TOKEN = "service_token"
+
+
+class ScopeKind(StrEnum):
+    ORG = "org"
+    PROJECT = "project"
+    ENVIRONMENT = "environment"

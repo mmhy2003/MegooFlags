@@ -14,8 +14,7 @@ from typing import Any
 import httpx
 import pytest
 from fastapi import FastAPI
-from helpers import count_statements, create_sdk_key, next_events, running
-from sqlalchemy import text
+from helpers import count_statements, create_sdk_key, next_events, reset_database, running
 from test_sdk import FLAGS, bearer, setup_demo
 from test_stream import STREAM, cached, kill, principal
 from valkey.asyncio import Valkey
@@ -38,8 +37,7 @@ async def replicas(
     Yields app A, a client for A, a client for B and a server key."""
     app_a = create_app(Settings())
     app_b = create_app(settings_b)
-    async with app_a.state.engine.begin() as conn:
-        await conn.execute(text("TRUNCATE project CASCADE"))
+    await reset_database(app_a)
     try:
         async with (
             running(app_a) as url_a,
