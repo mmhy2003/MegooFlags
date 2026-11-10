@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -6,13 +8,16 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from helpers import count_statements, create_flag, create_project
+from jsonschema import Draft202012Validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from test_spec_schemas import ruleset_schema
 
 from megooflags_api.evaluation import Ruleset
 from megooflags_api.models import Environment, Project
 from megooflags_api.services import ruleset_cache
-from megooflags_api.services.ruleset_cache import RulesetCache
+from megooflags_api.services.ruleset import build_ruleset
+from megooflags_api.services.ruleset_cache import CachedRuleset, RulesetCache
 
 FLAGS = "/api/projects/demo/flags"
 COLOR = f"{FLAGS}/color"
@@ -211,3 +216,120 @@ async def test_concurrent_misses_build_once(
 
     assert calls == 1
     assert all(r is results[0] for r in results)
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+async def entry(
+    app: FastAPI, cache: RulesetCache, max_age: float = 1.0, env: str = "production"
+) -> tuple[CachedRuleset, list[str]]:
+    async with app.state.sessionmaker() as session:
+        environment = await load_environment(session, env)
+        with count_statements(app.state.engine) as statements:
+            result = await cache.get_entry(session, environment, max_age=max_age)
+    return result, statements
+
+
+async def test_entry_body_and_etag(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+
+    result, _ = await entry(app, RulesetCache(), max_age=0.0)
+
+    async with app.state.sessionmaker() as session:
+        raw = await build_ruleset(session, await load_environment(session))
+    body = json.dumps(raw, separators=(",", ":"), ensure_ascii=False).encode()
+    assert result.body == body
+    assert result.etag == '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
+    Draft202012Validator(ruleset_schema()).validate(json.loads(result.body))
+    assert result.ruleset.environment == "production"
+
+
+async def test_max_age_hit_is_zero_statements(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    clock = FakeClock()
+    cache = RulesetCache(clock=clock)
+    first, _ = await entry(app, cache)
+
+    clock.now += 0.9
+    second, statements = await entry(app, cache)
+
+    assert second is first
+    assert statements == []
+
+
+async def test_max_age_expired_checks_fingerprint(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    clock = FakeClock()
+    cache = RulesetCache(clock=clock)
+    first, _ = await entry(app, cache)
+
+    clock.now += 1.5
+    second, statements = await entry(app, cache)
+    clock.now += 0.5
+    third, again = await entry(app, cache)
+
+    assert second is first
+    assert len(statements) == 1
+    assert third is first
+    assert again == []  # the fingerprint check renewed checked_at
+
+
+async def test_invalidate_forces_check(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    clock = FakeClock()
+    cache = RulesetCache(clock=clock)
+    first, _ = await entry(app, cache)
+    async with app.state.sessionmaker() as session:
+        project_id = (await load_environment(session)).project_id
+
+    cache.invalidate(project_id)
+    second, statements = await entry(app, cache)
+
+    assert second is first
+    assert len(statements) == 1
+
+    r = await api.post(f"{PRODUCTION}/kill")
+    assert r.status_code == 200, r.text
+    stale, _ = await entry(app, cache)
+    assert stale is first
+    cache.invalidate(project_id)
+    fresh, _ = await entry(app, cache)
+    assert fresh is not first
+    assert fresh.ruleset.flags["color"].enabled is False
+
+
+async def test_invalidate_other_project_no_effect(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    await create_project(api, key="other")
+    clock = FakeClock()
+    cache = RulesetCache(clock=clock)
+    first, _ = await entry(app, cache)
+    async with app.state.sessionmaker() as session:
+        other = await session.scalar(select(Project.id).where(Project.key == "other"))
+    assert other is not None
+
+    cache.invalidate(other)
+    second, statements = await entry(app, cache)
+
+    assert second is first
+    assert statements == []
+
+
+async def test_etag_stable_when_content_same(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    first, _ = await entry(app, cache, max_age=0.0)
+
+    r = await api.patch(COLOR, json={"name": "Colour"})
+    assert r.status_code == 200, r.text
+    second, _ = await entry(app, cache, max_age=0.0)
+
+    assert second.fingerprint != first.fingerprint
+    assert second.etag == first.etag
+    assert second.body == first.body

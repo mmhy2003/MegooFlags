@@ -51,7 +51,7 @@ def _clause(attribute: str, operator: Operator, values: list[Any], negate: bool)
     return {"attribute": attribute, "operator": operator.value, "values": values, "negate": negate}
 
 
-async def build_ruleset(session: AsyncSession, environment: Environment) -> dict[str, Any]:
+async def build_ruleset(session: AsyncSession, environment: EnvRef) -> dict[str, Any]:
     """The ruleset of `environment` in 14 statements."""
     project_id = environment.project_id
     in_env = FlagEnvironment.environment_id == environment.id

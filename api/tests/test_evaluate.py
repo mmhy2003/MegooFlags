@@ -119,3 +119,19 @@ async def test_disabled_flag_serves_off_variation(api: httpx.AsyncClient) -> Non
     assert result["variant"] == "red"
     assert result["value"] == "red"
     assert result["error_code"] is None
+
+
+async def test_write_visible_immediately(api: httpx.AsyncClient) -> None:
+    await setup_color(api)
+    production = f"{FLAGS}/color/environments/production"
+    r = await api.post(f"{production}/toggle", json={"enabled": True})
+    assert r.status_code == 200, r.text
+    before = await evaluate(api, context={"key": "u"})
+    assert before.json()["results"][0]["reason"] != "DISABLED"
+
+    r = await api.post(f"{production}/kill")
+    assert r.status_code == 200, r.text
+    after = await evaluate(api, context={"key": "u"})
+
+    assert after.status_code == 200, after.text
+    assert after.json()["results"][0]["reason"] == "DISABLED"
