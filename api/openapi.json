@@ -4979,6 +4979,100 @@
           "sdk"
         ]
       }
+    },
+    "/sdk/v1/stream": {
+      "get": {
+        "description": "Stream ruleset changes of the key's environment. The first message is skipped when\n`Last-Event-ID` equals the current ETag.",
+        "operationId": "stream_changes_sdk_v1_stream_get",
+        "parameters": [
+          {
+            "description": "Client keys only: browsers' EventSource cannot set headers.",
+            "in": "query",
+            "name": "key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Client keys only: browsers' EventSource cannot set headers.",
+              "title": "Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Server-sent events: `put` with the ruleset for server keys, `changed` with the new ETag for client keys, `revoked` before the stream closes, and a `: ping` comment as heartbeat."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Stream Changes",
+        "tags": [
+          "sdk"
+        ]
+      }
     }
   }
 }

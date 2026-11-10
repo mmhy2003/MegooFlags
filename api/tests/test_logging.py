@@ -103,3 +103,28 @@ async def test_access_log_fields_and_levels() -> None:
     assert (nope.levelno, nope.route, nope.status) == (logging.INFO, "other", 404)
     assert nope.method == "GET" and nope.client_ip == "198.51.100.7"
     assert isinstance(nope.duration_ms, float)
+
+
+async def test_query_key_not_logged() -> None:
+    app = create_app(Settings())
+    capture = Capture()
+    logging.getLogger().addHandler(capture)
+    access_logger.addHandler(capture)
+    access_logger.setLevel(logging.DEBUG)
+    key = "mf_client_xsecretthatmustnotleak"  # not a valid key shape: 401 without a DB lookup
+    transport = httpx.ASGITransport(app=app)
+    try:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.get("/sdk/v1/stream", params={"key": key})
+    finally:
+        logging.getLogger().removeHandler(capture)
+        access_logger.removeHandler(capture)
+        access_logger.setLevel(logging.NOTSET)
+        await app.state.valkey.aclose()
+        await app.state.engine.dispose()
+
+    assert r.status_code == 401
+    server = [rec for rec in capture.records if not rec.name.startswith("httpx")]  # the client
+    assert any(rec.name == access_logger.name for rec in server)
+    for rec in server:
+        assert key not in json.dumps(rec.__dict__, default=str)

@@ -26,6 +26,7 @@ from megooflags_api.services.changes import ChangeBus
 from megooflags_api.services.rate_limit import RateLimiter
 from megooflags_api.services.ruleset_cache import RulesetCache
 from megooflags_api.services.sdk_keys import KeyResolver
+from megooflags_api.services.streams import StreamHub
 from megooflags_api.settings import Settings, get_settings
 from megooflags_api.tracing import configure_tracing
 from megooflags_api.valkey import check_valkey, create_valkey
@@ -70,6 +71,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.change_bus = ChangeBus(app.state.valkey, settings.valkey_url)
     app.state.change_bus.on_project.append(app.state.ruleset_cache.invalidate)
     app.state.change_bus.on_key_revoked.append(app.state.key_resolver.forget)
+    app.state.stream_hub = StreamHub(app.state.sessionmaker, app.state.ruleset_cache)
+    app.state.change_bus.on_project.append(app.state.stream_hub.notify_project)
+    app.state.change_bus.on_key_revoked.append(app.state.stream_hub.notify_key_revoked)
     install_error_handlers(app)
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(metrics.MetricsMiddleware)

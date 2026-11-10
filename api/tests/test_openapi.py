@@ -55,7 +55,7 @@ def test_spec_documents_management_api() -> None:
 def test_spec_documents_sdk_api() -> None:
     spec = json.loads(render())
 
-    assert {"/sdk/v1/ruleset", "/sdk/v1/evaluate"} <= spec["paths"].keys()
+    assert {"/sdk/v1/ruleset", "/sdk/v1/evaluate", "/sdk/v1/stream"} <= spec["paths"].keys()
 
 
 def test_committed_spec_is_current() -> None:
