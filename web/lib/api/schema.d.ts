@@ -285,6 +285,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project}/environments/{env}/sdk-keys/{id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Sdk Key
+         * @description Replace the key with a new one of the same kind and name. The old key keeps working for
+         *     `overlap_seconds`; 0 revokes it at once. The new secret is returned only here.
+         */
+        post: operations["rotate_sdk_key_api_projects__project__environments__env__sdk_keys__id__rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project}/flags": {
         parameters: {
             query?: never;
@@ -722,6 +743,27 @@ export interface paths {
          * @description Revoke the token at once. Its role bindings stay, so the record still shows them.
          */
         delete: operations["revoke_token_api_tokens__id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tokens/{id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Token
+         * @description Replace the token with a new one holding the same name, expiry and bindings. The old token
+         *     keeps working for `overlap_seconds`; 0 revokes it at once. The secret is returned only here.
+         */
+        post: operations["rotate_token_api_tokens__id__rotate_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1770,6 +1812,17 @@ export interface components {
             /** Weights */
             weights: components["schemas"]["WeightIn"][];
         };
+        /**
+         * RotateIn
+         * @description How long the old secret keeps working after a rotation; 0 revokes it at once.
+         */
+        RotateIn: {
+            /**
+             * Overlap Seconds
+             * @default 86400
+             */
+            overlap_seconds: number;
+        };
         /** RuleIn */
         RuleIn: {
             /** Clauses */
@@ -1841,6 +1894,11 @@ export interface components {
              */
             created_at: string;
             /**
+             * Expires At
+             * @description Set by a rotation with an overlap: the key stops working at this time.
+             */
+            expires_at: string | null;
+            /**
              * Id
              * Format: uuid
              */
@@ -1855,6 +1913,8 @@ export interface components {
             name: string;
             /** Prefix */
             prefix: string;
+            /** Rotated From Id */
+            rotated_from_id: string | null;
         };
         /**
          * SdkKeyKind
@@ -1869,6 +1929,11 @@ export interface components {
              */
             created_at: string;
             /**
+             * Expires At
+             * @description Set by a rotation with an overlap: the key stops working at this time.
+             */
+            expires_at: string | null;
+            /**
              * Id
              * Format: uuid
              */
@@ -1880,6 +1945,8 @@ export interface components {
             prefix: string;
             /** Revoked At */
             revoked_at: string | null;
+            /** Rotated From Id */
+            rotated_from_id: string | null;
         };
         /**
          * SegmentConfigIn
@@ -3774,6 +3841,79 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    rotate_sdk_key_api_projects__project__environments__env__sdk_keys__id__rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                env: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RotateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SdkKeyCreated"];
+                };
             };
             /** @description Unauthorized */
             401: {
@@ -6558,6 +6698,77 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    rotate_token_api_tokens__id__rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RotateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenCreated"];
+                };
             };
             /** @description Unauthorized */
             401: {

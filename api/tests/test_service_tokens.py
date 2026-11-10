@@ -1,4 +1,5 @@
 import json
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -15,7 +16,9 @@ from helpers import (
     seed_service_token,
     seed_user,
 )
+from sqlalchemy import update
 
+from megooflags_api.models import ApiToken
 from megooflags_api.services.api_tokens import create_personal_token
 from megooflags_api.services.users import get_user
 
@@ -204,3 +207,108 @@ async def test_last_used_at_is_set_on_first_use(app: FastAPI, admin: httpx.Async
         assert (await client.get("/api/roles")).status_code == 200
     r = await admin.get(f"/api/tokens/{created['token']['id']}")
     assert r.json()["last_used_at"] is not None
+
+
+async def rotate_token(client: httpx.AsyncClient, token_id: str, overlap: int) -> httpx.Response:
+    return await client.post(f"/api/tokens/{token_id}/rotate", json={"overlap_seconds": overlap})
+
+
+async def expire_token_now(app: FastAPI, token_id: str) -> None:
+    async with app.state.sessionmaker() as session:
+        await session.execute(
+            update(ApiToken)
+            .where(ApiToken.id == uuid.UUID(token_id))
+            .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+        )
+        await session.commit()
+
+
+async def test_rotate_copies_name_and_bindings_and_keeps_the_old_token_until_expiry(
+    app: FastAPI, admin: httpx.AsyncClient
+) -> None:
+    await create_project(admin)
+    old = await create_token(admin, bindings=[EDITOR_ON_DEMO])
+    old_id = old["token"]["id"]
+
+    r = await rotate_token(admin, old_id, 3600)
+
+    assert r.status_code == 201, r.text
+    new = r.json()
+    assert new["secret"].startswith("mf_api_")
+    assert new["secret"] != old["secret"]
+    token = new["token"]
+    assert token["id"] != old_id
+    assert token["name"] == "ci"
+    assert token["rotated_from_id"] == old_id
+    assert [(b["subject_id"], b["role"], b["scope"], b["project"]) for b in token["bindings"]] == [
+        (token["id"], "editor", "project", "demo")
+    ]
+    old_out = (await admin.get(f"/api/tokens/{old_id}")).json()
+    assert old_out["revoked_at"] is None
+    expires_at = datetime.fromisoformat(old_out["expires_at"])
+    assert abs(expires_at - (datetime.now(UTC) + timedelta(seconds=3600))) < timedelta(seconds=30)
+    assert len(old_out["bindings"]) == 1
+
+    for secret in (old["secret"], new["secret"]):
+        async with client_with(app, secret) as client:
+            assert (await client.get("/api/projects/demo")).status_code == 200
+
+    await expire_token_now(app, old_id)
+    async with client_with(app, old["secret"]) as client:
+        assert_error(await client.get("/api/projects/demo"), 401, "unauthorized")
+    async with client_with(app, new["secret"]) as client:
+        assert (await client.get("/api/projects/demo")).status_code == 200
+
+
+async def test_rotate_with_overlap_zero_revokes_at_once(
+    app: FastAPI, admin: httpx.AsyncClient
+) -> None:
+    old = await create_token(admin, bindings=[{"role": "viewer", "scope": "org"}])
+
+    r = await rotate_token(admin, old["token"]["id"], 0)
+
+    assert r.status_code == 201, r.text
+    old_out = (await admin.get(f"/api/tokens/{old['token']['id']}")).json()
+    assert old_out["revoked_at"] is not None
+    async with client_with(app, old["secret"]) as client:
+        assert_error(await client.get("/api/roles"), 401, "unauthorized")
+    async with client_with(app, r.json()["secret"]) as client:
+        assert (await client.get("/api/roles")).status_code == 200
+
+
+async def test_rotating_an_inactive_token_is_409(app: FastAPI, admin: httpx.AsyncClient) -> None:
+    revoked = await create_token(admin, "revoked")
+    await admin.delete(f"/api/tokens/{revoked['token']['id']}")
+    expired = await create_token(admin, "expired")
+    await expire_token_now(app, expired["token"]["id"])
+
+    for created in (revoked, expired):
+        r = await rotate_token(admin, created["token"]["id"], 60)
+        assert_error(r, 409, "key_inactive")
+
+
+@pytest.mark.parametrize("overlap", [2592001, -1])
+async def test_rotate_overlap_out_of_range_is_422(admin: httpx.AsyncClient, overlap: int) -> None:
+    created = await create_token(admin)
+    assert_error(
+        await rotate_token(admin, created["token"]["id"], overlap), 422, "validation_error"
+    )
+
+
+async def test_rotation_is_audited_without_secrets(app: FastAPI, admin: httpx.AsyncClient) -> None:
+    old = await create_token(admin)
+
+    r = await rotate_token(admin, old["token"]["id"], 3600)
+
+    [entry] = await audit_entries(app, "token.rotate")
+    assert (entry["resource_type"], entry["resource_key"]) == ("token", old["token"]["id"])
+    assert entry["before"]["old"]["expires_at"] is None
+    assert entry["after"]["old"]["expires_at"] is not None
+    assert entry["after"]["new"]["id"] == r.json()["token"]["id"]
+    assert r.json()["secret"] not in json.dumps(entry, default=str)
+
+
+async def test_a_viewer_cannot_rotate(app: FastAPI, admin: httpx.AsyncClient) -> None:
+    created = await create_token(admin)
+    async with client_with(app, await seed_service_token(app, "viewer", name="v")) as viewer:
+        assert_error(await rotate_token(viewer, created["token"]["id"], 60), 403, "forbidden")

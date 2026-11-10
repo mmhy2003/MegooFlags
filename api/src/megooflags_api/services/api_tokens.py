@@ -7,13 +7,13 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from megooflags_api.errors import not_found, validation_error
-from megooflags_api.models import ApiToken, User
+from megooflags_api.errors import key_inactive, not_found, validation_error
+from megooflags_api.models import ApiToken, RoleBinding, User
 from megooflags_api.models.enums import ApiTokenKind, SubjectKind
 from megooflags_api.schemas.tokens import TokenOut
 from megooflags_api.services.bindings import bindings_of
 from megooflags_api.services.pagination import decode_cursor, page_slice
-from megooflags_api.services.sdk_keys import BASE62, hash_key
+from megooflags_api.services.sdk_keys import BASE62, hash_key, is_inactive
 
 PREFIX = "mf_api_"
 TOKEN_LENGTH = 39  # 7-char prefix + 32 random
@@ -126,9 +126,13 @@ async def list_service_tokens(
     return await tokens_out(session, page), next_cursor
 
 
-async def get_service_token(session: AsyncSession, token_id: uuid.UUID) -> ApiToken:
+async def get_service_token(
+    session: AsyncSession, token_id: uuid.UUID, *, for_update: bool = False
+) -> ApiToken:
     """404 for an unknown id and for personal tokens."""
-    row = await session.get(ApiToken, token_id)
+    row = await session.get(
+        ApiToken, token_id, with_for_update=for_update, populate_existing=for_update
+    )
     if row is None or row.kind != ApiTokenKind.SERVICE:
         raise not_found("token", str(token_id))
     return row
@@ -139,6 +143,55 @@ async def revoke(session: AsyncSession, row: ApiToken) -> None:
     if row.revoked_at is None:
         row.revoked_at = datetime.now(UTC)
         await session.flush()
+
+
+async def rotate_token(
+    session: AsyncSession, token_id: uuid.UUID, overlap: timedelta, *, created_by: uuid.UUID | None
+) -> tuple[ApiToken, ApiToken, str]:
+    """Replace a live service token with a new one of the same name, expiry and role bindings.
+    The old token keeps working for `overlap` (never longer than it already would); a zero
+    overlap revokes it at once.
+
+    Returns the old row, the new row and the new secret.
+    """
+    old = await get_service_token(session, token_id, for_update=True)
+    now = datetime.now(UTC)
+    if is_inactive(old.revoked_at, old.expires_at, now):
+        raise key_inactive("token", str(token_id))
+    new, secret = await _create(
+        session,
+        ApiToken(
+            kind=ApiTokenKind.SERVICE,
+            name=old.name,
+            created_by=created_by,
+            expires_at=old.expires_at,
+            rotated_from_id=old.id,
+        ),
+    )
+    held = await session.scalars(
+        select(RoleBinding).where(
+            RoleBinding.subject_kind == SubjectKind.SERVICE_TOKEN, RoleBinding.subject_id == old.id
+        )
+    )
+    for binding in held.all():
+        session.add(
+            RoleBinding(
+                subject_kind=SubjectKind.SERVICE_TOKEN,
+                subject_id=new.id,
+                role_id=binding.role_id,
+                scope=binding.scope,
+                project_id=binding.project_id,
+                environment_id=binding.environment_id,
+                source=binding.source,
+            )
+        )
+    if overlap <= timedelta(0):
+        old.revoked_at = now
+    else:
+        until = now + overlap
+        old.expires_at = until if old.expires_at is None else min(old.expires_at, until)
+    await session.flush()
+    return old, new, secret
 
 
 async def resolve_token(session: AsyncSession, token: str) -> ApiToken | None:

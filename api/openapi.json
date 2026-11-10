@@ -2300,6 +2300,21 @@
         "title": "RolloutIn",
         "type": "object"
       },
+      "RotateIn": {
+        "additionalProperties": false,
+        "description": "How long the old secret keeps working after a rotation; 0 revokes it at once.",
+        "properties": {
+          "overlap_seconds": {
+            "default": 86400,
+            "maximum": 2592000.0,
+            "minimum": 0.0,
+            "title": "Overlap Seconds",
+            "type": "integer"
+          }
+        },
+        "title": "RotateIn",
+        "type": "object"
+      },
       "RuleIn": {
         "additionalProperties": false,
         "properties": {
@@ -2519,6 +2534,19 @@
             "title": "Created At",
             "type": "string"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set by a rotation with an overlap: the key stops working at this time.",
+            "title": "Expires At"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -2539,6 +2567,18 @@
           "prefix": {
             "title": "Prefix",
             "type": "string"
+          },
+          "rotated_from_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotated From Id"
           }
         },
         "required": [
@@ -2547,6 +2587,8 @@
           "kind",
           "prefix",
           "created_at",
+          "expires_at",
+          "rotated_from_id",
           "key"
         ],
         "title": "SdkKeyCreated",
@@ -2567,6 +2609,19 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set by a rotation with an overlap: the key stops working at this time.",
+            "title": "Expires At"
           },
           "id": {
             "format": "uuid",
@@ -2595,6 +2650,18 @@
               }
             ],
             "title": "Revoked At"
+          },
+          "rotated_from_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotated From Id"
           }
         },
         "required": [
@@ -2603,6 +2670,8 @@
           "kind",
           "prefix",
           "created_at",
+          "expires_at",
+          "rotated_from_id",
           "revoked_at"
         ],
         "title": "SdkKeyOut",
@@ -5882,6 +5951,118 @@
           }
         },
         "summary": "Revoke Sdk Key",
+        "tags": [
+          "sdk-keys"
+        ]
+      }
+    },
+    "/api/projects/{project}/environments/{env}/sdk-keys/{id}/rotate": {
+      "post": {
+        "description": "Replace the key with a new one of the same kind and name. The old key keeps working for\n`overlap_seconds`; 0 revokes it at once. The new secret is returned only here.",
+        "operationId": "rotate_sdk_key_api_projects__project__environments__env__sdk_keys__id__rotate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "env",
+            "required": true,
+            "schema": {
+              "title": "Env",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SdkKeyCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Rotate Sdk Key",
         "tags": [
           "sdk-keys"
         ]
@@ -9701,6 +9882,100 @@
           }
         },
         "summary": "Read Token",
+        "tags": [
+          "tokens"
+        ]
+      }
+    },
+    "/api/tokens/{id}/rotate": {
+      "post": {
+        "description": "Replace the token with a new one holding the same name, expiry and bindings. The old token\nkeeps working for `overlap_seconds`; 0 revokes it at once. The secret is returned only here.",
+        "operationId": "rotate_token_api_tokens__id__rotate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Rotate Token",
         "tags": [
           "tokens"
         ]

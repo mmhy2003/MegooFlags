@@ -296,6 +296,13 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
             {"name": "backend", "kind": "server"},
         ),
         sample("DELETE", f"{E}/sdk-keys/{{id}}", "sdk_key.revoke", sdk_key),
+        sample(
+            "POST",
+            f"{E}/sdk-keys/{{id}}/rotate",
+            "sdk_key.rotate",
+            sdk_key,
+            {"overlap_seconds": 60},
+        ),
         # Roles and bindings
         sample(
             "POST",
@@ -329,6 +336,7 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
         # Service tokens
         sample("POST", "/api/tokens", "token.create", nothing, {"name": "ci"}),
         sample("DELETE", "/api/tokens/{id}", "token.revoke", token),
+        sample("POST", "/api/tokens/{id}/rotate", "token.rotate", token, {"overlap_seconds": 60}),
     ]
 )
 
@@ -455,5 +463,14 @@ async def test_sdk_key_create_stores_no_secret(app: FastAPI, api: httpx.AsyncCli
     [entry] = await audit_entries(app, "sdk_key.create")
     assert entry["resource_key"] == created["id"]
     assert entry["before"] is None
-    assert set(entry["after"]) == {"id", "name", "kind", "prefix", "created_at", "revoked_at"}
+    assert set(entry["after"]) == {
+        "id",
+        "name",
+        "kind",
+        "prefix",
+        "created_at",
+        "revoked_at",
+        "expires_at",
+        "rotated_from_id",
+    }
     assert created["key"] not in str(entry)

@@ -12,10 +12,10 @@ import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from megooflags_api.models import Environment
+from megooflags_api.models import Environment, SdkKey
 from megooflags_api.services.ruleset_cache import CachedRuleset, RulesetCache
 from megooflags_api.services.sdk_keys import SdkPrincipal
 
@@ -34,9 +34,14 @@ class Subscriber:
     def __init__(self, principal: SdkPrincipal) -> None:
         self.principal = principal
         self.queue: asyncio.Queue[StreamItem] = asyncio.Queue(maxsize=1)
+        self._revoked = False
 
     def offer(self, item: StreamItem) -> None:
-        """Queue `item`, dropping an older item the stream has not taken yet."""
+        """Queue `item`, dropping an older item the stream has not taken yet. `Revoked` is
+        final: nothing offered after it replaces it, so the stream always closes."""
+        if self._revoked:
+            return
+        self._revoked = isinstance(item, Revoked)
         if self.queue.full():
             self.queue.get_nowait()
         self.queue.put_nowait(item)
@@ -99,8 +104,27 @@ class StreamHub:
                     sub.offer(Revoked())
 
     async def recheck_all(self) -> None:
-        """Refresh every subscribed environment; covers change messages that never arrived."""
+        """Close the streams of revoked or expired keys, then refresh every subscribed
+        environment; covers change messages that never arrived and keys that expired."""
+        if self._subscribers:
+            await self._revoke_inactive()
         await self.refresh(list(self._subscribers))
+
+    async def _revoke_inactive(self) -> None:
+        subs = [sub for env_subs in self._subscribers.values() for sub in env_subs]
+        key_ids = {sub.principal.key_id for sub in subs}
+        async with self._sessionmaker() as session:
+            inactive = set(
+                await session.scalars(
+                    select(SdkKey.id).where(
+                        SdkKey.id.in_(key_ids),
+                        or_(SdkKey.revoked_at.is_not(None), SdkKey.expires_at <= func.now()),
+                    )
+                )
+            )
+        for sub in subs:
+            if sub.principal.key_id in inactive:
+                sub.offer(Revoked())
 
     async def run_recheck_loop(self, interval: float) -> None:
         while True:

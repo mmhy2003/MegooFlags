@@ -26,6 +26,11 @@ class SdkKey(Base):
     secret_hash: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when the key is rotated with an overlap: the key stops working at this time.
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rotated_from_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("sdk_key.id", ondelete="SET NULL")
+    )
 
 
 class ExposureEvent(Base):

@@ -217,6 +217,9 @@ class FakeSession:
     async def scalar(self, statement: Any) -> uuid.UUID:
         return uuid.uuid4()  # the environment exists
 
+    async def scalars(self, statement: Any) -> list[uuid.UUID]:
+        return []  # no key is revoked or expired
+
 
 async def test_recheck_and_flush_never_offer_stale() -> None:
     """A re-check that read the old ruleset must not offer it after a flush offered the new one."""

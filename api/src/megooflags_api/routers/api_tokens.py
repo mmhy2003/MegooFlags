@@ -1,6 +1,7 @@
 """Service API tokens (`/tokens`) and their role bindings. Rotation is `/tokens/{id}/rotate`."""
 
 import uuid
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -10,7 +11,7 @@ from megooflags_api.auth.require import Authz, require
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES
 from megooflags_api.models.enums import SubjectKind
-from megooflags_api.schemas.common import Page
+from megooflags_api.schemas.common import Page, RotateIn
 from megooflags_api.schemas.identity import BindingIn
 from megooflags_api.schemas.tokens import ServiceTokenCreate, TokenCreated, TokenOut
 from megooflags_api.services import api_tokens, bindings
@@ -77,3 +78,27 @@ async def revoke_token(
     )
     await session.commit()
     return Response(status_code=204)
+
+
+@router.post("/{id}/rotate", status_code=201)
+async def rotate_token(
+    session: SessionDep, authz: ManageTokens, audit: AuditDep, id: uuid.UUID, body: RotateIn
+) -> TokenCreated:
+    """Replace the token with a new one holding the same name, expiry and bindings. The old token
+    keeps working for `overlap_seconds`; 0 revokes it at once. The secret is returned only here."""
+    before = await api_tokens.token_out(
+        session, await api_tokens.get_service_token(session, id, for_update=True)
+    )
+    old, new, secret = await api_tokens.rotate_token(
+        session, id, timedelta(seconds=body.overlap_seconds), created_by=authz.principal.id
+    )
+    old_out, new_out = await api_tokens.tokens_out(session, [old, new])
+    await audit.record(
+        "token.rotate",
+        "token",
+        str(id),
+        before={"old": snapshot(before)},
+        after={"old": snapshot(old_out), "new": snapshot(new_out)},
+    )
+    await session.commit()
+    return TokenCreated(token=new_out, secret=secret)
