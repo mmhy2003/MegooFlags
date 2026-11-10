@@ -12,6 +12,7 @@ from megooflags_api.evaluation import ErrorCode, Resolution, evaluate, evaluate_
 from megooflags_api.models.enums import SdkKeyKind
 from megooflags_api.schemas.ofrep import OfrepBulk, OfrepError, OfrepRequest, OfrepSuccess
 from megooflags_api.sdk_auth import OfrepKeyDep
+from megooflags_api.services.events import EvaluationCounter
 from megooflags_api.services.ruleset_cache import SDK_MAX_AGE, CachedRuleset, RulesetCache
 from megooflags_api.services.sdk_keys import SdkPrincipal
 
@@ -32,6 +33,14 @@ def ofrep_context(ctx: dict[str, Any]) -> dict[str, Any]:
     if ctx.get("targetingKey") is not None:
         ctx["key"] = ctx["targetingKey"]
     return ctx
+
+
+def _count(request: Request, principal: SdkPrincipal, results: dict[str, Resolution]) -> None:
+    counter: EvaluationCounter = request.app.state.evaluation_counter
+    counter.record(
+        principal.environment.id,
+        [(k, r.variant) for k, r in results.items() if r.error_code != ErrorCode.FLAG_NOT_FOUND],
+    )
 
 
 def _item(key: str, r: Resolution, principal: SdkPrincipal) -> OfrepSuccess | OfrepError:
@@ -65,7 +74,9 @@ async def evaluate_flag(
 ) -> Response:
     """Evaluate one flag. `PREREQUISITE_FAILED` is passed through as the reason."""
     entry = await _entry(request, principal)
-    item = _item(key, evaluate(entry.ruleset, key, ofrep_context(body.context), None), principal)
+    resolution = evaluate(entry.ruleset, key, ofrep_context(body.context), None)
+    _count(request, principal, {key: resolution})
+    item = _item(key, resolution, principal)
     if isinstance(item, OfrepError):
         status = 404 if item.errorCode == ErrorCode.FLAG_NOT_FOUND else 400
     else:
@@ -88,5 +99,6 @@ async def evaluate_flags(
     if etag_matches(if_none_match, etag):
         return Response(status_code=304, headers={"ETag": etag})
     results = evaluate_all(entry.ruleset, ctx)
+    _count(request, principal, results)
     flags = [_dump(_item(k, r, principal)) for k, r in results.items()]
     return JSONResponse({"flags": flags}, headers={"ETag": etag})

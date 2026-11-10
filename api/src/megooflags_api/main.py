@@ -24,6 +24,7 @@ from megooflags_api.routers import (
     segments,
 )
 from megooflags_api.services.changes import ChangeBus
+from megooflags_api.services.events import EvaluationCounter, run_retention
 from megooflags_api.services.rate_limit import RateLimiter
 from megooflags_api.services.ruleset_cache import RulesetCache
 from megooflags_api.services.sdk_keys import KeyResolver
@@ -37,11 +38,13 @@ def background_jobs(app: FastAPI) -> list[Coroutine[Any, Any, None]]:
     return [
         app.state.change_bus.run(),
         app.state.stream_hub.run_recheck_loop(app.state.settings.stream_recheck_seconds),
+        app.state.evaluation_counter.run(app.state.sessionmaker),
+        run_retention(app.state.sessionmaker, app.state.settings.exposure_retention_days),
     ]
 
 
 async def shutdown_jobs(app: FastAPI) -> None:
-    pass
+    await app.state.evaluation_counter.flush(app.state.sessionmaker)
 
 
 @asynccontextmanager
@@ -79,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.change_bus.on_project.append(app.state.stream_hub.notify_project)
     app.state.change_bus.on_key_revoked.append(app.state.stream_hub.notify_key_revoked)
     app.state.change_bus.on_resubscribe.append(app.state.stream_hub.recheck_all)
+    app.state.evaluation_counter = EvaluationCounter()
     install_error_handlers(app)
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(metrics.MetricsMiddleware)

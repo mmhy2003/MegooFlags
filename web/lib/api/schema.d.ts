@@ -475,6 +475,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sdk/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Events
+         * @description Store exposures and add evaluation counts, at most 1000 of each and 1 MB per batch. The
+         *     context is dropped unless `MEGOOFLAGS_PERSIST_CONTEXT` is enabled; unknown flags are kept.
+         */
+        post: operations["send_events_sdk_v1_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sdk/v1/ruleset": {
         parameters: {
             query?: never;
@@ -566,6 +587,21 @@ export interface components {
             /** To */
             to: string[];
         };
+        /** CountIn */
+        CountIn: {
+            /** Count */
+            count: number;
+            /** Flag Key */
+            flag_key: string;
+            /**
+             * Hour
+             * Format: date-time
+             * @description Truncated to the hour.
+             */
+            hour: string;
+            /** Variant */
+            variant?: string | null;
+        };
         /** EnvironmentCreate */
         EnvironmentCreate: {
             /**
@@ -655,6 +691,35 @@ export interface components {
             value: components["schemas"]["JsonValue"];
             /** Variant */
             variant: string | null;
+        };
+        /** EventsIn */
+        EventsIn: {
+            /** Counts */
+            counts?: components["schemas"]["CountIn"][];
+            /** Exposures */
+            exposures?: components["schemas"]["ExposureIn"][];
+        };
+        /** ExposureIn */
+        ExposureIn: {
+            /**
+             * Context
+             * @description Stored only when `MEGOOFLAGS_PERSIST_CONTEXT` is enabled.
+             */
+            context?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
+            /** Flag Key */
+            flag_key: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Timestamp
+             * Format: date-time
+             * @description Clamped to the time the batch is received.
+             */
+            timestamp: string;
+            /** Variant */
+            variant?: string | null;
         };
         /** FlagConfigIn */
         FlagConfigIn: {
@@ -3221,6 +3286,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description Unprocessable Entity */
             422: {
                 headers: {
@@ -3301,6 +3375,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OfrepError"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -3401,6 +3484,82 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    send_events_sdk_v1_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventsIn"];
+            };
+        };
+        responses: {
+            /** @description The batch was stored. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description Unprocessable Entity */
             422: {
                 headers: {
@@ -3466,6 +3625,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description Unprocessable Entity */
             422: {
                 headers: {
@@ -3520,6 +3688,15 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };

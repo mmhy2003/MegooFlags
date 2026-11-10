@@ -1,21 +1,32 @@
-"""The SDK delivery API: ruleset download for server keys, remote evaluation for any key, and a
-change stream over server-sent events."""
+"""The SDK delivery API: ruleset download for server keys, remote evaluation for any key, a
+change stream over server-sent events, and exposure events and evaluation counts."""
 
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, Request, Response
+from fastapi import APIRouter, Depends, Header, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from megooflags_api.db import SessionDep
 from megooflags_api.errors import SDK_ERROR_RESPONSES
 from megooflags_api.etags import canonical_json, derived_etag, etag_matches
-from megooflags_api.evaluation import evaluate_all
+from megooflags_api.evaluation import ErrorCode, evaluate_all
 from megooflags_api.models.enums import SdkKeyKind
 from megooflags_api.schemas.evaluation import EvaluateIn
+from megooflags_api.schemas.events import EventsIn
 from megooflags_api.schemas.sdk import SdkEvaluateOut, SdkEvaluationResult
 from megooflags_api.sdk_auth import AnyKeyDep, ServerKeyDep, StreamKeyDep
+from megooflags_api.services.events import (
+    CountKey,
+    EvaluationCounter,
+    add_counts,
+    limit_body_size,
+    record_exposures,
+    truncate_hour,
+)
 from megooflags_api.services.ruleset_cache import SDK_MAX_AGE, CachedRuleset, RulesetCache
 from megooflags_api.services.sdk_keys import KeyResolver, SdkPrincipal
 from megooflags_api.services.streams import Revoked, StreamHub
@@ -82,8 +93,18 @@ async def evaluate_flags(
     if etag_matches(if_none_match, etag):
         return _not_modified(etag)
     server = principal.kind == SdkKeyKind.SERVER
+    resolutions = evaluate_all(entry.ruleset, body.context, body.flags)
+    counter: EvaluationCounter = request.app.state.evaluation_counter
+    counter.record(
+        principal.environment.id,
+        [
+            (key, r.variant)
+            for key, r in resolutions.items()
+            if r.error_code != ErrorCode.FLAG_NOT_FOUND
+        ],
+    )
     results = []
-    for key, r in evaluate_all(entry.ruleset, body.context, body.flags).items():
+    for key, r in resolutions.items():
         extra: dict[str, Any] = {"metadata": r.metadata} if server else {}
         results.append(
             SdkEvaluationResult(
@@ -168,3 +189,32 @@ async def stream_changes(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post(
+    "/events",
+    status_code=202,
+    response_class=Response,
+    dependencies=[Depends(limit_body_size)],
+    responses={202: {"description": "The batch was stored."}},
+)
+async def send_events(
+    request: Request, principal: AnyKeyDep, body: EventsIn, session: SessionDep
+) -> Response:
+    """Store exposures and add evaluation counts, at most 1000 of each and 1 MB per batch. The
+    context is dropped unless `MEGOOFLAGS_PERSIST_CONTEXT` is enabled; unknown flags are kept."""
+    env_id = principal.environment.id
+    await record_exposures(
+        session,
+        env_id,
+        body.exposures,
+        persist_context=request.app.state.settings.persist_context,
+        now=datetime.now(UTC),
+    )
+    counts: dict[CountKey, int] = {}
+    for c in body.counts:
+        key = (env_id, c.flag_key, c.variant or "", truncate_hour(c.hour))
+        counts[key] = counts.get(key, 0) + c.count
+    await add_counts(session, counts)
+    await session.commit()
+    return Response(status_code=202)

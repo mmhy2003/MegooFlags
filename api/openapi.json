@@ -125,6 +125,48 @@
         "title": "CopyIn",
         "type": "object"
       },
+      "CountIn": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "maximum": 1000000000.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "flag_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Flag Key",
+            "type": "string"
+          },
+          "hour": {
+            "description": "Truncated to the hour.",
+            "format": "date-time",
+            "title": "Hour",
+            "type": "string"
+          },
+          "variant": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant"
+          }
+        },
+        "required": [
+          "flag_key",
+          "hour",
+          "count"
+        ],
+        "title": "CountIn",
+        "type": "object"
+      },
       "EnvironmentCreate": {
         "additionalProperties": false,
         "properties": {
@@ -384,6 +426,86 @@
           "metadata"
         ],
         "title": "EvaluationResult",
+        "type": "object"
+      },
+      "EventsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "items": {
+              "$ref": "#/components/schemas/CountIn"
+            },
+            "maxItems": 1000,
+            "title": "Counts",
+            "type": "array"
+          },
+          "exposures": {
+            "items": {
+              "$ref": "#/components/schemas/ExposureIn"
+            },
+            "maxItems": 1000,
+            "title": "Exposures",
+            "type": "array"
+          }
+        },
+        "title": "EventsIn",
+        "type": "object"
+      },
+      "ExposureIn": {
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stored only when `MEGOOFLAGS_PERSIST_CONTEXT` is enabled.",
+            "title": "Context"
+          },
+          "flag_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Flag Key",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "Clamped to the time the batch is received.",
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "variant": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant"
+          }
+        },
+        "required": [
+          "flag_key",
+          "reason",
+          "timestamp"
+        ],
+        "title": "ExposureIn",
         "type": "object"
       },
       "FlagConfigIn": {
@@ -4967,6 +5089,16 @@
             },
             "description": "Forbidden"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5085,6 +5217,16 @@
               }
             },
             "description": "The flag does not exist."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
           },
           "422": {
             "content": {
@@ -5210,6 +5352,16 @@
             },
             "description": "Forbidden"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -5232,6 +5384,81 @@
           }
         },
         "summary": "Evaluate Flags",
+        "tags": [
+          "sdk"
+        ]
+      }
+    },
+    "/sdk/v1/events": {
+      "post": {
+        "description": "Store exposures and add evaluation counts, at most 1000 of each and 1 MB per batch. The\ncontext is dropped unless `MEGOOFLAGS_PERSIST_CONTEXT` is enabled; unknown flags are kept.",
+        "operationId": "send_events_sdk_v1_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "The batch was stored."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Send Events",
         "tags": [
           "sdk"
         ]
@@ -5288,6 +5515,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
           },
           "422": {
             "content": {
@@ -5382,6 +5619,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
           },
           "422": {
             "content": {

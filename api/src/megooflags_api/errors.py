@@ -111,6 +111,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 SDK_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"model": ErrorBody},
     403: {"model": ErrorBody},
+    413: {"model": ErrorBody},
     422: {"model": ErrorBody},
     429: {"model": ErrorBody},
 }
