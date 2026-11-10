@@ -44,3 +44,39 @@ def test_share_splits_rate_and_concurrency():
     assert part.concurrency == 64
     assert (part.url, part.duration) == ("u", 30)
     assert args.rps == 2000  # the original is left alone
+
+
+async def serve_ok(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    """A keep-alive HTTP/1.1 server that answers every request with an empty JSON object."""
+    try:
+        while True:
+            head = await reader.readuntil(b"\r\n\r\n")
+            length = 0
+            for line in head.decode().split("\r\n"):
+                name, _, value = line.partition(":")
+                if name.lower() == "content-length":
+                    length = int(value)
+            await reader.readexactly(length)
+            writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n")
+            writer.write(b"Content-Length: 2\r\n\r\n{}")
+            await writer.drain()
+    except (asyncio.IncompleteReadError, ConnectionError):
+        writer.close()
+
+
+def test_run_measures_every_request():
+    async def scenario():
+        server = await asyncio.start_server(serve_ok, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        args = parse_args(["--url", f"http://127.0.0.1:{port}", "--key", "k", "--rps", "200"])
+        args.duration = 0.1
+        args.concurrency = 4
+        async with server:
+            return await run(args)
+
+    latencies, errors, elapsed = asyncio.run(scenario())
+
+    assert errors == 0
+    assert len(latencies) == 20
+    assert all(latency >= 0 for latency in latencies)
+    assert elapsed >= 0.09

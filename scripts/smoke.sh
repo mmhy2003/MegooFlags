@@ -2,11 +2,12 @@
 # Compose smoke test: start the stack from locally built megooflags-{api,web}:ci images and check it
 # through Caddy. Mode "http" (default): plain HTTP with three api replicas. Mode "https": automatic HTTPS
 # for localhost, with a certificate from Caddy's internal CA. Mode "http" also runs the kill-switch
-# propagation test (scripts/propagation_test.py) across the replicas.
+# propagation test (scripts/propagation_test.py) across the replicas, each running two uvicorn workers;
+# mode "https" runs one replica with the default worker count.
 set -euo pipefail
 mode="${1:-http}"
 case "$mode" in
-  http) export MEGOOFLAGS_SITE_ADDRESS="" replicas=3 ;;
+  http) export MEGOOFLAGS_SITE_ADDRESS="" MEGOOFLAGS_API_WORKERS="${MEGOOFLAGS_API_WORKERS:-2}" replicas=3 ;;
   https) export MEGOOFLAGS_SITE_ADDRESS="localhost" replicas=1 ;;
   *) echo "usage: $0 [http|https]" >&2; exit 2 ;;
 esac

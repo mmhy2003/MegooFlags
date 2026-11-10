@@ -6,7 +6,7 @@ latency is measured from that due time, so a slow server cannot hide its queuein
 --concurrency requests are in flight; when the cap is reached, the next request waits for a free
 slot and that wait counts towards its latency.
 
-One Python process with httpx sends at most a few hundred requests per second, so higher rates need
+One Python process sends at most a few hundred requests per second, so higher rates need
 --processes: each process sends rps / processes with concurrency / processes in flight, and the
 latencies of all processes are merged.
 
@@ -18,6 +18,7 @@ CI does not run it: shared runners are too noisy for latency targets.
 
 import argparse
 import asyncio
+import contextlib
 import copy
 import random
 import sys
@@ -72,17 +73,25 @@ async def run(args: argparse.Namespace) -> tuple[list[float], int, float]:
     total = int(args.rps * args.duration)
     latencies: list[float] = []
     errors = 0
-    slots = asyncio.Semaphore(args.concurrency)
-    limits = httpx.Limits(
-        max_connections=args.concurrency, max_keepalive_connections=args.concurrency
-    )
     headers = {"Authorization": f"Bearer {args.key}"}
+    # One single-connection client per in-flight slot: httpx's pool scans all of its connections
+    # for every queued request, which caps one shared client at about 100 requests per second.
+    one_connection = httpx.Limits(max_connections=1, max_keepalive_connections=1)
+    free: asyncio.Queue[httpx.AsyncClient] = asyncio.Queue()
+    tls = httpx.create_ssl_context()  # shared: building one per client takes ~15 ms each
 
-    async with httpx.AsyncClient(
-        base_url=args.url, headers=headers, limits=limits, timeout=10.0
-    ) as client:
+    async with contextlib.AsyncExitStack() as stack:
+        for _ in range(args.concurrency):
+            client = httpx.AsyncClient(
+                base_url=args.url,
+                headers=headers,
+                limits=one_connection,
+                timeout=10.0,
+                verify=tls,
+            )
+            free.put_nowait(await stack.enter_async_context(client))
 
-        async def one(due: float) -> None:
+        async def one(client: httpx.AsyncClient, due: float) -> None:
             nonlocal errors
             try:
                 body: dict[str, object] = {
@@ -98,7 +107,7 @@ async def run(args: argparse.Namespace) -> tuple[list[float], int, float]:
             except Exception:  # any failure is an error; it must not abort the run
                 errors += 1
             finally:
-                slots.release()
+                free.put_nowait(client)
 
         tasks: set[asyncio.Task[None]] = set()
         start = time.perf_counter()
@@ -107,8 +116,8 @@ async def run(args: argparse.Namespace) -> tuple[list[float], int, float]:
             delay = due - time.perf_counter()
             if delay > 0:
                 await asyncio.sleep(delay)
-            await slots.acquire()
-            task = asyncio.create_task(one(due))
+            client = await free.get()
+            task = asyncio.create_task(one(client, due))
             tasks.add(task)
             task.add_done_callback(tasks.discard)
         await asyncio.gather(*tasks)

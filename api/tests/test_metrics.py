@@ -1,4 +1,8 @@
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import httpx
 from conftest import ClientFactory
@@ -55,3 +59,30 @@ async def test_route_label_is_the_template() -> None:
 
 def test_metrics_not_in_openapi() -> None:
     assert "/metrics" not in json.loads(render())["paths"]
+
+
+def run_python(code: str, metrics_dir: Path) -> str:
+    env = {**os.environ, "PROMETHEUS_MULTIPROC_DIR": str(metrics_dir)}
+    done = subprocess.run(
+        [sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True
+    )
+    return done.stdout
+
+
+def test_metrics_add_up_across_worker_processes(tmp_path: Path) -> None:
+    worker = (
+        "from megooflags_api import metrics\n"
+        "metrics.RATE_LIMIT_ERRORS.inc()\n"
+        "metrics.IN_PROGRESS.inc()\n"
+        "metrics.worker_exited()\n"
+    )
+    run_python(worker, tmp_path)
+    run_python(worker, tmp_path)
+
+    text = run_python(
+        "from megooflags_api import metrics\nprint(metrics.render().decode())", tmp_path
+    )
+
+    assert "megooflags_rate_limit_errors_total 2.0" in text
+    assert "megooflags_http_requests_in_progress 0.0" in text  # exited workers count as idle
+    assert 'megooflags_build_info{version="' in text

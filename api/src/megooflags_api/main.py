@@ -62,6 +62,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if app.state.tracer_provider is not None:
             app.state.tracer_provider.shutdown()
         await app.state.engine.dispose()
+        metrics.worker_exited()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

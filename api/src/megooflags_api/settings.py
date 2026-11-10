@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     client_rate_limit_per_minute: int = Field(600, ge=1)
     sse_heartbeat_seconds: float = Field(15, gt=0)
     stream_recheck_seconds: float = Field(30, gt=0)
+    api_workers: int = Field(0, ge=0)  # 0: one per CPU, at most serve.MAX_AUTO_WORKERS
 
     @field_validator("public_url", mode="before")
     @classmethod
