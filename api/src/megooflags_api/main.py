@@ -16,6 +16,7 @@ from megooflags_api.routers import (
     projects,
     segments,
 )
+from megooflags_api.services.ruleset_cache import RulesetCache
 from megooflags_api.settings import Settings, get_settings
 from megooflags_api.tracing import configure_tracing
 
@@ -35,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = create_engine(settings)
     app.state.sessionmaker = create_sessionmaker(app.state.engine)
+    app.state.ruleset_cache = RulesetCache()
     install_error_handlers(app)
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(metrics.MetricsMiddleware)
