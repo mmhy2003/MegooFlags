@@ -5,6 +5,7 @@ from megooflags_api.models.enums import (
     Operator,
     ScopeKind,
     SdkKeyKind,
+    SessionState,
     SubjectKind,
     UserStatus,
 )
@@ -35,6 +36,7 @@ def test_metadata_has_all_tables() -> None:
         "role",
         "role_binding",
         "org_settings",
+        "session",
     }
 
 
@@ -62,3 +64,4 @@ def test_enum_values() -> None:
     assert [s.value for s in UserStatus] == ["active", "disabled"]
     assert [k.value for k in SubjectKind] == ["user", "team", "service_token"]
     assert [s.value for s in ScopeKind] == ["org", "project", "environment"]
+    assert [s.value for s in SessionState] == ["pending_mfa", "enrol_mfa", "active"]

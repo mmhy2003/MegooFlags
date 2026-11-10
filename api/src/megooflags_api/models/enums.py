@@ -52,3 +52,9 @@ class ScopeKind(StrEnum):
     ORG = "org"
     PROJECT = "project"
     ENVIRONMENT = "environment"
+
+
+class SessionState(StrEnum):
+    PENDING_MFA = "pending_mfa"  # password checked, second factor still to come
+    ENROL_MFA = "enrol_mfa"  # signed in, but the org requires a factor the user has not set up
+    ACTIVE = "active"

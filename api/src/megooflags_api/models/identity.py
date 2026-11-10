@@ -17,7 +17,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from megooflags_api.db import Base
 from megooflags_api.models.base import TimestampMixin, pg_enum, uuid_pk
-from megooflags_api.models.enums import ScopeKind, SubjectKind, UserStatus
+from megooflags_api.models.enums import ScopeKind, SessionState, SubjectKind, UserStatus
 
 
 class User(Base):
@@ -129,3 +129,27 @@ class OrgSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class UserSession(Base):
+    """A server-side sign-in session. Only the sha256 of the cookie token is stored."""
+
+    __tablename__ = "session"
+    __table_args__ = (UniqueConstraint("token_hash"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    token_hash: Mapped[str] = mapped_column(String(64))
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), index=True
+    )
+    state: Mapped[SessionState] = mapped_column(pg_enum(SessionState, "session_state"))
+    # "password", "sso:<provider key>", ...
+    auth_method: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    idle_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    absolute_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # When a second factor was last verified in this session (the "recent factor" rule).
+    mfa_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ip: Mapped[str | None] = mapped_column(String(45))
+    user_agent: Mapped[str | None] = mapped_column(String(512))

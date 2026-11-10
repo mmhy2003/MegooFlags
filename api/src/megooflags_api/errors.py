@@ -80,6 +80,10 @@ def forbidden(message: str) -> ApiError:
     return ApiError(403, "forbidden", message)
 
 
+def csrf_failed() -> ApiError:
+    return ApiError(403, "csrf_failed", "the request origin is not allowed")
+
+
 def rate_limited(retry_after: int) -> ApiError:
     return ApiError(
         429,

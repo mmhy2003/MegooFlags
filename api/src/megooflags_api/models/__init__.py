@@ -8,6 +8,7 @@ from megooflags_api.models.identity import (
     Team,
     TeamMember,
     User,
+    UserSession,
 )
 from megooflags_api.models.project import Environment, Project
 from megooflags_api.models.sdk import EvaluationCount, ExposureEvent, SdkKey
@@ -45,5 +46,6 @@ __all__ = [
     "Team",
     "TeamMember",
     "User",
+    "UserSession",
     "Variation",
 ]

@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     api_workers: int = Field(0, ge=0)  # 0: one per CPU, at most serve.MAX_AUTO_WORKERS
     # Required to start (crypto.require_secret_key), optional here so tools like export_openapi run.
     secret_key: SecretStr | None = Field(None, min_length=32)
+    session_idle_hours: float = Field(12, gt=0)
+    session_absolute_days: float = Field(7, gt=0)
+    pending_mfa_minutes: float = Field(5, gt=0)
 
     @field_validator("public_url", "secret_key", mode="before")
     @classmethod

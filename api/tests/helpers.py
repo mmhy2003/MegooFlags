@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
@@ -8,8 +9,12 @@ import httpx
 import pytest
 import uvicorn
 from fastapi import FastAPI
-from sqlalchemy import event, text
+from sqlalchemy import event, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
+
+from megooflags_api.models import Role, RoleBinding
+from megooflags_api.models.enums import ScopeKind, SubjectKind
+from megooflags_api.services.users import create_user
 
 # Empties every table the tests write to, keeping the built-in roles and the org_settings row.
 RESET_SQL = [
@@ -23,6 +28,39 @@ async def reset_database(app: FastAPI) -> None:
     async with app.state.engine.begin() as conn:
         for statement in RESET_SQL:
             await conn.execute(text(statement))
+
+
+PASSWORD = "correct horse battery staple"
+
+
+async def seed_user(
+    app: FastAPI,
+    email: str = "admin@example.com",
+    *,
+    password: str = PASSWORD,
+    role: str = "admin",
+    scope: str = "org",
+    project_id: uuid.UUID | None = None,
+    environment_id: uuid.UUID | None = None,
+    name: str = "Test User",
+) -> uuid.UUID:
+    """A committed user holding `role` (a role key) at `scope`."""
+    async with app.state.sessionmaker() as session:
+        user = await create_user(session, email, name, password)
+        role_id = await session.scalar(select(Role.id).where(Role.key == role))
+        assert role_id is not None, f"no role {role!r}"
+        session.add(
+            RoleBinding(
+                subject_kind=SubjectKind.USER,
+                subject_id=user.id,
+                role_id=role_id,
+                scope=ScopeKind(scope),
+                project_id=project_id,
+                environment_id=environment_id,
+            )
+        )
+        await session.commit()
+        return user.id
 
 
 async def create_project(
