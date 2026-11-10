@@ -29,6 +29,7 @@ from megooflags_api.routers import (
     sdk_keys,
     segments,
     setup,
+    teams,
     users,
 )
 from megooflags_api.services.changes import ChangeBus
@@ -131,7 +132,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sdk_keys,
     ):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_actor)])
-    for module in (roles, users):
+    for module in (roles, users, teams):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_principal)])
     app.include_router(sdk.router)
     app.include_router(ofrep.router)

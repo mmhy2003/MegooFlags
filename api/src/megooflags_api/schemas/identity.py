@@ -52,6 +52,33 @@ class InvitationAccept(ApiModel):
     password: Password
 
 
+class TeamIn(ApiModel):
+    key: Key
+    name: Name
+
+
+class TeamUpdate(ApiModel):
+    name: Name | None = None
+
+
+class TeamOut(ApiModel):
+    id: uuid.UUID
+    key: str
+    name: str
+    created_at: datetime
+    member_count: int
+
+
+class TeamMemberIn(ApiModel):
+    user_id: uuid.UUID
+
+
+class TeamMemberOut(ApiModel):
+    user: UserOut
+    # "manual", or "sso:<provider key>" for memberships managed by group sync.
+    source: str
+
+
 class RoleIn(ApiModel):
     key: Key
     name: Name
