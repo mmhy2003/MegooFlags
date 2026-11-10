@@ -108,10 +108,11 @@ async def test_every_write_route_publishes(app: FastAPI, api: httpx.AsyncClient)
         assert published[count:] == [expected], (method, url)
 
     # app.routes hides included routers' APIRoutes (FastAPI 0.162), so read the OpenAPI paths.
+    # Only project routes can change a ruleset; identity and auth routes publish nothing.
     routes = {
         (method.upper(), path)
         for path, operations in app.openapi()["paths"].items()
-        if path.startswith("/api/")
+        if path.startswith("/api/projects")
         for method in operations
         if method.upper() in WRITE_METHODS
     }

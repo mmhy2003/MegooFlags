@@ -23,7 +23,15 @@ from megooflags_api.services.lookup import get_environment, get_project
 
 # (method, path) of the routes that need no credentials; each is added by the step that creates
 # the route.
-PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset()
+PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("GET", "/api/setup/status"),
+        ("POST", "/api/setup"),
+        ("POST", "/api/auth/sign-in"),
+        ("POST", "/api/auth/sign-out"),
+        ("GET", "/api/auth/me"),
+    }
+)
 
 
 @dataclass

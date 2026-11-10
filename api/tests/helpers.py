@@ -11,6 +11,7 @@ import uvicorn
 from fastapi import FastAPI
 from sqlalchemy import event, func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
+from valkey.exceptions import ValkeyError
 
 from megooflags_api.models import AuditEntry, Role, RoleBinding
 from megooflags_api.models.enums import ScopeKind, SubjectKind
@@ -29,9 +30,17 @@ async def reset_database(app: FastAPI) -> None:
     async with app.state.engine.begin() as conn:
         for statement in RESET_SQL:
             await conn.execute(text(statement))
+    # Throttle counters and other auth state; tests without Valkey have none to clear.
+    try:
+        keys = [key async for key in app.state.valkey.scan_iter(match="megooflags:auth:*")]
+        if keys:
+            await app.state.valkey.delete(*keys)
+    except (ValkeyError, OSError, TimeoutError):
+        pass
 
 
 PASSWORD = "correct horse battery staple"
+ORIGIN = {"Origin": "http://test"}
 
 
 async def seed_user(
@@ -100,6 +109,14 @@ async def seed_service_token(
         app, SubjectKind.SERVICE_TOKEN, row.id, role, scope, project_id, environment_id
     )
     return token
+
+
+async def sign_in(
+    client: httpx.AsyncClient, email: str = "admin@example.com", password: str = PASSWORD
+) -> httpx.Response:
+    return await client.post(
+        "/api/auth/sign-in", json={"email": email, "password": password}, headers=ORIGIN
+    )
 
 
 def bearer(token: str) -> dict[str, str]:

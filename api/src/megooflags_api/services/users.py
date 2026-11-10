@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.auth.passwords import check_password_policy, hash_password
@@ -13,6 +13,10 @@ from megooflags_api.schemas.identity import UserOut
 
 async def get_user_by_email(session: AsyncSession, email: str) -> User | None:
     return await session.scalar(select(User).where(func.lower(User.email) == email.lower()))
+
+
+async def has_users(session: AsyncSession) -> bool:
+    return bool(await session.scalar(select(exists().select_from(User))))
 
 
 async def get_user(session: AsyncSession, user_id: uuid.UUID) -> User:

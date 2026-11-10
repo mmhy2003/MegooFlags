@@ -76,6 +76,14 @@ def unauthorized(message: str) -> ApiError:
     return ApiError(401, "unauthorized", message, headers={"WWW-Authenticate": "Bearer"})
 
 
+def invalid_credentials() -> ApiError:
+    return ApiError(401, "invalid_credentials", "invalid email or password")
+
+
+def already_set_up() -> ApiError:
+    return ApiError(409, "already_set_up", "this instance already has a user; sign in instead")
+
+
 def forbidden(message: str) -> ApiError:
     return ApiError(403, "forbidden", message)
 

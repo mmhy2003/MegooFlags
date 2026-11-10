@@ -180,6 +180,11 @@ async def rotate(
     return new_row, token
 
 
+async def end_session_by_token(session: AsyncSession, token: str) -> None:
+    """Delete the session a cookie token belongs to, if any. The caller commits."""
+    await session.execute(delete(UserSession).where(UserSession.token_hash == _hash(token)))
+
+
 async def end_sessions(
     session: AsyncSession, user_id: uuid.UUID, *, except_id: uuid.UUID | None = None
 ) -> int:
