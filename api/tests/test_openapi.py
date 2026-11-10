@@ -26,6 +26,8 @@ def test_spec_documents_management_api() -> None:
         "/api/projects/{project}/environments",
         "/api/projects/{project}/environments/{env}",
         "/api/projects/{project}/environments/{env}/evaluate",
+        "/api/projects/{project}/environments/{env}/sdk-keys",
+        "/api/projects/{project}/environments/{env}/sdk-keys/{id}",
         "/api/projects/{project}/flags",
         flag,
         f"{flag}/archive",

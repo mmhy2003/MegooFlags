@@ -53,3 +53,17 @@ def count_statements(engine: AsyncEngine) -> Iterator[list[str]]:
         yield statements
     finally:
         event.remove(engine.sync_engine, "before_cursor_execute", listener)
+
+
+async def create_sdk_key(
+    api: httpx.AsyncClient,
+    kind: str,
+    project: str = "demo",
+    env: str = "production",
+    name: str = "k",
+) -> dict[str, Any]:
+    r = await api.post(
+        f"/api/projects/{project}/environments/{env}/sdk-keys", json={"name": name, "kind": kind}
+    )
+    assert r.status_code == 201, r.text
+    return r.json()  # type: ignore[no-any-return]

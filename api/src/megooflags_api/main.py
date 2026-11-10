@@ -17,6 +17,7 @@ from megooflags_api.routers import (
     flags,
     health,
     projects,
+    sdk_keys,
     segments,
 )
 from megooflags_api.services.ruleset_cache import RulesetCache
@@ -64,7 +65,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(metrics.MetricsMiddleware)
     app.include_router(health.router)
     app.include_router(metrics.router)
-    for module in (projects, environments, flags, flag_environments, segments, evaluate):
+    for module in (
+        projects,
+        environments,
+        flags,
+        flag_environments,
+        segments,
+        evaluate,
+        sdk_keys,
+    ):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_actor)])
     app.state.tracer_provider = configure_tracing(app, app.state.engine)
     return app
