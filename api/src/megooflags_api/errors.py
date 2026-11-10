@@ -94,6 +94,10 @@ def last_admin() -> ApiError:
     )
 
 
+def no_password() -> ApiError:
+    return ApiError(409, "no_password", "this account has no password; it signs in another way")
+
+
 def key_inactive(entity: str, key: str) -> ApiError:
     return ApiError(409, "key_inactive", f"{entity} '{key}' is revoked or expired")
 

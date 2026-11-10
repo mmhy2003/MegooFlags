@@ -15,6 +15,7 @@ from megooflags_api.db import create_engine, create_sessionmaker
 from megooflags_api.errors import install_error_handlers
 from megooflags_api.logging import AccessLogMiddleware, configure_logging
 from megooflags_api.routers import (
+    account,
     api_tokens,
     audit,
     auth,
@@ -123,6 +124,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(setup.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
     app.include_router(users.public_router, prefix="/api")
+    app.include_router(account.router, prefix="/api")
     for module in (
         projects,
         environments,

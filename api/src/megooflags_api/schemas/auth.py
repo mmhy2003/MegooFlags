@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import StringConstraints
@@ -47,3 +48,18 @@ class MeOut(ApiModel):
     session_state: SessionState | None
     mfa: MfaStatus | None
     require_mfa: bool
+
+
+class PasswordChange(ApiModel):
+    current_password: Password
+    new_password: Password
+
+
+class SessionOut(ApiModel):
+    id: uuid.UUID
+    created_at: datetime
+    last_seen_at: datetime
+    ip: str | None
+    user_agent: str | None
+    auth_method: str
+    current: bool

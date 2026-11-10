@@ -191,6 +191,16 @@ async def signed_in(client: httpx.AsyncClient, app: FastAPI) -> Params:
     return {}
 
 
+async def other_session(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """Signed in twice; `id` is the session `client` is not using."""
+    await signed_in(client, app)
+    async with client_from(app, ORIGIN) as other:
+        assert (await sign_in(other)).status_code == 200
+    r = await client.get("/api/account/sessions")
+    [other_id] = [item["id"] for item in r.json() if not item["current"]]
+    return {"id": other_id}
+
+
 # Calls whose body depends on what `prepare` created.
 async def create_binding(client: httpx.AsyncClient, params: Params) -> httpx.Response:
     return await client.post("/api/bindings", json=binding_body(params["user_id"]))
@@ -233,6 +243,29 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
             client="anon",
         ),
         sample("POST", "/api/auth/sign-out", "auth.sign_out", signed_in, client="session"),
+        # The signed-in user's account
+        sample(
+            "PUT",
+            "/api/account/password",
+            "account.password.change",
+            signed_in,
+            {"current_password": "correct horse battery staple", "new_password": PASSWORD},
+            client="session",
+        ),
+        sample(
+            "DELETE",
+            "/api/account/sessions/{id}",
+            "account.session.revoke",
+            other_session,
+            client="session",
+        ),
+        sample(
+            "DELETE",
+            "/api/account/sessions/others",
+            "account.session.revoke",
+            other_session,
+            client="session",
+        ),
         sample(
             "POST",
             "/api/invitations/{token}",
