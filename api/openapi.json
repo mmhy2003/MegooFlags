@@ -2997,9 +2997,9 @@
         ]
       }
     },
-    "/api/projects/{project}/flags/{flag}/environments/{environment}": {
+    "/api/projects/{project}/flags/{flag}/environments/{env}": {
       "get": {
-        "operationId": "read_flag_config_api_projects__project__flags__flag__environments__environment__get",
+        "operationId": "read_flag_config_api_projects__project__flags__flag__environments__env__get",
         "parameters": [
           {
             "in": "path",
@@ -3021,10 +3021,10 @@
           },
           {
             "in": "path",
-            "name": "environment",
+            "name": "env",
             "required": true,
             "schema": {
-              "title": "Environment",
+              "title": "Env",
               "type": "string"
             }
           }
@@ -3078,7 +3078,7 @@
       },
       "put": {
         "description": "Replace the whole config; `version` must match the current one, or 409.",
-        "operationId": "replace_flag_config_api_projects__project__flags__flag__environments__environment__put",
+        "operationId": "replace_flag_config_api_projects__project__flags__flag__environments__env__put",
         "parameters": [
           {
             "in": "path",
@@ -3100,10 +3100,10 @@
           },
           {
             "in": "path",
-            "name": "environment",
+            "name": "env",
             "required": true,
             "schema": {
-              "title": "Environment",
+              "title": "Env",
               "type": "string"
             }
           }
@@ -3166,10 +3166,10 @@
         ]
       }
     },
-    "/api/projects/{project}/flags/{flag}/environments/{environment}/kill": {
+    "/api/projects/{project}/flags/{flag}/environments/{env}/kill": {
       "post": {
         "description": "Kill switch: turn the flag off, whatever the version; targeting is left as is.\n\nThe delivery service pushes the change to SDKs (F-6).",
-        "operationId": "kill_flag_api_projects__project__flags__flag__environments__environment__kill_post",
+        "operationId": "kill_flag_api_projects__project__flags__flag__environments__env__kill_post",
         "parameters": [
           {
             "in": "path",
@@ -3191,10 +3191,10 @@
           },
           {
             "in": "path",
-            "name": "environment",
+            "name": "env",
             "required": true,
             "schema": {
-              "title": "Environment",
+              "title": "Env",
               "type": "string"
             }
           }
@@ -3247,10 +3247,10 @@
         ]
       }
     },
-    "/api/projects/{project}/flags/{flag}/environments/{environment}/toggle": {
+    "/api/projects/{project}/flags/{flag}/environments/{env}/toggle": {
       "post": {
         "description": "Turn the flag on or off; when `version` is set it must match the current one, or 409.",
-        "operationId": "toggle_flag_api_projects__project__flags__flag__environments__environment__toggle_post",
+        "operationId": "toggle_flag_api_projects__project__flags__flag__environments__env__toggle_post",
         "parameters": [
           {
             "in": "path",
@@ -3272,10 +3272,10 @@
           },
           {
             "in": "path",
-            "name": "environment",
+            "name": "env",
             "required": true,
             "schema": {
-              "title": "Environment",
+              "title": "Env",
               "type": "string"
             }
           }

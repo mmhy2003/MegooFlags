@@ -172,7 +172,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/projects/{project}/flags/{flag}/environments/{environment}": {
+    "/api/projects/{project}/flags/{flag}/environments/{env}": {
         parameters: {
             query?: never;
             header?: never;
@@ -180,12 +180,12 @@ export interface paths {
             cookie?: never;
         };
         /** Read Flag Config */
-        get: operations["read_flag_config_api_projects__project__flags__flag__environments__environment__get"];
+        get: operations["read_flag_config_api_projects__project__flags__flag__environments__env__get"];
         /**
          * Replace Flag Config
          * @description Replace the whole config; `version` must match the current one, or 409.
          */
-        put: operations["replace_flag_config_api_projects__project__flags__flag__environments__environment__put"];
+        put: operations["replace_flag_config_api_projects__project__flags__flag__environments__env__put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -193,7 +193,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/projects/{project}/flags/{flag}/environments/{environment}/kill": {
+    "/api/projects/{project}/flags/{flag}/environments/{env}/kill": {
         parameters: {
             query?: never;
             header?: never;
@@ -208,14 +208,14 @@ export interface paths {
          *
          *     The delivery service pushes the change to SDKs (F-6).
          */
-        post: operations["kill_flag_api_projects__project__flags__flag__environments__environment__kill_post"];
+        post: operations["kill_flag_api_projects__project__flags__flag__environments__env__kill_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/projects/{project}/flags/{flag}/environments/{environment}/toggle": {
+    "/api/projects/{project}/flags/{flag}/environments/{env}/toggle": {
         parameters: {
             query?: never;
             header?: never;
@@ -228,7 +228,7 @@ export interface paths {
          * Toggle Flag
          * @description Turn the flag on or off; when `version` is set it must match the current one, or 409.
          */
-        post: operations["toggle_flag_api_projects__project__flags__flag__environments__environment__toggle_post"];
+        post: operations["toggle_flag_api_projects__project__flags__flag__environments__env__toggle_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1892,14 +1892,14 @@ export interface operations {
             };
         };
     };
-    read_flag_config_api_projects__project__flags__flag__environments__environment__get: {
+    read_flag_config_api_projects__project__flags__flag__environments__env__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 project: string;
                 flag: string;
-                environment: string;
+                env: string;
             };
             cookie?: never;
         };
@@ -1943,14 +1943,14 @@ export interface operations {
             };
         };
     };
-    replace_flag_config_api_projects__project__flags__flag__environments__environment__put: {
+    replace_flag_config_api_projects__project__flags__flag__environments__env__put: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 project: string;
                 flag: string;
-                environment: string;
+                env: string;
             };
             cookie?: never;
         };
@@ -1998,14 +1998,14 @@ export interface operations {
             };
         };
     };
-    kill_flag_api_projects__project__flags__flag__environments__environment__kill_post: {
+    kill_flag_api_projects__project__flags__flag__environments__env__kill_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 project: string;
                 flag: string;
-                environment: string;
+                env: string;
             };
             cookie?: never;
         };
@@ -2049,14 +2049,14 @@ export interface operations {
             };
         };
     };
-    toggle_flag_api_projects__project__flags__flag__environments__environment__toggle_post: {
+    toggle_flag_api_projects__project__flags__flag__environments__env__toggle_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 project: string;
                 flag: string;
-                environment: string;
+                env: string;
             };
             cookie?: never;
         };

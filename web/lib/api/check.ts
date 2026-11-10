@@ -8,3 +8,8 @@ export const healthExample: components["schemas"]["HealthResponse"] = {
 export const readyExample: components["schemas"]["ReadyResponse"] = {
   status: "ready",
 };
+export const errorExample: components["schemas"]["ErrorBody"] = {
+  code: "not_found",
+  message: "flag 'x' not found",
+  details: null,
+};
