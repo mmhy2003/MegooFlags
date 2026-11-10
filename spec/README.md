@@ -8,6 +8,7 @@ SDKs evaluate flags, targeting rules and percentage rollouts the same way as the
 | Path | What it is |
 |---|---|
 | [`evaluation.md`](evaluation.md) | The normative evaluation spec: context, order of evaluation, operators, segments, bucketing, prerequisites, error codes and the ruleset format |
+| [`delivery.md`](delivery.md) | The normative SDK delivery spec: SDK keys, endpoints, status codes, ETags and polling, server-sent events, exposure events and counts, CORS and OFREP |
 | [`ruleset.schema.json`](ruleset.schema.json) | JSON Schema (2020-12) of the ruleset that server SDKs download |
 | [`conformance/`](conformance/) | The language-neutral conformance suite: case files of ruleset, context and expected result, plus bucketing hash vectors |
 
