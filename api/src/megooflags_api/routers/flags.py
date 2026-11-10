@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -35,6 +36,11 @@ def _project(authz: Authz) -> Project:
     return authz.project
 
 
+def _visible(authz: Authz) -> set[uuid.UUID] | None:
+    """The project's environments the caller can see; None means all."""
+    return authz.authorizer.visible_environment_ids(_project(authz).id)
+
+
 @router.get("/projects/{project}/flags")
 async def list_flags(
     session: SessionDep,
@@ -60,6 +66,7 @@ async def list_flags(
         type=type,
         cursor=cursor,
         limit=limit,
+        visible=_visible(authz),
     )
     return Page[FlagSummary](items=items, next_cursor=next_cursor)
 
@@ -69,7 +76,7 @@ async def create_flag(
     session: SessionDep, authz: CreateFlag, bus: ChangesDep, project: str, body: FlagCreate
 ) -> FlagOut:
     row = await flags.create_flag(session, _project(authz), body)
-    out = await flags.flag_out(session, row)
+    out = await flags.flag_out(session, row, _visible(authz))
     await session.commit()
     await bus.publish(row.project_id)
     return out
@@ -78,7 +85,7 @@ async def create_flag(
 @router.get("/projects/{project}/flags/{flag}")
 async def read_flag(session: SessionDep, authz: ReadProject, project: str, flag: str) -> FlagOut:
     row = await get_flag(session, _project(authz), flag)
-    return await flags.flag_out(session, row)
+    return await flags.flag_out(session, row, _visible(authz))
 
 
 @router.patch("/projects/{project}/flags/{flag}")
@@ -92,7 +99,7 @@ async def update_flag(
 ) -> FlagOut:
     row = await get_flag(session, _project(authz), flag)
     await flags.update_flag(session, row, body)
-    out = await flags.flag_out(session, row)
+    out = await flags.flag_out(session, row, _visible(authz))
     await session.commit()
     await bus.publish(row.project_id)
     return out
@@ -104,7 +111,7 @@ async def archive_flag(
 ) -> FlagOut:
     row = await get_flag(session, _project(authz), flag)
     await flags.archive_flag(session, row)
-    out = await flags.flag_out(session, row)
+    out = await flags.flag_out(session, row, _visible(authz))
     await session.commit()
     await bus.publish(row.project_id)
     return out
@@ -116,7 +123,7 @@ async def restore_flag(
 ) -> FlagOut:
     row = await get_flag(session, _project(authz), flag)
     await flags.restore_flag(session, row)
-    out = await flags.flag_out(session, row)
+    out = await flags.flag_out(session, row, _visible(authz))
     await session.commit()
     await bus.publish(row.project_id)
     return out

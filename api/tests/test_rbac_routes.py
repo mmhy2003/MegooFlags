@@ -138,6 +138,21 @@ async def test_flag_environments_list_is_filtered(client_as: ClientAs) -> None:
         assert [s["environment"] for s in r.json()] == ["development", "production", "staging"]
 
 
+async def test_flag_reads_show_only_visible_environments(client_as: ClientAs) -> None:
+    async with client_as(("editor", "demo", "production")) as editor:
+        r = await editor.get("/api/projects/demo/flags")
+        assert r.status_code == 200, r.text
+        assert [s["environment"] for s in r.json()["items"][0]["environments"]] == ["production"]
+        r = await editor.get("/api/projects/demo/flags/new-ui")
+        assert r.status_code == 200, r.text
+        assert [s["environment"] for s in r.json()["environments"]] == ["production"]
+    async with client_as(("editor", "demo", None)) as editor:
+        r = await editor.patch("/api/projects/demo/flags/new-ui", json={"name": "New"})
+        assert r.status_code == 200, r.text
+        envs = [s["environment"] for s in r.json()["environments"]]
+        assert envs == ["development", "production", "staging"]
+
+
 async def test_token_on_another_project_gets_404_on_demo(client_as: ClientAs) -> None:
     async with client_as(("admin", "other", None)) as other:
         for path in (

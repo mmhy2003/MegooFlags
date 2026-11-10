@@ -134,8 +134,11 @@ async def list_flags(
     type: FlagType | None,
     cursor: str | None,
     limit: int,
+    visible: set[uuid.UUID] | None = None,
 ) -> tuple[list[FlagSummary], str | None]:
-    """One query for the page of flags, one for their environment states; no variations."""
+    """One query for the page of flags, one for their environment states; no variations.
+
+    `visible` limits the states to those environment ids (None means all)."""
     query = (
         select(
             Flag.id,
@@ -171,7 +174,7 @@ async def list_flags(
         query = query.where(Flag.key > decode_cursor(cursor))
 
     rows, next_cursor = page_slice(list(await session.execute(query)), limit, lambda r: r.key)
-    states = await environment_states(session, [row.id for row in rows]) if rows else {}
+    states = await environment_states(session, [row.id for row in rows], visible) if rows else {}
     items = [
         FlagSummary(
             key=row.key,
@@ -281,7 +284,11 @@ async def environment_states(
     return states
 
 
-async def flag_out(session: AsyncSession, flag: Flag) -> FlagOut:
+async def flag_out(
+    session: AsyncSession, flag: Flag, visible: set[uuid.UUID] | None = None
+) -> FlagOut:
+    """The flag with its variations and environment states; `visible` limits the states to
+    those environment ids (None means all)."""
     variations = list(
         await session.scalars(
             select(Variation)
@@ -289,7 +296,7 @@ async def flag_out(session: AsyncSession, flag: Flag) -> FlagOut:
             .order_by(Variation.sort_order, Variation.key)
         )
     )
-    states = await environment_states(session, [flag.id])
+    states = await environment_states(session, [flag.id], visible)
     return FlagOut(
         key=flag.key,
         name=flag.name,
