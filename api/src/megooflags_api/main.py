@@ -20,7 +20,9 @@ from megooflags_api.routers import (
     sdk_keys,
     segments,
 )
+from megooflags_api.services.rate_limit import RateLimiter
 from megooflags_api.services.ruleset_cache import RulesetCache
+from megooflags_api.services.sdk_keys import KeyResolver
 from megooflags_api.settings import Settings, get_settings
 from megooflags_api.tracing import configure_tracing
 from megooflags_api.valkey import check_valkey, create_valkey
@@ -60,6 +62,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sessionmaker = create_sessionmaker(app.state.engine)
     app.state.valkey = create_valkey(settings.valkey_url)
     app.state.ruleset_cache = RulesetCache()
+    app.state.key_resolver = KeyResolver()
+    app.state.rate_limiter = RateLimiter(app.state.valkey, settings.client_rate_limit_per_minute)
     install_error_handlers(app)
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(metrics.MetricsMiddleware)

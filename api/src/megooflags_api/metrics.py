@@ -14,6 +14,9 @@ DURATION = Histogram(
     "megooflags_http_request_duration_seconds", "HTTP request duration.", ["method", "route"]
 )
 IN_PROGRESS = Gauge("megooflags_http_requests_in_progress", "HTTP requests in progress.")
+RATE_LIMIT_ERRORS = Counter(
+    "megooflags_rate_limit_errors", "Client rate-limit checks that failed open (Valkey errors)."
+)
 BUILD_INFO = Gauge("megooflags_build_info", "MegooFlags API build.", ["version"])
 BUILD_INFO.labels(version=__version__).set(1)
 

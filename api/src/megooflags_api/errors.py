@@ -14,12 +14,20 @@ class ErrorBody(BaseModel):
 
 
 class ApiError(Exception):
-    def __init__(self, status: int, code: str, message: str, details: JsonValue = None) -> None:
+    def __init__(
+        self,
+        status: int,
+        code: str,
+        message: str,
+        details: JsonValue = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(message)
         self.status = status
         self.code = code
         self.message = message
         self.details = details
+        self.headers = headers
 
 
 def not_found(entity: str, key: str) -> ApiError:
@@ -60,6 +68,27 @@ def prerequisite_cycle(message: str, path: str) -> ApiError:
     return ApiError(422, "prerequisite_cycle", message, {"path": path})
 
 
+def unauthorized(message: str) -> ApiError:
+    return ApiError(401, "unauthorized", message, headers={"WWW-Authenticate": "Bearer"})
+
+
+def forbidden(message: str) -> ApiError:
+    return ApiError(403, "forbidden", message)
+
+
+def rate_limited(retry_after: int) -> ApiError:
+    return ApiError(
+        429,
+        "rate_limited",
+        f"too many requests; retry in {retry_after} s",
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
+def payload_too_large(message: str) -> ApiError:
+    return ApiError(413, "payload_too_large", message)
+
+
 def integrity_error_status_code(sqlstate: str | None) -> tuple[int, str]:
     """Map a Postgres integrity violation that escaped the services' own checks."""
     match sqlstate:
@@ -79,17 +108,28 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     422: {"model": ErrorBody},
 }
 
+SDK_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {"model": ErrorBody},
+    403: {"model": ErrorBody},
+    422: {"model": ErrorBody},
+    429: {"model": ErrorBody},
+}
+
 
 def _error_response(
-    status: int, code: str, message: str, details: JsonValue = None
+    status: int,
+    code: str,
+    message: str,
+    details: JsonValue = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     body = ErrorBody(code=code, message=message, details=details)
-    return JSONResponse(status_code=status, content=body.model_dump(mode="json"))
+    return JSONResponse(status_code=status, content=body.model_dump(mode="json"), headers=headers)
 
 
 async def _api_error(request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, ApiError)
-    return _error_response(exc.status, exc.code, exc.message, exc.details)
+    return _error_response(exc.status, exc.code, exc.message, exc.details, exc.headers)
 
 
 async def _request_validation_error(request: Request, exc: Exception) -> JSONResponse:
