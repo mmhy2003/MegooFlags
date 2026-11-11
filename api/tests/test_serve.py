@@ -6,6 +6,8 @@ import pytest
 
 from megooflags_api import serve
 
+KEY = "k" * 32
+
 
 def test_worker_count() -> None:
     assert serve.worker_count(0, 16) == serve.MAX_AUTO_WORKERS
@@ -30,8 +32,23 @@ def fake_run(monkeypatch: pytest.MonkeyPatch) -> FakeUvicorn:
     return fake
 
 
+def test_refuses_to_start_without_secret_key(
+    fake_run: FakeUvicorn, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_check_valkey(url: str) -> None:
+        pass
+
+    monkeypatch.setattr(serve, "_check_valkey", fake_check_valkey)
+
+    with pytest.raises(SystemExit) as exc:
+        serve.main({"MEGOOFLAGS_SECRET_KEY": ""})
+
+    assert exc.value.code == 1
+    assert fake_run.calls == []
+
+
 def test_refuses_to_start_without_valkey(fake_run: FakeUvicorn) -> None:
-    environ = {"MEGOOFLAGS_VALKEY_URL": "redis://127.0.0.1:1/0"}
+    environ = {"MEGOOFLAGS_VALKEY_URL": "redis://127.0.0.1:1/0", "MEGOOFLAGS_SECRET_KEY": KEY}
 
     with pytest.raises(SystemExit) as exc:
         serve.main(environ)
@@ -45,6 +62,7 @@ def test_several_workers_share_metrics(fake_run: FakeUvicorn) -> None:
     environ = {
         "MEGOOFLAGS_VALKEY_URL": os.environ["MEGOOFLAGS_VALKEY_URL"],
         "MEGOOFLAGS_API_WORKERS": "3",
+        "MEGOOFLAGS_SECRET_KEY": KEY,
     }
 
     serve.main(environ)
@@ -68,6 +86,7 @@ def test_one_worker_keeps_plain_metrics(fake_run: FakeUvicorn) -> None:
     environ = {
         "MEGOOFLAGS_VALKEY_URL": os.environ["MEGOOFLAGS_VALKEY_URL"],
         "MEGOOFLAGS_API_WORKERS": "1",
+        "MEGOOFLAGS_SECRET_KEY": KEY,
     }
 
     serve.main(environ)

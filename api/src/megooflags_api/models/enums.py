@@ -35,3 +35,41 @@ class SegmentTargetKind(StrEnum):
 class SdkKeyKind(StrEnum):
     SERVER = "server"
     CLIENT = "client"
+
+
+class UserStatus(StrEnum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
+class SubjectKind(StrEnum):
+    USER = "user"
+    TEAM = "team"
+    SERVICE_TOKEN = "service_token"
+
+
+class ScopeKind(StrEnum):
+    ORG = "org"
+    PROJECT = "project"
+    ENVIRONMENT = "environment"
+
+
+class SessionState(StrEnum):
+    PENDING_MFA = "pending_mfa"  # password checked, second factor still to come
+    ENROL_MFA = "enrol_mfa"  # signed in, but the org requires a factor the user has not set up
+    ACTIVE = "active"
+
+
+class ApiTokenKind(StrEnum):
+    SERVICE = "service"  # has its own role bindings
+    PERSONAL = "personal"  # a permission subset, capped by its owner's rights
+
+
+class InvitationPurpose(StrEnum):
+    INVITE = "invite"  # a new user sets their first password
+    RESET = "reset"  # an admin-issued password reset
+
+
+class SsoProtocol(StrEnum):
+    OIDC = "oidc"
+    SAML = "saml"

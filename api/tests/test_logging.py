@@ -4,6 +4,7 @@ import logging.config
 from pathlib import Path
 
 import httpx
+from fastapi import FastAPI
 from opentelemetry.sdk.trace import TracerProvider
 
 from megooflags_api.logging import JsonFormatter, access_logger
@@ -128,3 +129,29 @@ async def test_query_key_not_logged() -> None:
     assert any(rec.name == access_logger.name for rec in server)
     for rec in server:
         assert key not in json.dumps(rec.__dict__, default=str)
+
+
+async def test_credentials_not_logged(app: FastAPI) -> None:
+    secrets = ("mf_api_SECRETTOKENTHATMUSTNOTLEAK", "SECRETCOOKIE", "mf_client_SECRETKEYNOTLEAK")
+    capture = Capture()
+    access_logger.addHandler(capture)
+    access_logger.setLevel(logging.DEBUG)
+    headers = {"Authorization": f"Bearer {secrets[0]}", "Cookie": f"mf_session={secrets[1]}"}
+    transport = httpx.ASGITransport(app=app)
+    try:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            for path in ("/sdk/v1/stream", "/api/projects"):
+                r = await client.get(path, params={"key": secrets[2]}, headers=headers)
+                assert r.status_code == 401
+    finally:
+        access_logger.removeHandler(capture)
+        access_logger.setLevel(logging.NOTSET)
+
+    assert [rec.getMessage() for rec in capture.records] == [
+        "GET /sdk/v1/stream 401",
+        "GET /api/projects 401",
+    ]
+    for rec in capture.records:
+        logged = rec.getMessage() + json.dumps(rec.__dict__, default=str)
+        for secret in secrets:
+            assert secret not in logged

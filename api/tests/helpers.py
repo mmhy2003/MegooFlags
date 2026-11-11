@@ -1,15 +1,194 @@
 import asyncio
+import time
+import uuid
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+import pyotp
 import pytest
 import uvicorn
 from fastapi import FastAPI
-from sqlalchemy import event
+from pydantic import AnyHttpUrl
+from soft_webauthn import SoftAuthenticator
+from sqlalchemy import event, func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
+from valkey.exceptions import ValkeyError
+
+from megooflags_api.models import AuditEntry, Role, RoleBinding
+from megooflags_api.models.enums import ScopeKind, SubjectKind
+from megooflags_api.services.api_tokens import create_service_token
+from megooflags_api.services.users import create_user
+
+# Empties every table the tests write to, keeping the built-in roles and the org_settings row.
+RESET_SQL = [
+    'TRUNCATE project, "user", team, role_binding, api_token, audit_entry, sso_provider CASCADE',
+    "DELETE FROM role WHERE NOT builtin",
+    "UPDATE org_settings SET require_mfa = false",
+]
+
+
+async def reset_database(app: FastAPI) -> None:
+    async with app.state.engine.begin() as conn:
+        for statement in RESET_SQL:
+            await conn.execute(text(statement))
+    # Throttle counters and other auth state; tests without Valkey have none to clear.
+    try:
+        keys = [key async for key in app.state.valkey.scan_iter(match="megooflags:auth:*")]
+        if keys:
+            await app.state.valkey.delete(*keys)
+    except (ValkeyError, OSError, TimeoutError):
+        pass
+
+
+PASSWORD = "correct horse battery staple"
+ORIGIN = {"Origin": "http://test"}
+
+
+async def seed_user(
+    app: FastAPI,
+    email: str = "admin@example.com",
+    *,
+    password: str = PASSWORD,
+    role: str = "admin",
+    scope: str = "org",
+    project_id: uuid.UUID | None = None,
+    environment_id: uuid.UUID | None = None,
+    name: str = "Test User",
+) -> uuid.UUID:
+    """A committed user holding `role` (a role key) at `scope`."""
+    async with app.state.sessionmaker() as session:
+        user = await create_user(session, email, name, password)
+        await session.commit()
+    await seed_binding(app, SubjectKind.USER, user.id, role, scope, project_id, environment_id)
+    return user.id
+
+
+async def seed_binding(
+    app: FastAPI,
+    subject_kind: SubjectKind | str,
+    subject_id: uuid.UUID,
+    role: str,
+    scope: str = "org",
+    project_id: uuid.UUID | None = None,
+    environment_id: uuid.UUID | None = None,
+) -> uuid.UUID:
+    """A committed binding of `role` (a role key) to the subject at `scope`."""
+    async with app.state.sessionmaker() as session:
+        role_id = await session.scalar(select(Role.id).where(Role.key == role))
+        assert role_id is not None, f"no role {role!r}"
+        binding = RoleBinding(
+            subject_kind=SubjectKind(subject_kind),
+            subject_id=subject_id,
+            role_id=role_id,
+            scope=ScopeKind(scope),
+            project_id=project_id,
+            environment_id=environment_id,
+        )
+        session.add(binding)
+        await session.commit()
+        return binding.id
+
+
+async def seed_service_token(
+    app: FastAPI,
+    role: str = "admin",
+    *,
+    scope: str = "org",
+    project_id: uuid.UUID | None = None,
+    environment_id: uuid.UUID | None = None,
+    name: str = "tests",
+) -> str:
+    """A committed service token holding `role` at `scope`. Returns the secret.
+
+    `last_used_at` is set, so requests made with it do not write it again.
+    """
+    async with app.state.sessionmaker() as session:
+        row, token = await create_service_token(session, name, created_by=None, expires_at=None)
+        row.last_used_at = await session.scalar(select(func.now()))
+        await session.commit()
+    await seed_binding(
+        app, SubjectKind.SERVICE_TOKEN, row.id, role, scope, project_id, environment_id
+    )
+    return token
+
+
+async def sign_in(
+    client: httpx.AsyncClient, email: str = "admin@example.com", password: str = PASSWORD
+) -> httpx.Response:
+    return await client.post(
+        "/api/auth/sign-in", json={"email": email, "password": password}, headers=ORIGIN
+    )
+
+
+def bearer(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def totp_code(secret: str, steps: int = 0) -> str:
+    """The TOTP code `steps` 30-second steps from now."""
+    return pyotp.TOTP(secret).at(time.time() + 30 * steps)
+
+
+def wrong_totp_code(secret: str) -> str:
+    """A code that no step the server accepts (previous, current, next) produces."""
+    valid = {totp_code(secret, steps) for steps in (-1, 0, 1, 2)}
+    return next(c for c in ("000000", "111111", "222222", "333333", "444444") if c not in valid)
+
+
+async def enrol_totp(client: httpx.AsyncClient) -> tuple[str, list[str]]:
+    """Enrol and confirm TOTP for the signed-in `client`; returns the secret and recovery codes.
+
+    The current step is used up, so the next MFA sign-in needs `totp_code(secret, 1)`.
+    """
+    r = await client.post("/api/account/totp")
+    assert r.status_code == 201, r.text
+    secret: str = r.json()["secret"]
+    r = await client.post("/api/account/totp/confirm", json={"code": totp_code(secret)})
+    assert r.status_code == 200, r.text
+    return secret, r.json()["recovery_codes"]
+
+
+PUBLIC_URL = "https://flags.example.test"
+
+
+def enable_passkeys(app: FastAPI) -> SoftAuthenticator:
+    """Give `app` the public URL passkeys need; returns an authenticator for that origin."""
+    app.state.settings = app.state.settings.model_copy(
+        update={"public_url": AnyHttpUrl(PUBLIC_URL)}
+    )
+    return SoftAuthenticator(origin=PUBLIC_URL, rp_id="flags.example.test")
+
+
+async def register_passkey(
+    client: httpx.AsyncClient, authenticator: SoftAuthenticator, name: str = "Laptop"
+) -> dict[str, Any]:
+    """Register `authenticator` for the signed-in `client`; returns the 201 body."""
+    r = await client.post("/api/account/passkeys/options")
+    assert r.status_code == 200, r.text
+    options = r.json()
+    r = await client.post(
+        "/api/account/passkeys",
+        json={
+            "challenge_id": options["challenge_id"],
+            "name": name,
+            "credential": authenticator.create(options["options"]),
+        },
+    )
+    assert r.status_code == 201, r.text
+    return r.json()  # type: ignore[no-any-return]
+
+
+async def audit_entries(app: FastAPI, action: str | None = None) -> list[dict[str, Any]]:
+    """The audit entries in insertion order, optionally only those with `action`."""
+    statement = select(AuditEntry.__table__).order_by(AuditEntry.id)
+    if action is not None:
+        statement = statement.where(AuditEntry.action == action)
+    async with app.state.sessionmaker() as session:
+        rows = await session.execute(statement)
+        return [dict(row) for row in rows.mappings()]
 
 
 async def create_project(

@@ -3,14 +3,24 @@ import json
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
 from fastapi import FastAPI
-from helpers import SseEvent, create_project, create_sdk_key, next_events, running
+from helpers import (
+    SseEvent,
+    create_project,
+    create_sdk_key,
+    next_events,
+    running,
+    seed_service_token,
+)
+from sqlalchemy import update
 from test_sdk import FLAGS, RULESET, bearer, setup_demo
 
 from megooflags_api.evaluation import parse_ruleset
+from megooflags_api.models import SdkKey
 from megooflags_api.models.enums import SdkKeyKind
 from megooflags_api.services.ruleset import EnvRef
 from megooflags_api.services.ruleset_cache import CachedRuleset, RulesetCache
@@ -24,8 +34,20 @@ pytestmark = pytest.mark.usefixtures("valkey_up")
 
 @asynccontextmanager
 async def serving(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
-    async with running(app) as url, httpx.AsyncClient(base_url=url, timeout=10) as client:
+    """A served app and a client with an org admin service token for the management API."""
+    headers = bearer(await seed_service_token(app))
+    async with (
+        running(app) as url,
+        httpx.AsyncClient(base_url=url, timeout=10, headers=headers) as client,
+    ):
         yield client
+
+
+@asynccontextmanager
+async def without_credentials(client: httpx.AsyncClient) -> AsyncIterator[httpx.AsyncClient]:
+    """A client for the same server that sends no credentials of its own."""
+    async with httpx.AsyncClient(base_url=client.base_url, timeout=10) as plain:
+        yield plain
 
 
 @asynccontextmanager
@@ -85,7 +107,10 @@ async def test_client_gets_changed(app: FastAPI) -> None:
     async with serving(app) as client:
         await setup_demo(client)
         key = (await create_sdk_key(client, "client"))["key"]
-        async with stream(client, params={"key": key}) as lines:
+        async with (
+            without_credentials(client) as plain,
+            stream(plain, params={"key": key}) as lines,
+        ):
             (first,) = await next_events(lines, 1, 2)
             await kill(client)
             (second,) = await next_events(lines, 1, 2)
@@ -162,6 +187,24 @@ async def test_revoked_by_heartbeat_without_valkey_message(app: FastAPI) -> None
             await revoked_then_closed(lines)
 
 
+async def test_expired_key_closes_on_recheck(app: FastAPI) -> None:
+    app.state.settings.stream_recheck_seconds = 0.2
+    app.state.settings.sse_heartbeat_seconds = 5
+    async with serving(app) as client:
+        await setup_demo(client)
+        created = await create_sdk_key(client, "server")
+        async with stream(client, created["key"]) as lines:
+            await next_events(lines, 1, 2)
+            async with app.state.sessionmaker() as session:
+                await session.execute(
+                    update(SdkKey)
+                    .where(SdkKey.id == uuid.UUID(created["id"]))
+                    .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+                )
+                await session.commit()
+            await revoked_then_closed(lines)
+
+
 async def test_environment_delete_revokes(app: FastAPI) -> None:
     async with serving(app) as client:
         await setup_demo(client)
@@ -177,15 +220,16 @@ async def test_server_key_in_query_401(app: FastAPI) -> None:
     async with serving(app) as client:
         await create_project(client)
         key = (await create_sdk_key(client, "server"))["key"]
-        r = await client.get(STREAM, params={"key": key})
+        async with without_credentials(client) as plain:
+            r = await plain.get(STREAM, params={"key": key})
 
     assert r.status_code == 401
     assert r.json()["code"] == "unauthorized"
 
 
 async def test_no_key_401(app: FastAPI) -> None:
-    async with serving(app) as client:
-        r = await client.get(STREAM)
+    async with serving(app) as client, without_credentials(client) as plain:
+        r = await plain.get(STREAM)
 
     assert r.status_code == 401
     assert r.json()["code"] == "unauthorized"
@@ -211,6 +255,15 @@ async def test_subscriber_keeps_latest() -> None:
     assert sub.queue.qsize() == 1
     assert sub.queue.get_nowait() is b
     sub.offer(Revoked())
+    assert sub.queue.get_nowait() == Revoked()
+
+
+async def test_subscriber_keeps_a_pending_revoked() -> None:
+    sub = Subscriber(principal())
+
+    sub.offer(Revoked())
+    sub.offer(cached('"a"'))
+
     assert sub.queue.get_nowait() == Revoked()
 
 

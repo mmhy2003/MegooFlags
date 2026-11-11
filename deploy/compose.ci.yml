@@ -13,3 +13,26 @@ services:
   api:
     image: megooflags-api:ci
     pull_policy: never
+  # The identity provider of the SSO end-to-end tests (api/tests/test_sso_keycloak.py), started
+  # on its own: `--profile keycloak up -d --wait keycloak`.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    profiles: [keycloak]
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    ports:
+      - "8180:8080"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000
+          && printf 'GET /health/ready HTTP/1.0\r\n\r\n' >&3 && grep -q UP <&3
+      interval: 5s
+      timeout: 5s
+      retries: 60

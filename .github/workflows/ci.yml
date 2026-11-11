@@ -27,6 +27,8 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
           cache-dependency-glob: api/uv.lock
+      - name: SAML build dependencies (lxml and xmlsec are built from source)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
       - run: python3 scripts/check_version.py
       - run: uv run --frozen --project api pytest scripts/tests
 
@@ -42,6 +44,8 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
           cache-dependency-glob: api/uv.lock
+      - name: SAML build dependencies (lxml and xmlsec are built from source)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
       - run: uv sync --frozen
       - run: uv run ruff check . ../scripts
       - run: uv run ruff format --check . ../scripts
@@ -69,16 +73,25 @@ jobs:
     env:
       MEGOOFLAGS_DATABASE_URL: postgresql+asyncpg://megooflags:megooflags@localhost:5432/megooflags
       MEGOOFLAGS_VALKEY_URL: redis://localhost:6379/0
+      MEGOOFLAGS_KEYCLOAK_URL: http://localhost:8180
     defaults:
       run:
         working-directory: api
     steps:
       - uses: actions/checkout@v4
+      - name: Keycloak for the SSO end-to-end tests
+        working-directory: .
+        env:
+          # Compose checks it for the api service, which is not started here.
+          MEGOOFLAGS_SECRET_KEY: ci-dummy-secret-key-not-used-0123456789
+        run: docker compose -f deploy/docker-compose.yml -f deploy/compose.ci.yml --profile keycloak up -d --wait --wait-timeout 300 keycloak
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
           cache-dependency-glob: api/uv.lock
+      - name: SAML build dependencies (lxml and xmlsec are built from source)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
       - run: uv sync --frozen
       - run: uv run pytest -v
 
@@ -104,6 +117,8 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
           cache-dependency-glob: api/uv.lock
+      - name: SAML build dependencies (lxml and xmlsec are built from source)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
       - run: bash scripts/check_migrations.sh
 
   web:
@@ -126,6 +141,8 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
           cache-dependency-glob: api/uv.lock
+      - name: SAML build dependencies (lxml and xmlsec are built from source)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm format:check

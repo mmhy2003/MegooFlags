@@ -1,5 +1,7 @@
 """Environment CRUD. A new environment gets a flag_environment row for every flag."""
 
+import uuid
+
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,13 +53,18 @@ async def create_environment(
     return environment
 
 
-async def list_environments(session: AsyncSession, project: Project) -> list[Environment]:
-    rows = await session.scalars(
+async def list_environments(
+    session: AsyncSession, project: Project, visible: set[uuid.UUID] | None = None
+) -> list[Environment]:
+    """The project's environments; `visible` limits them to those ids (None means all)."""
+    query = (
         select(Environment)
         .where(Environment.project_id == project.id)
         .order_by(Environment.sort_order, Environment.key)
     )
-    return list(rows)
+    if visible is not None:
+        query = query.where(Environment.id.in_(visible))
+    return list(await session.scalars(query))
 
 
 async def update_environment(

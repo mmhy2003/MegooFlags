@@ -2,7 +2,7 @@ import socket
 
 import pytest
 from latency import percentile
-from propagation_test import parse_sse, replica_ips
+from propagation_test import parse_args, parse_sse, replica_ips
 
 
 def test_percentile():
@@ -45,3 +45,16 @@ def test_replica_ips_dedup(monkeypatch):
 
     monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
     assert replica_ips("api", 8000) == ["172.18.0.3", "172.18.0.4", "172.18.0.5"]
+
+
+def test_token_defaults_to_the_environment(monkeypatch):
+    monkeypatch.setenv("MEGOOFLAGS_API_TOKEN", "mf_api_from_env")
+    assert parse_args([]).token == "mf_api_from_env"
+    assert parse_args(["--token", "mf_api_given"]).token == "mf_api_given"
+
+
+def test_token_is_required(monkeypatch, capsys):
+    monkeypatch.delenv("MEGOOFLAGS_API_TOKEN", raising=False)
+    with pytest.raises(SystemExit):
+        parse_args([])
+    assert "--token" in capsys.readouterr().err

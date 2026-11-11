@@ -31,6 +31,8 @@ services:
   web:
     image: ghcr.io/mmhy2003/megooflags-web:${MEGOOFLAGS_VERSION:-latest}
     restart: unless-stopped
+    environment:
+      MEGOOFLAGS_API_URL: http://api:8000
 
   migrate:
     image: ghcr.io/mmhy2003/megooflags-api:${MEGOOFLAGS_VERSION:-latest}
@@ -48,6 +50,7 @@ services:
     environment:
       MEGOOFLAGS_DATABASE_URL: ${MEGOOFLAGS_DATABASE_URL:-postgresql+asyncpg://megooflags:megooflags@db:5432/megooflags}
       MEGOOFLAGS_PUBLIC_URL: ${MEGOOFLAGS_PUBLIC_URL:-}
+      MEGOOFLAGS_SECRET_KEY: ${MEGOOFLAGS_SECRET_KEY:?set MEGOOFLAGS_SECRET_KEY in .env}
       MEGOOFLAGS_LOG_LEVEL: ${MEGOOFLAGS_LOG_LEVEL:-INFO}
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}

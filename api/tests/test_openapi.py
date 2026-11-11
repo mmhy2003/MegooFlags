@@ -46,7 +46,7 @@ def test_spec_documents_management_api() -> None:
     schemas = spec["components"]["schemas"]
     assert "ErrorBody" in schemas
     put_responses = spec["paths"][f"{flag}/environments/{{env}}"]["put"]["responses"]
-    for status in ("409", "422"):
+    for status in ("401", "403", "409", "422"):
         ref = put_responses[status]["content"]["application/json"]["schema"]["$ref"]
         assert ref == "#/components/schemas/ErrorBody"
     assert "from" in schemas["CopyIn"]["properties"]

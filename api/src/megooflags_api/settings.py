@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field, field_validator
+from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,11 +20,16 @@ class Settings(BaseSettings):
     sse_heartbeat_seconds: float = Field(15, gt=0)
     stream_recheck_seconds: float = Field(30, gt=0)
     api_workers: int = Field(0, ge=0)  # 0: one per CPU, at most serve.MAX_AUTO_WORKERS
+    # Required to start (crypto.require_secret_key), optional here so tools like export_openapi run.
+    secret_key: SecretStr | None = Field(None, min_length=32)
+    session_idle_hours: float = Field(12, gt=0)
+    session_absolute_days: float = Field(7, gt=0)
+    pending_mfa_minutes: float = Field(5, gt=0)
 
-    @field_validator("public_url", mode="before")
+    @field_validator("public_url", "secret_key", mode="before")
     @classmethod
-    def _empty_public_url_is_none(cls, value: object) -> object:
-        # docker-compose passes MEGOOFLAGS_PUBLIC_URL="" when it is not configured.
+    def _empty_is_none(cls, value: object) -> object:
+        # docker-compose passes an empty string for a variable that is not configured.
         return None if value == "" else value
 
     @field_validator("log_level")

@@ -4,6 +4,7 @@ Each dependency opens its own short session for the key lookup instead of `Sessi
 long-lived stream never holds a database connection.
 """
 
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import Depends, Header, Query, Request
@@ -30,8 +31,8 @@ async def authenticate(request: Request, key: str | None) -> SdkPrincipal:
             principal = await resolver.resolve(session, key)
     if principal is None:
         raise unauthorized("missing or unknown SDK key")
-    if principal.revoked:
-        raise forbidden("the SDK key is revoked")
+    if principal.inactive(datetime.now(UTC)):
+        raise forbidden("the SDK key is revoked or expired")
     return principal
 
 

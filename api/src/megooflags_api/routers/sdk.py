@@ -150,7 +150,7 @@ async def _events(
                 resolver: KeyResolver = request.app.state.key_resolver
                 async with request.app.state.sessionmaker() as session:
                     current = await resolver.resolve_hash(session, principal.secret_hash)
-                if current is None or current.revoked:
+                if current is None or current.inactive(datetime.now(UTC)):
                     yield REVOKED_FRAME
                     return
                 yield PING_FRAME

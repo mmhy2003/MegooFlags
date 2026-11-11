@@ -127,6 +127,14 @@ Commit both `api/openapi.json` and `web/lib/api/schema.d.ts`. CI regenerates bot
 
 Run all of these before you open a pull request or say a task is done. They are the commands that CI runs.
 
+SAML needs `lxml` and `xmlsec`, which are built from source (`[tool.uv] no-binary-package` in
+`api/pyproject.toml`) so that both use the same system libxml2. Install their build dependencies
+first (Debian or Ubuntu):
+
+```bash
+sudo apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
+```
+
 Start a Postgres for the database tests and a Valkey. The API and its tests need Valkey; Valkey
 tests skip when `MEGOOFLAGS_VALKEY_URL` is unset.
 
@@ -136,6 +144,18 @@ docker run -d --name mf-pg -e POSTGRES_USER=megooflags -e POSTGRES_PASSWORD=mego
 docker run -d --name mf-valkey -p 6379:6379 valkey/valkey:8
 export MEGOOFLAGS_DATABASE_URL=postgresql+asyncpg://megooflags:megooflags@localhost:5432/megooflags
 export MEGOOFLAGS_VALKEY_URL=redis://localhost:6379/0
+# The API refuses to start without it (the tests set their own).
+export MEGOOFLAGS_SECRET_KEY=$(openssl rand -hex 32)
+```
+
+The SSO end-to-end tests (`api/tests/test_sso_keycloak.py`) run against a Keycloak that imports
+`deploy/keycloak/megooflags-test-realm.json`; they skip when `MEGOOFLAGS_KEYCLOAK_URL` is unset.
+From the repository root (compose needs some `MEGOOFLAGS_SECRET_KEY`, though only Keycloak starts):
+
+```bash
+MEGOOFLAGS_SECRET_KEY=local-dummy-secret-key-0123456789abcdef docker compose \
+  -f deploy/docker-compose.yml -f deploy/compose.ci.yml --profile keycloak up -d --wait keycloak
+export MEGOOFLAGS_KEYCLOAK_URL=http://localhost:8180
 ```
 
 Then, from the repository root:
@@ -161,7 +181,8 @@ pnpm --dir web gen:api
 git diff --exit-code -- api/openapi.json web/lib/api/schema.d.ts
 
 # images and smoke
-docker build -t megooflags-api:ci api && docker build -t megooflags-web:ci web && bash scripts/smoke.sh
+docker build -t megooflags-api:ci api && docker build -t megooflags-web:ci web && bash scripts/smoke.sh http \
+  && bash scripts/smoke.sh https
 ```
 
 If you change a workflow, also run `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest`.

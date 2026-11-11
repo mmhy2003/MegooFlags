@@ -18,6 +18,14 @@ dependencies = [
   "opentelemetry-instrumentation-fastapi>=0.66b2",
   "opentelemetry-instrumentation-sqlalchemy>=0.66b2",
   "valkey>=6.1",
+  "cryptography>=50.0.2",
+  "argon2-cffi>=25.1.0",
+  "pyotp>=2.10.0",
+  "webauthn>=3.0.1",
+  "authlib>=1.9.5",
+  "joserfc>=1.8.0",
+  "httpx>=0.28.1",
+  "python3-saml>=1.16.0",
 ]
 
 [dependency-groups]
@@ -28,6 +36,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "httpx>=0.28",
     "jsonschema>=4.26.0",
+    "cbor2>=6.2.1",
 ]
 
 [build-system]
@@ -53,3 +62,12 @@ plugins = ["pydantic.mypy"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+  # python3-saml 1.16, the latest release, still calls datetime.utcnow() and utcfromtimestamp().
+  "ignore:datetime.datetime.utc:DeprecationWarning:onelogin.saml2.utils",
+]
+
+[tool.uv]
+# Built from source against the system libxml2, so lxml and xmlsec agree on it (a mismatch makes
+# xmlsec fail at import). Needs libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config.
+no-binary-package = ["lxml", "xmlsec"]

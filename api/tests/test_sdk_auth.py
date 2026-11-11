@@ -50,8 +50,8 @@ def bearer(key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {key}"}
 
 
-async def test_missing_header_401(sdk: httpx.AsyncClient) -> None:
-    r = await sdk.get("/t/server")
+async def test_missing_header_401(sdk: httpx.AsyncClient, anon: httpx.AsyncClient) -> None:
+    r = await anon.get("/t/server")
 
     assert_error(r, 401, "unauthorized")
     assert r.headers["WWW-Authenticate"] == "Bearer"
@@ -129,27 +129,29 @@ async def test_resolver_hit_issues_no_statements(app: FastAPI, sdk: httpx.AsyncC
     assert second == []
 
 
-async def test_ofrep_accepts_x_api_key(sdk: httpx.AsyncClient) -> None:
+async def test_ofrep_accepts_x_api_key(sdk: httpx.AsyncClient, anon: httpx.AsyncClient) -> None:
     server = (await create_sdk_key(sdk, "server"))["key"]
     client = (await create_sdk_key(sdk, "client"))["key"]
 
-    r = await sdk.get("/t/ofrep", headers={"X-API-Key": client})
+    r = await anon.get("/t/ofrep", headers={"X-API-Key": client})
     assert r.status_code == 200, r.text
     assert r.json()["kind"] == "client"
-    r = await sdk.get("/t/ofrep", headers={"X-API-Key": client, **bearer(server)})
+    r = await anon.get("/t/ofrep", headers={"X-API-Key": client, **bearer(server)})
     assert r.status_code == 200, r.text
     assert r.json()["kind"] == "server"
-    assert_error(await sdk.get("/t/ofrep"), 401, "unauthorized")
+    assert_error(await anon.get("/t/ofrep"), 401, "unauthorized")
 
 
-async def test_stream_query_key_client_only(sdk: httpx.AsyncClient) -> None:
+async def test_stream_query_key_client_only(
+    sdk: httpx.AsyncClient, anon: httpx.AsyncClient
+) -> None:
     server = (await create_sdk_key(sdk, "server"))["key"]
     client = (await create_sdk_key(sdk, "client"))["key"]
 
-    r = await sdk.get("/t/stream", params={"key": client})
+    r = await anon.get("/t/stream", params={"key": client})
     assert r.status_code == 200, r.text
     assert r.json()["kind"] == "client"
-    assert_error(await sdk.get("/t/stream", params={"key": server}), 401, "unauthorized")
+    assert_error(await anon.get("/t/stream", params={"key": server}), 401, "unauthorized")
     r = await sdk.get("/t/stream", headers=bearer(server))
     assert r.status_code == 200, r.text
     assert r.json()["kind"] == "server"

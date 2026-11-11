@@ -68,12 +68,104 @@ def prerequisite_cycle(message: str, path: str) -> ApiError:
     return ApiError(422, "prerequisite_cycle", message, {"path": path})
 
 
+def weak_password(message: str) -> ApiError:
+    return ApiError(422, "weak_password", message, {"path": "password"})
+
+
+def exceeds_owner_rights(permissions: list[str]) -> ApiError:
+    return ApiError(
+        422,
+        "exceeds_owner_rights",
+        "a personal token cannot hold permissions you do not hold at its scope",
+        {"permissions": list(permissions)},
+    )
+
+
 def unauthorized(message: str) -> ApiError:
     return ApiError(401, "unauthorized", message, headers={"WWW-Authenticate": "Bearer"})
 
 
+def invalid_credentials() -> ApiError:
+    return ApiError(401, "invalid_credentials", "invalid email or password")
+
+
+def already_set_up() -> ApiError:
+    return ApiError(409, "already_set_up", "this instance already has a user; sign in instead")
+
+
+def builtin_role(key: str) -> ApiError:
+    return ApiError(409, "builtin_role", f"role '{key}' is built in and cannot be changed")
+
+
+def last_admin() -> ApiError:
+    return ApiError(
+        409, "last_admin", "this would leave no active user with the admin role at org scope"
+    )
+
+
+def no_password() -> ApiError:
+    return ApiError(409, "no_password", "this account has no password; it signs in another way")
+
+
+def key_inactive(entity: str, key: str) -> ApiError:
+    return ApiError(409, "key_inactive", f"{entity} '{key}' is revoked or expired")
+
+
+def invalid_invitation() -> ApiError:
+    # The same answer for unknown, used, superseded and expired links, so none can be told apart.
+    return ApiError(404, "invalid_invitation", "this link is invalid or has expired")
+
+
 def forbidden(message: str) -> ApiError:
     return ApiError(403, "forbidden", message)
+
+
+def mfa_required() -> ApiError:
+    return ApiError(401, "mfa_required", "a second factor is required to finish signing in")
+
+
+def mfa_enrolment_required() -> ApiError:
+    return ApiError(
+        403, "mfa_enrolment_required", "set up a second factor before using this endpoint"
+    )
+
+
+def invalid_code() -> ApiError:
+    return ApiError(401, "invalid_code", "the code is wrong, expired or already used")
+
+
+def reauth_required() -> ApiError:
+    return ApiError(
+        403,
+        "reauth_required",
+        "verify a second factor again (sign in anew) and retry within 10 minutes",
+    )
+
+
+def totp_exists() -> ApiError:
+    return ApiError(409, "totp_exists", "an authenticator app is already set up; remove it first")
+
+
+def mfa_required_by_org() -> ApiError:
+    return ApiError(
+        409, "mfa_required_by_org", "the organisation requires a second factor; keep at least one"
+    )
+
+
+def public_url_required() -> ApiError:
+    return ApiError(
+        409,
+        "public_url_required",
+        "set MEGOOFLAGS_PUBLIC_URL to use passkeys and single sign-on",
+    )
+
+
+def unavailable(message: str) -> ApiError:
+    return ApiError(503, "unavailable", message)
+
+
+def csrf_failed() -> ApiError:
+    return ApiError(403, "csrf_failed", "the request origin is not allowed")
 
 
 def rate_limited(retry_after: int) -> ApiError:
@@ -103,6 +195,8 @@ def integrity_error_status_code(sqlstate: str | None) -> tuple[int, str]:
 
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {"model": ErrorBody},
+    403: {"model": ErrorBody},
     404: {"model": ErrorBody},
     409: {"model": ErrorBody},
     422: {"model": ErrorBody},

@@ -18,6 +18,10 @@ class _SdkKeyBase(ApiModel):
     kind: SdkKeyKind
     prefix: str
     created_at: datetime
+    expires_at: datetime | None = Field(
+        description="Set by a rotation with an overlap: the key stops working at this time."
+    )
+    rotated_from_id: uuid.UUID | None
 
 
 class SdkKeyOut(_SdkKeyBase):

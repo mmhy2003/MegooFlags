@@ -184,18 +184,18 @@ async def test_client_key_allowed_and_cors(app: FastAPI, api: httpx.AsyncClient)
     assert len(await exposures(app)) == 1
 
 
-async def test_events_require_a_key(app: FastAPI, api: httpx.AsyncClient) -> None:
-    r = await api.post(EVENTS, json={"exposures": [exposure()]})
+async def test_events_require_a_key(app: FastAPI, anon: httpx.AsyncClient) -> None:
+    r = await anon.post(EVENTS, json={"exposures": [exposure()]})
 
     assert_error(r, 401, "unauthorized")
 
 
 async def test_oversized_body_without_a_key_is_unauthorized(
-    app: FastAPI, api: httpx.AsyncClient
+    app: FastAPI, anon: httpx.AsyncClient
 ) -> None:
     big = [exposure(context={"blob": "x" * 1200}) for _ in range(900)]
 
-    r = await api.post(EVENTS, json={"exposures": big})
+    r = await anon.post(EVENTS, json={"exposures": big})
 
     assert_error(r, 401, "unauthorized")
 

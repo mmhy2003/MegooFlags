@@ -5,12 +5,13 @@ most `MAX_AUTO_WORKERS`). One process serves a few hundred SDK requests per seco
 workers are what lets one container take thousands. Workers keep their own caches and streams and
 stay in sync through Valkey, exactly like API replicas.
 
-Valkey is checked here, before any worker starts, so the API still refuses to start without it
-instead of uvicorn restarting failing workers forever. With several workers, Prometheus metrics go
-to a shared directory so `/metrics` reports the whole container.
+The secret key and Valkey are checked here, before any worker starts, so the API still refuses to
+start without them instead of uvicorn restarting failing workers forever. With several workers,
+Prometheus metrics go to a shared directory so `/metrics` reports the whole container.
 """
 
 import asyncio
+import logging
 import os
 import sys
 import tempfile
@@ -19,12 +20,15 @@ from pathlib import Path
 
 import uvicorn
 
+from megooflags_api.crypto import require_secret_key
 from megooflags_api.settings import Settings
 from megooflags_api.valkey import check_valkey, create_valkey
 
 MAX_AUTO_WORKERS = 8
 LOG_CONFIG = Path("/app/log_config.json")
 ENV_PREFIX = "MEGOOFLAGS_"
+
+logger = logging.getLogger(__name__)
 
 
 def worker_count(configured: int, cpus: int | None) -> int:
@@ -56,6 +60,11 @@ def main(environ: MutableMapping[str, str] = os.environ) -> None:
             if k.startswith(ENV_PREFIX)
         }
     )
+    try:
+        require_secret_key(settings)
+    except RuntimeError as exc:
+        logger.error("%s", exc)
+        sys.exit(1)
     try:
         asyncio.run(_check_valkey(settings.valkey_url))
     except RuntimeError:
