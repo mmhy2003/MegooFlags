@@ -4,6 +4,7 @@ import uuid
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -41,6 +42,20 @@ async def reset_database(app: FastAPI) -> None:
             await app.state.valkey.delete(*keys)
     except (ValkeyError, OSError, TimeoutError):
         pass
+
+
+class FakeClock:
+    """A clock for services and the scheduler that moves only when told to."""
+
+    def __init__(self, now: datetime | None = None) -> None:
+        self.now = now if now is not None else datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+    def __call__(self) -> datetime:
+        return self.now
+
+    def advance(self, **delta: float) -> datetime:
+        self.now += timedelta(**delta)
+        return self.now
 
 
 PASSWORD = "correct horse battery staple"

@@ -17,6 +17,7 @@ from megooflags_api.models import (
     RolloutWeight,
     Variation,
 )
+from megooflags_api.schemas.common import FlagEnvironmentState
 from megooflags_api.schemas.targeting import (
     ClauseIn,
     FlagConfigIn,
@@ -146,6 +147,13 @@ async def set_enabled(session: AsyncSession, fe: FlagEnvironment, enabled: bool)
     fe.updated_at = func.now()
     await session.flush()
     await session.refresh(fe)  # load the updated_at the database set
+
+
+def state_of(fe: FlagEnvironment, env_key: str) -> FlagEnvironmentState:
+    """`fe`'s on/off state and version, as the toggle and kill switch return it."""
+    return FlagEnvironmentState(
+        environment=env_key, enabled=fe.enabled, version=fe.version, updated_at=fe.updated_at
+    )
 
 
 TOTAL_WEIGHT = 100000

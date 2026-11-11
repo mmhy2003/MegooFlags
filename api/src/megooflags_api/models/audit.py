@@ -21,7 +21,7 @@ class AuditEntry(Base):
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
-    # "user", "service_token", "personal_token" or "anonymous".
+    # "user", "service_token", "personal_token", "anonymous" or "system" (background jobs).
     actor_kind: Mapped[str] = mapped_column(String(32))
     actor_id: Mapped[uuid.UUID | None] = mapped_column(index=True)
     actor_label: Mapped[str] = mapped_column(Text)

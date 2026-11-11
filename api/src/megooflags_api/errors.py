@@ -56,6 +56,10 @@ def not_archived(key: str) -> ApiError:
     return ApiError(409, "not_archived", f"flag '{key}' must be archived before it is deleted")
 
 
+def invalid_state(message: str) -> ApiError:
+    return ApiError(409, "invalid_state", message)
+
+
 def invalid_reference(message: str, path: str) -> ApiError:
     return ApiError(422, "invalid_reference", message, {"path": path})
 

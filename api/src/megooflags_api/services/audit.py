@@ -7,7 +7,7 @@ import uuid
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Protocol
 
 from fastapi import Depends, Request
 from fastapi.encoders import jsonable_encoder
@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from megooflags_api.auth.principal import Principal
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import validation_error
-from megooflags_api.models import AuditEntry, Environment, Project
+from megooflags_api.models import AuditEntry, Environment, Flag, Project
 from megooflags_api.schemas.audit import AuditActor, AuditEntryOut
 from megooflags_api.services.pagination import decode_cursor, page_slice
 
@@ -147,6 +147,100 @@ class Auditor:
             resource_key,
             **kw,
         )
+
+
+class AuditSink(Protocol):
+    """Where a service writes its audit entries: the request's `Auditor`, or a `SystemAuditor`."""
+
+    async def record(
+        self, action: str, resource_type: str, resource_key: str, **kw: Any
+    ) -> AuditEntry: ...
+
+
+@dataclass(frozen=True)
+class Actor:
+    """Who started a change, kept on rows that act later (schedules, rollouts, change requests)."""
+
+    id: uuid.UUID | None
+    label: str
+
+    @classmethod
+    def of(cls, principal: Principal) -> "Actor":
+        return cls(principal.actor_id, principal.label)
+
+
+SCHEDULER = Actor(None, "scheduler")
+
+
+async def record_system(
+    session: AsyncSession,
+    action: str,
+    resource_type: str,
+    resource_key: str,
+    *,
+    label: str = "scheduler",
+    project_id: uuid.UUID | None = None,
+    environment_id: uuid.UUID | None = None,
+    before: Mapping[str, Any] | None = None,
+    after: Mapping[str, Any] | None = None,
+) -> AuditEntry:
+    """Like `record`, for a background job: actor kind "system", no actor id or request data."""
+    entry = AuditEntry(
+        actor_kind="system",
+        actor_id=None,
+        actor_label=label,
+        auth_method=None,
+        ip=None,
+        user_agent=None,
+        request_id=None,
+        action=action,
+        resource_type=resource_type,
+        resource_key=resource_key,
+        project_id=project_id,
+        environment_id=environment_id,
+        before=None if before is None else redact(snapshot(before)),
+        after=None if after is None else redact(snapshot(after)),
+    )
+    session.add(entry)
+    await session.flush()
+    return entry
+
+
+class SystemAuditor:
+    """`record_system` bound to a job's session and label."""
+
+    def __init__(self, session: AsyncSession, label: str = "scheduler") -> None:
+        self.session = session
+        self.label = label
+
+    async def record(
+        self, action: str, resource_type: str, resource_key: str, **kw: Any
+    ) -> AuditEntry:
+        return await record_system(
+            self.session, action, resource_type, resource_key, label=self.label, **kw
+        )
+
+
+async def record_flag_change(
+    audit: AuditSink,
+    action: str,
+    flag: Flag,
+    env: Environment,
+    before: BaseModel | Mapping[str, Any],
+    after: BaseModel | Mapping[str, Any],
+    **context: Any,
+) -> AuditEntry:
+    """A change to `flag` in `env`; `context` (such as schedule_id or created_by) is merged into
+    `after`."""
+    return await audit.record(
+        action,
+        "flag",
+        flag.key,
+        project_id=env.project_id,
+        environment_id=env.id,
+        before=snapshot(before),
+        after={**snapshot(after), **context},
+    )
 
 
 async def get_auditor(session: SessionDep, request: Request) -> Auditor:

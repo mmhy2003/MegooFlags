@@ -35,6 +35,12 @@ class Principal:
     token_project_id: uuid.UUID | None = None
     token_environment_id: uuid.UUID | None = None
 
+    @property
+    def actor_id(self) -> uuid.UUID:
+        """The person behind the call (a user and their personal tokens are one), or the service
+        token."""
+        return self.user_id if self.user_id is not None else self.id
+
 
 def check_session_state(
     principal: Principal, *, allow_enrolment: bool = False, allow_pending: bool = False
