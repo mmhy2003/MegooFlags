@@ -56,7 +56,7 @@ check() {
 
 check /healthz '"status":"ok"'
 check /readyz '"status":"ready"'
-check / 'MegooFlags'
+check /sign-in 'MegooFlags'
 
 # First-run setup makes the first admin and signs them in; their session mints an org admin
 # service token for the management API.

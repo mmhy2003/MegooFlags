@@ -31,6 +31,8 @@ services:
   web:
     image: ghcr.io/mmhy2003/megooflags-web:${MEGOOFLAGS_VERSION:-latest}
     restart: unless-stopped
+    environment:
+      MEGOOFLAGS_API_URL: http://api:8000
 
   migrate:
     image: ghcr.io/mmhy2003/megooflags-api:${MEGOOFLAGS_VERSION:-latest}
