@@ -302,7 +302,7 @@ async def test_csv_export_has_the_header_and_json_snapshots(
 
 async def test_csv_export_defuses_formula_cells(app: FastAPI, token_client: Any) -> None:
     token = await seed_service_token(app, name="=SUM(1)")
-    client = token_client(token, **{"User-Agent": "@cmd", "X-Request-ID": "+1"})
+    client = token_client(token, **{"User-Agent": "\t=cmd", "X-Request-ID": "+1"})
     r = await client.post("/api/projects", json={"key": "formula", "name": "=SUM(1)"})
     assert r.status_code == 201, r.text
 
@@ -311,9 +311,9 @@ async def test_csv_export_defuses_formula_cells(app: FastAPI, token_client: Any)
     rows = list(csv.reader(io.StringIO(r.text)))[1:]
     assert rows
     for row in rows:
-        assert not [cell for cell in row if cell[:1] in {"=", "+", "-", "@"}], row
+        assert not [cell for cell in row if cell[:1] in {"=", "+", "-", "@", "\t", "\r"}], row
         assert row[4] == "'=SUM(1)"  # actor_label
-        assert row[7] == "'@cmd"  # user_agent
+        assert row[7] == "'\t=cmd"  # user_agent
         assert row[8] == "'+1"  # request_id
     created = json.loads(rows[-1][15])
     assert created["name"] == "=SUM(1)"

@@ -392,6 +392,17 @@ async def test_without_jit_an_unknown_user_is_refused(
     assert await user_by_email(app, "alice@example.com") is None
 
 
+async def test_jit_needs_a_verified_email(
+    app: FastAPI, browser: httpx.AsyncClient, oidc_mock: OidcIdp, provider: Any
+) -> None:
+    oidc_mock.claims["email_verified"] = False
+
+    r = await sign_in_sso(browser, oidc_mock)
+
+    await assert_denied(app, r)
+    assert await user_by_email(app, "alice@example.com") is None
+
+
 # Group sync
 
 
@@ -531,3 +542,35 @@ async def test_default_role_is_bound_at_org(
     assert entry["after"]["bindings"] == [
         {"role": "viewer", "scope": "org", "project": None, "env": None}
     ]
+
+
+async def test_group_sync_keeps_the_last_admin(
+    app: FastAPI,
+    api: httpx.AsyncClient,
+    browser: httpx.AsyncClient,
+    oidc_mock: OidcIdp,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    await create_provider(api)
+    r = await api.post(
+        "/api/sso/providers/kc/mappings", json={"group": "admins", "role": "admin", "scope": "org"}
+    )
+    assert r.status_code == 201, r.text
+    oidc_mock.claims["groups"] = ["admins"]
+    await sign_in_sso(browser, oidc_mock)
+    user = await user_by_email(app, "alice@example.com")
+    assert user is not None
+    oidc_mock.claims["groups"] = []
+
+    r = await sign_in_sso(browser, oidc_mock)
+
+    assert r.headers["location"] == "/"
+    [binding] = await bindings(app, user.id)
+    assert (binding.scope, binding.source) == ("org", "sso:kc")
+    assert "would leave no active org admin" in caplog.text
+    assert len(await audit_entries(app, "sso.sync")) == 1
+
+    # With another admin, the sync removes it.
+    await seed_user(app, "second@example.com")
+    await sign_in_sso(browser, oidc_mock)
+    assert await bindings(app, user.id) == []

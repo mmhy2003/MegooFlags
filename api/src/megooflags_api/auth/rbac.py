@@ -209,6 +209,23 @@ def _permissions(values: Iterable[str]) -> frozenset[Permission]:
     return frozenset(Permission(v) for v in values if v in _VALUES)
 
 
+def not_held(
+    authorizer: Authorizer,
+    permissions: Iterable[str],
+    scope: ScopeKind,
+    project_id: uuid.UUID | None = None,
+    environment_id: uuid.UUID | None = None,
+) -> list[Permission]:
+    """The permissions a binding of `permissions` at that scope would grant but `authorizer` does
+    not hold there, in catalogue order. Nobody may grant more than they hold."""
+    grant = Grant(scope, project_id, environment_id, _permissions(permissions))
+    return [
+        p
+        for p in Permission
+        if grant.allows(p) and not authorizer.can(p, project_id, environment_id)
+    ]
+
+
 def _scope_of(project_id: uuid.UUID | None, environment_id: uuid.UUID | None) -> ScopeKind:
     if environment_id is not None:
         return ScopeKind.ENVIRONMENT

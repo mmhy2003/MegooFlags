@@ -52,6 +52,7 @@ async def read_role(session: SessionDep, authz: Authenticated, key: str) -> Role
 async def create_role(
     session: SessionDep, authz: ManageRoles, audit: AuditDep, body: RoleIn
 ) -> RoleOut:
+    bindings.check_grantable(authz.authorizer, body.permissions, ScopeKind.ORG)
     out = roles.role_out(await roles.create_role(session, body))
     await audit.record("role.create", "role", out.key, after=snapshot(out))
     await session.commit()
@@ -64,6 +65,9 @@ async def update_role(
 ) -> RoleOut:
     role = await roles.get_by_key(session, key)
     before = roles.role_out(role)
+    if body.permissions is not None:
+        added = set(body.permissions) - set(before.permissions)
+        bindings.check_grantable(authz.authorizer, added, ScopeKind.ORG)
     await roles.update_role(session, role, body)
     out = roles.role_out(role)
     await audit.record("role.update", "role", key, before=snapshot(before), after=snapshot(out))
@@ -117,7 +121,7 @@ async def create_binding(
     session: SessionDep, authz: Authenticated, audit: AuditDep, body: BindingIn
 ) -> BindingOut:
     authz.check(MANAGED_BY[body.subject_kind])
-    binding = await bindings.create_binding(session, body)
+    binding = await bindings.create_binding(session, body, authz.authorizer)
     out = await bindings.binding_out(session, binding.id)
     await audit.record(
         "binding.create",

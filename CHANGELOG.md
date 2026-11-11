@@ -18,7 +18,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 
 ### Added
 - Sign-in with a password, plus a second factor: TOTP, passkeys (WebAuthn) or single-use recovery codes. Admins can require MFA for everyone with `require_mfa` (`PUT /api/settings`). Web pages `/setup`, `/sign-in`, `/sign-in/mfa`, `/invite/<token>` and `/account/security`.
-- Single sign-on through OIDC and SAML 2.0 (tested with Keycloak), with just-in-time provisioning and mapping of identity-provider groups to teams and roles.
+- Single sign-on through OIDC and SAML 2.0 (tested with Keycloak), with just-in-time provisioning and mapping of identity-provider groups to teams and roles. Just-in-time provisioning over OIDC needs `email_verified: true` in the ID token or userinfo; an identity provider that does not send it by default, such as Microsoft Entra ID, needs a claim mapping that adds it, or SAML. Deleting a provider also removes the team memberships and role bindings its group sync granted.
 - Users, invitations, teams, custom roles and role bindings at org, project or environment scope, alongside the built-in Admin, Editor and Viewer roles.
 - API tokens: service tokens (`/api/tokens`) and personal tokens (`/api/account/tokens`), scoped by project, environment and permission.
 - Rotation with an overlap window for SDK keys and service tokens: the old secret keeps working for `overlap_seconds`.

@@ -159,11 +159,15 @@ export async function passkeySignIn(): Promise<{
   });
 }
 
-/** `next` when it is a path on this site, else null. Rejects `//host` and `/\host`, which browsers
- * treat as another origin. */
+/** `next` when it is a path on this site, else null. Rejects `//host`, any backslash (`/\host`)
+ * and any control character, space or DEL: browsers strip tab, CR and LF before parsing, so
+ * `/\t/host` would become `//host`. Stricter than the API's `safe_next`, never looser. */
 export function safeNext(next: string | null | undefined): string | null {
   if (!next || !next.startsWith("/") || next.startsWith("//")) return null;
-  if (next.startsWith("/\\")) return null;
+  for (const char of next) {
+    const code = char.charCodeAt(0);
+    if (code < 0x21 || code === 0x7f || char === "\\") return null;
+  }
   return next;
 }
 

@@ -174,6 +174,20 @@ async def revoke_session(
         sessions.clear_cookie(response, request)
 
 
+async def _lock_user(session: SessionDep, user: User) -> None:
+    """Serialises the user's factor removals, so two racing ones cannot each see the other's
+    factor and both skip the last-factor checks. Taken before any factor row lock."""
+    await session.execute(select(User.id).where(User.id == user.id).with_for_update())
+
+
+async def _check_may_add_factor(session: SessionDep, user: User, row: UserSession) -> None:
+    """Adding a factor when you already have one needs a factor verified in the last 10 minutes
+    (403 reauth_required): enrolling sets that time, so a stolen session could otherwise add its
+    own factor and then remove yours."""
+    if mfa.has_factor(await mfa.user_factors(session, user.id)) and not mfa.recently_verified(row):
+        raise reauth_required()
+
+
 async def _locked_totp(session: SessionDep, user: User) -> TotpCredential | None:
     return await session.scalar(
         select(TotpCredential).where(TotpCredential.user_id == user.id).with_for_update()
@@ -186,12 +200,14 @@ async def enrol_totp(
 ) -> TotpEnrolment:
     """Start setting up an authenticator app: add the secret (or scan `otpauth_url` as a QR
     code), then confirm with a code. Starting again replaces an unconfirmed secret; a confirmed
-    one must be removed first (409 totp_exists)."""
+    one must be removed first (409 totp_exists). With a passkey, you must have verified a factor
+    in the last 10 minutes (403 reauth_required)."""
     assert box is not None, "the lifespan refuses to start without MEGOOFLAGS_SECRET_KEY"
-    user, _ = await _current(session, authz)
+    user, row = await _current(session, authz)
     cred = await _locked_totp(session, user)
     if cred is not None and cred.confirmed_at is not None:
         raise totp_exists()
+    await _check_may_add_factor(session, user, row)
     secret = mfa.new_totp_secret()
     if cred is None:
         session.add(TotpCredential(user_id=user.id, secret_encrypted=box.encrypt(secret)))
@@ -224,6 +240,7 @@ async def confirm_totp(
         raise not_found("TOTP enrolment", user.email)
     if cred.confirmed_at is not None:
         raise totp_exists()
+    await _check_may_add_factor(session, user, row)
     step = mfa.verify_totp(cred, body.code, box)
     if step is None:
         raise invalid_code()
@@ -258,6 +275,7 @@ async def remove_totp(session: SessionDep, authz: MayEnrol, audit: AuditDep) -> 
     must have verified a factor in the last 10 minutes (403 reauth_required), and the org must
     not require MFA (409 mfa_required_by_org)."""
     user, row = await _current(session, authz)
+    await _lock_user(session, user)
     cred = await _locked_totp(session, user)
     if cred is None:
         raise not_found("TOTP", user.email)
@@ -315,9 +333,11 @@ async def passkey_registration_options(
 ) -> PasskeyOptionsOut:
     """Start registering a passkey: pass `options` to `navigator.credentials.create()`, then
     send the result to `POST /account/passkeys` within 5 minutes. Needs MEGOOFLAGS_PUBLIC_URL
-    (409 public_url_required)."""
+    (409 public_url_required). With a factor already, you must have verified one in the last 10
+    minutes (403 reauth_required)."""
     party = webauthn.rp(request.app.state.settings)
-    user, _ = await _current(session, authz)
+    user, row = await _current(session, authz)
+    await _check_may_add_factor(session, user, row)
     challenge, options = webauthn.registration_options(
         party, user, await _passkeys(session, user.id)
     )
@@ -342,6 +362,7 @@ async def register_passkey(
     one, with a new cookie."""
     party = webauthn.rp(request.app.state.settings)
     user, row = await _current(session, authz)
+    await _check_may_add_factor(session, user, row)
     challenge = await webauthn.take_challenge(request.app.state.valkey, body.challenge_id)
     if challenge is None or challenge.purpose != "register" or challenge.user_id != user.id:
         raise validation_error("the passkey challenge is unknown or expired; start again")
@@ -405,6 +426,7 @@ async def delete_passkey(
     verified a factor in the last 10 minutes (403 reauth_required), and the org must not require
     MFA (409 mfa_required_by_org)."""
     user, current = await _current(session, authz)
+    await _lock_user(session, user)
     row = await _own_passkey(session, user, id)
     factors = await mfa.user_factors(session, user.id)
     last = not factors.totp and factors.passkeys == 1

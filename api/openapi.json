@@ -5169,7 +5169,7 @@
     },
     "/api/account/passkeys/options": {
       "post": {
-        "description": "Start registering a passkey: pass `options` to `navigator.credentials.create()`, then\nsend the result to `POST /account/passkeys` within 5 minutes. Needs MEGOOFLAGS_PUBLIC_URL\n(409 public_url_required).",
+        "description": "Start registering a passkey: pass `options` to `navigator.credentials.create()`, then\nsend the result to `POST /account/passkeys` within 5 minutes. Needs MEGOOFLAGS_PUBLIC_URL\n(409 public_url_required). With a factor already, you must have verified one in the last 10\nminutes (403 reauth_required).",
         "operationId": "passkey_registration_options_api_account_passkeys_options_post",
         "responses": {
           "200": {
@@ -6070,7 +6070,7 @@
         ]
       },
       "post": {
-        "description": "Start setting up an authenticator app: add the secret (or scan `otpauth_url` as a QR\ncode), then confirm with a code. Starting again replaces an unconfirmed secret; a confirmed\none must be removed first (409 totp_exists).",
+        "description": "Start setting up an authenticator app: add the secret (or scan `otpauth_url` as a QR\ncode), then confirm with a code. Starting again replaces an unconfirmed secret; a confirmed\none must be removed first (409 totp_exists). With a passkey, you must have verified a factor\nin the last 10 minutes (403 reauth_required).",
         "operationId": "enrol_totp_api_account_totp_post",
         "responses": {
           "201": {
@@ -12428,7 +12428,7 @@
     },
     "/api/sso/providers/{key}": {
       "delete": {
-        "description": "Also deletes its group mappings and the links of users to it.",
+        "description": "Also deletes its group mappings, the links of users to it, and the team memberships and\nrole bindings its group sync granted; 409 last_admin if that leaves no org admin.",
         "operationId": "delete_provider_api_sso_providers__key__delete",
         "parameters": [
           {
@@ -13494,6 +13494,7 @@
         ]
       },
       "post": {
+        "description": "The caller must hold every permission the team's bindings grant.",
         "operationId": "add_member_api_teams__key__members_post",
         "parameters": [
           {
@@ -13771,7 +13772,7 @@
         ]
       },
       "post": {
-        "description": "Create a service token holding `bindings`. The secret is returned only here.",
+        "description": "Create a service token holding `bindings`, which may grant only permissions the caller\nholds there. The secret is returned only here.",
         "operationId": "create_token_api_tokens_post",
         "requestBody": {
           "content": {
@@ -14011,7 +14012,7 @@
     },
     "/api/tokens/{id}/rotate": {
       "post": {
-        "description": "Replace the token with a new one holding the same name, expiry and bindings. The old token\nkeeps working for `overlap_seconds`; 0 revokes it at once. The secret is returned only here.",
+        "description": "Replace the token with a new one holding the same name, expiry and bindings. The old token\nkeeps working for `overlap_seconds`; 0 revokes it at once. The caller must hold every\npermission the bindings grant, since they get the secret. The secret is returned only here.",
         "operationId": "rotate_token_api_tokens__id__rotate_post",
         "parameters": [
           {

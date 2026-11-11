@@ -116,11 +116,17 @@ async def update_provider(
 async def delete_provider(
     session: SessionDep, authz: ManageOrg, audit: AuditDep, key: str
 ) -> Response:
-    """Also deletes its group mappings and the links of users to it."""
+    """Also deletes its group mappings, the links of users to it, and the team memberships and
+    role bindings its group sync granted; 409 last_admin if that leaves no org admin."""
     provider = await sso_providers.get_by_key(session, key)
     before = await sso_providers.read_provider(session, provider)
-    await sso_providers.delete_provider(session, provider)
-    await audit.record("sso_provider.delete", "sso_provider", key, before=snapshot(before))
+    revoked = await sso_providers.delete_provider(session, provider)
+    await audit.record(
+        "sso_provider.delete",
+        "sso_provider",
+        key,
+        before={**snapshot(before), "revoked": revoked},
+    )
     await session.commit()
     return Response(status_code=204)
 

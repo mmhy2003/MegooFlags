@@ -164,6 +164,8 @@ async def test_start_redirects_with_saml_request_and_relay_state(
     query = {k: v[0] for k, v in parse_qs(url.query).items()}
     request = etree.fromstring(OneLogin_Saml2_Utils.decode_base64_and_inflate(query["SAMLRequest"]))
     assert request.get("AssertionConsumerServiceURL") == SAML_ACS_URL
+    # No RequestedAuthnContext: the IdP picks how to authenticate (MFA, passwordless).
+    assert request.find("{urn:oasis:names:tc:SAML:2.0:protocol}RequestedAuthnContext") is None
     relay = query["RelayState"]
     assert len(relay) >= 32
     stored = await app.state.valkey.get(f"megooflags:auth:sso:saml:{relay}")

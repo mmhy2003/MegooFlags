@@ -37,7 +37,8 @@ async def list_tokens(
 async def create_token(
     session: SessionDep, authz: ManageTokens, audit: AuditDep, body: ServiceTokenCreate
 ) -> TokenCreated:
-    """Create a service token holding `bindings`. The secret is returned only here."""
+    """Create a service token holding `bindings`, which may grant only permissions the caller
+    holds there. The secret is returned only here."""
     row, secret = await api_tokens.create_service_token(
         session, body.name, created_by=authz.principal.id, expires_at=body.expires_at
     )
@@ -52,6 +53,7 @@ async def create_token(
                 project=binding.project,
                 env=binding.env,
             ),
+            authz.authorizer,
         )
     out = await api_tokens.token_out(session, row)
     await audit.record("token.create", "token", str(row.id), after=snapshot(out))
@@ -85,9 +87,13 @@ async def rotate_token(
     session: SessionDep, authz: ManageTokens, audit: AuditDep, id: uuid.UUID, body: RotateIn
 ) -> TokenCreated:
     """Replace the token with a new one holding the same name, expiry and bindings. The old token
-    keeps working for `overlap_seconds`; 0 revokes it at once. The secret is returned only here."""
+    keeps working for `overlap_seconds`; 0 revokes it at once. The caller must hold every
+    permission the bindings grant, since they get the secret. The secret is returned only here."""
     before = await api_tokens.token_out(
         session, await api_tokens.get_service_token(session, id, for_update=True)
+    )
+    await bindings.check_bindings_grantable(
+        session, authz.authorizer, SubjectKind.SERVICE_TOKEN, id
     )
     old, new, secret = await api_tokens.rotate_token(
         session, id, timedelta(seconds=body.overlap_seconds), created_by=authz.principal.id

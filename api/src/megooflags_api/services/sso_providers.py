@@ -10,13 +10,25 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI
-from sqlalchemy import Row, Select, select
+from sqlalchemy import Row, Select, delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from megooflags_api.auth.sso.provisioning import source_of
+from megooflags_api.auth.sso.saml import is_idp_metadata
 from megooflags_api.crypto import SecretBox
 from megooflags_api.errors import key_conflict, not_found, validation_error
-from megooflags_api.models import Environment, Project, Role, SsoGroupMapping, SsoProvider, Team
+from megooflags_api.models import (
+    Environment,
+    Project,
+    Role,
+    RoleBinding,
+    SsoGroupMapping,
+    SsoProvider,
+    Team,
+    TeamMember,
+    User,
+)
 from megooflags_api.models.enums import SsoProtocol
 from megooflags_api.schemas.identity import ScopeFields
 from megooflags_api.schemas.sso import (
@@ -31,8 +43,11 @@ from megooflags_api.schemas.sso import (
     SsoProviderUpdate,
 )
 from megooflags_api.services import roles, teams
-from megooflags_api.services.bindings import resolve_scope
+from megooflags_api.services.bindings import bindings_from, guard_last_admin, resolve_scope
 from megooflags_api.services.pagination import decode_cursor, encode_cursor, page_slice
+
+# The most bytes read from an IdP metadata URL (the most XML accepted inline, too).
+METADATA_LIMIT = 1_000_000
 
 
 def get_sso_http(app: FastAPI) -> httpx.AsyncClient:
@@ -108,19 +123,33 @@ async def public_providers(session: AsyncSession) -> list[PublicProvider]:
     ]
 
 
+async def _fetch_metadata(http: httpx.AsyncClient, url: str) -> str | None:
+    """The body at `url`, or None when the fetch fails or it is over METADATA_LIMIT bytes."""
+    try:
+        async with http.stream("GET", url) as response:
+            response.raise_for_status()
+            body = bytearray()
+            async for chunk in response.aiter_bytes():
+                body += chunk
+                if len(body) > METADATA_LIMIT:
+                    return None
+    except httpx.HTTPError:
+        return None
+    return body.decode(response.encoding or "utf-8", errors="replace")
+
+
 async def _saml_config(http: httpx.AsyncClient, saml: SamlConfig) -> dict[str, Any]:
-    """The config to store; a metadata URL is fetched now (422 when that fails)."""
+    """The config to store; a metadata URL is fetched now. 422 when that fails or the body is
+    not IdP metadata; the body is never echoed, since the URL may point at an internal service."""
     config = saml.model_dump(mode="json")
     if saml.idp_metadata_url is not None:
-        try:
-            response = await http.get(saml.idp_metadata_url)
-            response.raise_for_status()
-        except httpx.HTTPError:
+        xml = await _fetch_metadata(http, saml.idp_metadata_url)
+        if xml is None or not is_idp_metadata(xml):
             raise validation_error(
-                f"cannot fetch the IdP metadata from {saml.idp_metadata_url}",
+                f"cannot fetch SAML IdP metadata from {saml.idp_metadata_url}",
                 "saml.idp_metadata_url",
-            ) from None
-        config["idp_metadata_xml"] = response.text
+            )
+        config["idp_metadata_xml"] = xml
     return config
 
 
@@ -217,10 +246,30 @@ async def update_provider(
     await session.flush()
 
 
-async def delete_provider(session: AsyncSession, provider: SsoProvider) -> None:
-    """Its mappings and linked identities go with it."""
+async def delete_provider(session: AsyncSession, provider: SsoProvider) -> dict[str, Any]:
+    """Its mappings and linked identities go with it, and so do the team memberships and role
+    bindings its group sync granted (409 last_admin when that leaves no active org admin).
+
+    Returns what was revoked, for the audit entry."""
+    source = source_of(provider)
+    members = await session.execute(
+        select(Team.key, User.email)
+        .join(TeamMember, TeamMember.team_id == Team.id)
+        .join(User, User.id == TeamMember.user_id)
+        .where(TeamMember.source == source)
+        .order_by(Team.key, User.email)
+    )
+    revoked = {
+        "team_members": [{"team": team, "user": email} for team, email in members],
+        "bindings": [b.model_dump(mode="json") for b in await bindings_from(session, source)],
+    }
+    await session.execute(delete(TeamMember).where(TeamMember.source == source))
+    await session.execute(delete(RoleBinding).where(RoleBinding.source == source))
     await session.delete(provider)
     await session.flush()
+    if revoked["team_members"] or revoked["bindings"]:
+        await guard_last_admin(session)
+    return revoked
 
 
 def _mapping_query() -> Select[SsoGroupMapping, str | None, str | None, str | None, str | None]:

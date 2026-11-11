@@ -1,5 +1,6 @@
 """Passkeys (WebAuthn): registration on the account, second-factor and passwordless sign-in."""
 
+import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -15,12 +16,13 @@ from helpers import (
     assert_error,
     audit_entries,
     enable_passkeys,
+    enrol_totp,
     register_passkey,
     seed_user,
     sign_in,
 )
 from soft_webauthn import SoftAuthenticator, b64url
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from megooflags_api.models import OrgSettings, User, UserSession, WebauthnCredential
 from megooflags_api.models.enums import UserStatus
@@ -400,3 +402,74 @@ async def test_a_disabled_user_cannot_sign_in_with_a_passkey(
 
     assert_error(r, 401, "invalid_code")
     assert COOKIE not in client.cookies
+
+
+async def age_verification(app: FastAPI, user_id: uuid.UUID) -> None:
+    async with app.state.sessionmaker() as session:
+        await session.execute(
+            update(UserSession)
+            .where(UserSession.user_id == user_id)
+            .values(mfa_verified_at=datetime.now(UTC) - timedelta(minutes=11))
+        )
+        await session.commit()
+
+
+async def test_a_passkey_registered_already_is_409(
+    app: FastAPI, authenticator: SoftAuthenticator
+) -> None:
+    await user_with_passkey(app, authenticator)
+    await seed_user(app, "dev@example.com", role="viewer")
+    async with browser(app) as client:
+        assert (await sign_in(client, "dev@example.com")).status_code == 200
+        options = (await client.post("/api/account/passkeys/options")).json()
+        r = await client.post(
+            "/api/account/passkeys",
+            json={
+                "challenge_id": options["challenge_id"],
+                "name": "Stolen",
+                "credential": authenticator.create(options["options"]),
+            },
+        )
+
+    assert_error(r, 409, "key_conflict")
+    assert len(await stored(app)) == 1
+
+
+async def test_adding_a_second_factor_needs_a_recent_verification(
+    app: FastAPI, authenticator: SoftAuthenticator
+) -> None:
+    user_id = await seed_user(app)
+    second = SoftAuthenticator(origin=PUBLIC_URL, rp_id="flags.example.test")
+    async with signed_in(app) as client:
+        # A stolen session, last verified long ago, cannot add its own factor.
+        await register_passkey(client, authenticator)
+        await age_verification(app, user_id)
+        assert_error(await client.post("/api/account/passkeys/options"), 403, "reauth_required")
+        assert_error(await client.post("/api/account/totp"), 403, "reauth_required")
+
+        assert (await passwordless(client, authenticator)).status_code == 200
+        await register_passkey(client, second, "Phone")
+        await enrol_totp(client)
+
+    assert len(await stored(app)) == 2
+
+
+async def test_a_factor_removal_waits_for_one_in_flight(
+    app: FastAPI, authenticator: SoftAuthenticator
+) -> None:
+    user_id = await seed_user(app)
+    async with signed_in(app) as client:
+        await enrol_totp(client)
+        await register_passkey(client, authenticator)
+        await age_verification(app, user_id)
+
+        # Another removal is in flight: it holds the user row and has deleted the passkey.
+        async with app.state.sessionmaker() as other:
+            await other.execute(select(User.id).where(User.id == user_id).with_for_update())
+            await other.execute(delete(WebauthnCredential))
+            removal = asyncio.ensure_future(client.delete("/api/account/totp"))
+            await asyncio.wait([removal], timeout=0.5)
+            assert not removal.done(), "the removal did not wait for the one in flight"
+            await other.commit()
+        # It then sees that the TOTP is the last factor.
+        assert_error(await removal, 403, "reauth_required")

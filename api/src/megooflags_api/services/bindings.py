@@ -2,12 +2,20 @@
 scope. Also the last-admin guard: some active user must keep the admin role at org scope."""
 
 import uuid
+from collections.abc import Iterable
 
 from sqlalchemy import ColumnElement, Row, Select, case, select, text, union
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from megooflags_api.errors import key_conflict, last_admin, not_found, validation_error
+from megooflags_api.auth.rbac import Authorizer, not_held
+from megooflags_api.errors import (
+    forbidden,
+    key_conflict,
+    last_admin,
+    not_found,
+    validation_error,
+)
 from megooflags_api.models import (
     ApiToken,
     Environment,
@@ -125,6 +133,16 @@ async def bindings_of(
     return found
 
 
+async def bindings_from(session: AsyncSession, source: str) -> list[BindingOut]:
+    """The bindings with that source (e.g. `sso:<key>`), by creation."""
+    rows = await session.execute(
+        _out_query()
+        .where(RoleBinding.source == source)
+        .order_by(RoleBinding.created_at, RoleBinding.id)
+    )
+    return [_out(row) for row in rows.all()]
+
+
 async def get_binding(session: AsyncSession, binding_id: uuid.UUID) -> RoleBinding:
     binding = await session.get(RoleBinding, binding_id)
     if binding is None:
@@ -166,14 +184,47 @@ async def list_bindings(
     return items, next_cursor
 
 
+def check_grantable(
+    granted_by: Authorizer,
+    permissions: Iterable[str],
+    scope: ScopeKind,
+    project_id: uuid.UUID | None = None,
+    environment_id: uuid.UUID | None = None,
+) -> None:
+    """403 forbidden unless `granted_by` holds, at that scope, every permission a binding of
+    `permissions` there would grant."""
+    missing = not_held(granted_by, permissions, scope, project_id, environment_id)
+    if missing:
+        raise forbidden(
+            "cannot grant permissions you do not hold there: " + ", ".join(p.value for p in missing)
+        )
+
+
+async def check_bindings_grantable(
+    session: AsyncSession, granted_by: Authorizer, subject_kind: SubjectKind, subject_id: uuid.UUID
+) -> None:
+    """`check_grantable` for every binding the subject holds (before copying them)."""
+    rows = await session.execute(
+        select(
+            Role.permissions, RoleBinding.scope, RoleBinding.project_id, RoleBinding.environment_id
+        )
+        .join(Role, Role.id == RoleBinding.role_id)
+        .where(RoleBinding.subject_kind == subject_kind, RoleBinding.subject_id == subject_id)
+    )
+    for permissions, scope, project_id, environment_id in rows:
+        check_grantable(granted_by, permissions, scope, project_id, environment_id)
+
+
 async def create_binding(
-    session: AsyncSession, body: BindingIn, *, source: str = "manual"
+    session: AsyncSession, body: BindingIn, granted_by: Authorizer, *, source: str = "manual"
 ) -> RoleBinding:
-    """404 for an unknown role, project, environment or subject; 409 for a duplicate."""
+    """404 for an unknown role, project, environment or subject; 403 when `granted_by` does not
+    hold every permission it would grant; 409 for a duplicate."""
     role = await get_by_key(session, body.role)
     project_id, environment_id = await resolve_scope(session, body)
     if await subject_label(session, body.subject_kind, body.subject_id) is None:
         raise not_found(body.subject_kind.value.replace("_", " "), str(body.subject_id))
+    check_grantable(granted_by, role.permissions, body.scope, project_id, environment_id)
     binding = RoleBinding(
         subject_kind=body.subject_kind,
         subject_id=body.subject_id,

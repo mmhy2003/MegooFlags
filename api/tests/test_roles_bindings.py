@@ -21,6 +21,8 @@ from megooflags_api.auth.rbac import Permission
 from megooflags_api.models import Team, TeamMember, User
 from megooflags_api.models.enums import SubjectKind, UserStatus
 
+VIEWER = ["project.read", "evaluate", "sdk_key.read", "audit.read"]
+
 FLAG_OPS = {
     "key": "flag-ops",
     "name": "Flag ops",
@@ -312,6 +314,12 @@ async def test_member_manage_binds_users_but_not_tokens(
     async with client_with(app, await seed_service_token(app, "viewer", name="ci")) as ci:
         token_id = await principal_id(ci)
     async with client_with(app, await seed_service_token(app, "members")) as members:
+        # It may grant only what it holds, so it also holds editor on the project.
+        members_id = await principal_id(members)
+        r = await admin.post(
+            "/api/bindings", json=project_binding(members_id, subject_kind="service_token")
+        )
+        assert r.status_code == 201, r.text
         r = await members.post(
             "/api/bindings",
             json=project_binding(token_id, subject_kind="service_token"),
@@ -387,3 +395,135 @@ async def test_admin_through_a_team_counts(app: FastAPI, admin: httpx.AsyncClien
     assert (await admin.delete(f"/api/bindings/{binding['id']}")).status_code == 204
     # Now the team holds the only admin binding.
     assert_error(await admin.delete(f"/api/bindings/{team_binding}"), 409, "last_admin")
+
+
+# Nobody grants more than they hold
+
+
+async def test_a_binding_cannot_grant_more_than_the_caller_holds(
+    app: FastAPI, admin: httpx.AsyncClient
+) -> None:
+    await create_project(admin)
+    await create_project(admin, "other")
+    await create_role(admin, "members", ["member.manage"])
+    user_id = await seed_user(app, "dev@example.com", role="viewer")
+    async with client_with(app, await seed_service_token(app, "members")) as members:
+        members_id = await principal_id(members)
+        # member.manage alone grants nothing: not even itself to admin.
+        r = await members.post(
+            "/api/bindings",
+            json={
+                **project_binding(members_id),
+                "role": "admin",
+                "scope": "org",
+                "project": None,
+                "subject_kind": "service_token",
+            },
+        )
+        assert_error(r, 403, "forbidden")
+        r = await members.post(
+            "/api/bindings",
+            json={
+                "subject_kind": "user",
+                "subject_id": str(user_id),
+                "role": "admin",
+                "scope": "org",
+            },
+        )
+        body = assert_error(r, 403, "forbidden")
+        assert "org.manage" in body["message"]
+        assert_error(
+            await members.post("/api/bindings", json=project_binding(user_id)), 403, "forbidden"
+        )
+
+        # Holding editor on demo, it can grant editor on demo, but not org-wide or elsewhere.
+        r = await admin.post(
+            "/api/bindings", json=project_binding(members_id, subject_kind="service_token")
+        )
+        assert r.status_code == 201, r.text
+        r = await members.post("/api/bindings", json=project_binding(user_id))
+        assert r.status_code == 201, r.text
+        r = await members.post("/api/bindings", json=project_binding(user_id, project="other"))
+        assert_error(r, 403, "forbidden")
+        r = await members.post(
+            "/api/bindings",
+            json={
+                "subject_kind": "user",
+                "subject_id": str(user_id),
+                "role": "editor",
+                "scope": "org",
+            },
+        )
+        assert_error(r, 403, "forbidden")
+        # An environment binding needs the environment-level permissions only.
+        r = await members.post(
+            "/api/bindings",
+            json=project_binding(user_id, role="editor", scope="environment", env="production"),
+        )
+        assert r.status_code == 201, r.text
+    # The admin's one and the two the members token made.
+    assert len(await audit_entries(app, "binding.create")) == 3
+
+
+async def test_a_service_token_cannot_hold_more_than_its_creator(
+    app: FastAPI, admin: httpx.AsyncClient
+) -> None:
+    await create_role(admin, "token-ops", ["token.manage", *VIEWER])
+    async with client_with(app, await seed_service_token(app, "token-ops")) as ops:
+        for role in ("admin", "editor"):
+            r = await ops.post(
+                "/api/tokens",
+                json={"name": "ci", "bindings": [{"role": role, "scope": "org"}]},
+            )
+            assert_error(r, 403, "forbidden")
+        r = await ops.post(
+            "/api/tokens", json={"name": "ci", "bindings": [{"role": "viewer", "scope": "org"}]}
+        )
+        assert r.status_code == 201, r.text
+        viewer_token = r.json()["token"]["id"]
+        # Rotating returns the secret, so it needs the same rights as granting the bindings.
+        admin_token = await principal_id(admin)
+        r = await ops.post(f"/api/tokens/{admin_token}/rotate", json={"overlap_seconds": 60})
+        assert_error(r, 403, "forbidden")
+        r = await ops.post(f"/api/tokens/{viewer_token}/rotate", json={"overlap_seconds": 60})
+        assert r.status_code == 201, r.text
+    assert len((await admin.get("/api/tokens")).json()["items"]) == 4
+    assert len(await audit_entries(app, "token.create")) == 1
+
+
+async def test_a_role_cannot_gain_permissions_the_caller_lacks(
+    app: FastAPI, admin: httpx.AsyncClient
+) -> None:
+    await create_role(admin, "role-ops", ["role.manage", "project.read"])
+    async with client_with(app, await seed_service_token(app, "role-ops")) as ops:
+        r = await ops.post(
+            "/api/roles", json={"key": "boss", "name": "Boss", "permissions": ["org.manage"]}
+        )
+        assert_error(r, 403, "forbidden")
+        await create_role(ops, "readers", ["project.read"])
+        # Its own role, bound to it: it cannot add to it, but can drop from it.
+        r = await ops.patch("/api/roles/role-ops", json={"permissions": [*Permission]})
+        assert_error(r, 403, "forbidden")
+        r = await ops.patch("/api/roles/readers", json={"permissions": ["project.read"]})
+        assert r.status_code == 200, r.text
+        r = await ops.patch("/api/roles/role-ops", json={"permissions": ["role.manage"]})
+        assert r.status_code == 200, r.text
+    r = await admin.get("/api/roles/role-ops")
+    assert r.json()["permissions"] == ["role.manage"]
+
+
+async def test_joining_a_team_cannot_grant_more_than_the_caller_holds(
+    app: FastAPI, admin: httpx.AsyncClient
+) -> None:
+    await create_role(admin, "members", ["member.manage"])
+    user_id = await seed_user(app, "dev@example.com", role="viewer")
+    for key in ("admins", "empty"):
+        r = await admin.post("/api/teams", json={"key": key, "name": key.title()})
+        assert r.status_code == 201, r.text
+    team_id = uuid.UUID((await admin.get("/api/teams/admins")).json()["id"])
+    await seed_binding(app, SubjectKind.TEAM, team_id, "admin")
+    async with client_with(app, await seed_service_token(app, "members")) as members:
+        r = await members.post("/api/teams/admins/members", json={"user_id": str(user_id)})
+        assert_error(r, 403, "forbidden")
+        r = await members.post("/api/teams/empty/members", json={"user_id": str(user_id)})
+        assert r.status_code == 201, r.text

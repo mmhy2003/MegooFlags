@@ -43,8 +43,8 @@ CSV_COLUMNS = [
     "before",
     "after",
 ]
-# A spreadsheet treats a cell starting with one of these as a formula.
-FORMULA_PREFIXES = ("=", "+", "-", "@")
+# A spreadsheet treats a cell starting with one of these as a formula (OWASP CSV injection).
+FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 
 def _scope(authz: Authz) -> set[uuid.UUID] | None:

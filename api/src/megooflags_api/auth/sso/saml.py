@@ -96,10 +96,21 @@ def _sp_settings(provider: SsoProvider, public_url: str, box: SecretBox) -> dict
             "wantMessagesSigned": False,
             "rejectDeprecatedAlgorithm": True,
             "wantNameId": True,
+            # No RequestedAuthnContext: python3-saml would ask for PasswordProtectedTransport
+            # exactly, which IdPs that enforce MFA or passwordless sign-in refuse or downgrade.
+            "requestedAuthnContext": False,
             "signatureAlgorithm": OneLogin_Saml2_Constants.RSA_SHA256,
             "digestAlgorithm": OneLogin_Saml2_Constants.SHA256,
         },
     }
+
+
+def is_idp_metadata(xml: str) -> bool:
+    """Whether `xml` is SAML metadata with an IDPSSODescriptor."""
+    try:
+        return "idp" in OneLogin_Saml2_IdPMetadataParser.parse(xml)
+    except _SAML_ERRORS:
+        return False
 
 
 def saml_settings(provider: SsoProvider, public_url: str, box: SecretBox) -> dict[str, Any]:

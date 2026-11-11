@@ -1,4 +1,5 @@
 import json
+import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -12,16 +13,20 @@ from helpers import (
     bearer,
     create_project,
     seed_service_token,
+    seed_user,
 )
 from pydantic import AnyHttpUrl
 from sqlalchemy import select
+from sso_fixtures import idp_metadata
 
-from megooflags_api.models import SsoGroupMapping, SsoProvider
+from megooflags_api.models import Role, RoleBinding, SsoGroupMapping, SsoProvider, Team, TeamMember
+from megooflags_api.models.enums import ScopeKind, SubjectKind
+from megooflags_api.services.sso_providers import METADATA_LIMIT
 
 SECRET = "oidc-client-secret-value"
 SP_KEY = "-----BEGIN PRIVATE KEY-----\nsp-private-key-material\n-----END PRIVATE KEY-----"
 SP_CERT = "-----BEGIN CERTIFICATE-----\nsp-certificate\n-----END CERTIFICATE-----"
-METADATA = '<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" entityID="idp"/>'
+METADATA = idp_metadata()
 METADATA_URL = "https://idp.example.test/realms/test/protocol/saml/descriptor"
 
 OIDC = {
@@ -67,6 +72,19 @@ async def viewer(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
         yield client
 
 
+INTERNAL_URL = "http://169.254.169.254/latest/meta-data/iam/security-credentials/role"
+INTERNAL_SECRET = '{"AccessKeyId": "AKIAINTERNAL", "SecretAccessKey": "not-for-you"}'
+HUGE_URL = "https://idp.example.test/huge"
+SP_ONLY_URL = "https://idp.example.test/sp-only"
+SP_ONLY_METADATA = (
+    '<md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" entityID="sp">'
+    '<md:SPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">'
+    '<md:AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"'
+    ' Location="https://sp.example.test/acs" index="0"/>'
+    "</md:SPSSODescriptor></md:EntityDescriptor>"
+)
+
+
 @pytest.fixture
 def metadata_requests(app: FastAPI) -> list[httpx.Request]:
     """Serves METADATA at METADATA_URL through `app.state.sso_http`; records the requests."""
@@ -76,6 +94,12 @@ def metadata_requests(app: FastAPI) -> list[httpx.Request]:
         seen.append(request)
         if str(request.url) == METADATA_URL:
             return httpx.Response(200, text=METADATA)
+        if str(request.url) == INTERNAL_URL:
+            return httpx.Response(200, text=INTERNAL_SECRET)
+        if str(request.url) == HUGE_URL:
+            return httpx.Response(200, text=METADATA + " " * METADATA_LIMIT)
+        if str(request.url) == SP_ONLY_URL:
+            return httpx.Response(200, text=SP_ONLY_METADATA)
         return httpx.Response(404)
 
     app.state.sso_http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -316,6 +340,25 @@ async def test_unreachable_metadata_url_is_refused(
     assert [str(r.url) for r in metadata_requests] == [url]
 
 
+@pytest.mark.parametrize("url", [INTERNAL_URL, SP_ONLY_URL, HUGE_URL])
+async def test_a_metadata_url_that_is_not_idp_metadata_is_refused_without_its_body(
+    app: FastAPI, api: httpx.AsyncClient, metadata_requests: list[httpx.Request], url: str
+) -> None:
+    r = await api.post("/api/sso/providers", json=SAML | {"saml": {"idp_metadata_url": url}})
+
+    body = assert_error(r, 422, "validation_error")
+    assert body["details"] == {"path": "saml.idp_metadata_url"}
+    assert "AKIAINTERNAL" not in r.text
+    assert "SPSSODescriptor" not in r.text
+    assert await audit_entries(app, "sso_provider.create") == []
+    # Nor through an update of an existing provider.
+    await create_provider(api, SAML)
+    r = await api.patch("/api/sso/providers/kc-saml", json={"saml": {"idp_metadata_url": url}})
+    assert_error(r, 422, "validation_error")
+    assert "AKIAINTERNAL" not in r.text
+    assert (await provider_row(app, "kc-saml")).config["idp_metadata_xml"] == METADATA
+
+
 async def test_delete_provider(app: FastAPI, api: httpx.AsyncClient) -> None:
     await create_provider(api, OIDC)
     r = await api.post(
@@ -333,6 +376,77 @@ async def test_delete_provider(app: FastAPI, api: httpx.AsyncClient) -> None:
     [entry] = await audit_entries(app, "sso_provider.delete")
     assert entry["before"]["key"] == "keycloak"
     assert SECRET not in str(entry)
+
+
+async def seed_sso_grants(app: FastAPI, email: str, role: str, source: str) -> uuid.UUID:
+    """A user holding `role` at org scope and membership of team `platform`, both from `source`."""
+    user_id = await seed_user(app, email, role="viewer")
+    async with app.state.sessionmaker() as session:
+        team = await session.scalar(select(Team).where(Team.key == "platform"))
+        if team is None:
+            team = Team(key="platform", name="Platform")
+            session.add(team)
+            await session.flush()
+        role_id = await session.scalar(select(Role.id).where(Role.key == role))
+        session.add(TeamMember(team_id=team.id, user_id=user_id, source=source))
+        session.add(
+            RoleBinding(
+                subject_kind=SubjectKind.USER,
+                subject_id=user_id,
+                role_id=role_id,
+                scope=ScopeKind.ORG,
+                source=source,
+            )
+        )
+        await session.commit()
+    return user_id
+
+
+async def grants_of(app: FastAPI, user_id: uuid.UUID) -> tuple[list[str], list[str]]:
+    """The user's (team memberships, role bindings) as their sources."""
+    async with app.state.sessionmaker() as session:
+        members = await session.scalars(
+            select(TeamMember.source).where(TeamMember.user_id == user_id)
+        )
+        held = await session.scalars(
+            select(RoleBinding.source).where(RoleBinding.subject_id == user_id)
+        )
+        return sorted(members), sorted(held)
+
+
+async def test_deleting_a_provider_revokes_what_its_group_sync_granted(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await seed_user(app)  # a manual admin
+    await create_provider(api, OIDC)
+    await create_provider(api, OIDC | {"key": "other"})
+    dev = await seed_sso_grants(app, "dev@example.com", "editor", "sso:keycloak")
+    ops = await seed_sso_grants(app, "ops@example.com", "editor", "sso:other")
+
+    r = await api.delete("/api/sso/providers/keycloak")
+
+    assert r.status_code == 204, r.text
+    assert await grants_of(app, dev) == ([], ["manual"])
+    assert await grants_of(app, ops) == (["sso:other"], ["manual", "sso:other"])
+    [entry] = await audit_entries(app, "sso_provider.delete")
+    revoked = entry["before"]["revoked"]
+    assert revoked["team_members"] == [{"team": "platform", "user": "dev@example.com"}]
+    assert [(b["subject_label"], b["role"], b["scope"]) for b in revoked["bindings"]] == [
+        ("dev@example.com", "editor", "org")
+    ]
+
+
+async def test_deleting_a_provider_keeps_the_last_admin(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await create_provider(api, OIDC)
+    admin_id = await seed_sso_grants(app, "admin@example.com", "admin", "sso:keycloak")
+
+    assert_error(await api.delete("/api/sso/providers/keycloak"), 409, "last_admin")
+
+    assert (await api.get("/api/sso/providers/keycloak")).status_code == 200
+    assert await grants_of(app, admin_id) == (["sso:keycloak"], ["manual", "sso:keycloak"])
+    assert await audit_entries(app, "sso_provider.delete") == []
 
 
 async def test_mappings_can_be_created_listed_and_deleted(

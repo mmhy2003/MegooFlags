@@ -43,7 +43,8 @@ export interface paths {
          * Passkey Registration Options
          * @description Start registering a passkey: pass `options` to `navigator.credentials.create()`, then
          *     send the result to `POST /account/passkeys` within 5 minutes. Needs MEGOOFLAGS_PUBLIC_URL
-         *     (409 public_url_required).
+         *     (409 public_url_required). With a factor already, you must have verified one in the last 10
+         *     minutes (403 reauth_required).
          */
         post: operations["passkey_registration_options_api_account_passkeys_options_post"];
         delete?: never;
@@ -235,7 +236,8 @@ export interface paths {
          * Enrol Totp
          * @description Start setting up an authenticator app: add the secret (or scan `otpauth_url` as a QR
          *     code), then confirm with a code. Starting again replaces an unconfirmed secret; a confirmed
-         *     one must be removed first (409 totp_exists).
+         *     one must be removed first (409 totp_exists). With a passkey, you must have verified a factor
+         *     in the last 10 minutes (403 reauth_required).
          */
         post: operations["enrol_totp_api_account_totp_post"];
         /**
@@ -1143,7 +1145,8 @@ export interface paths {
         post?: never;
         /**
          * Delete Provider
-         * @description Also deletes its group mappings and the links of users to it.
+         * @description Also deletes its group mappings, the links of users to it, and the team memberships and
+         *     role bindings its group sync granted; 409 last_admin if that leaves no org admin.
          */
         delete: operations["delete_provider_api_sso_providers__key__delete"];
         options?: never;
@@ -1240,7 +1243,10 @@ export interface paths {
         /** List Members */
         get: operations["list_members_api_teams__key__members_get"];
         put?: never;
-        /** Add Member */
+        /**
+         * Add Member
+         * @description The caller must hold every permission the team's bindings grant.
+         */
         post: operations["add_member_api_teams__key__members_post"];
         delete?: never;
         options?: never;
@@ -1280,7 +1286,8 @@ export interface paths {
         put?: never;
         /**
          * Create Token
-         * @description Create a service token holding `bindings`. The secret is returned only here.
+         * @description Create a service token holding `bindings`, which may grant only permissions the caller
+         *     holds there. The secret is returned only here.
          */
         post: operations["create_token_api_tokens_post"];
         delete?: never;
@@ -1322,7 +1329,8 @@ export interface paths {
         /**
          * Rotate Token
          * @description Replace the token with a new one holding the same name, expiry and bindings. The old token
-         *     keeps working for `overlap_seconds`; 0 revokes it at once. The secret is returned only here.
+         *     keeps working for `overlap_seconds`; 0 revokes it at once. The caller must hold every
+         *     permission the bindings grant, since they get the secret. The secret is returned only here.
          */
         post: operations["rotate_token_api_tokens__id__rotate_post"];
         delete?: never;

@@ -2,9 +2,11 @@
 
 Group sync adds and removes only the team memberships and role bindings whose source is
 `sso:<provider key>`; manual ones are never touched, and a manual one that a mapping would also
-grant is left as it is.
+grant is left as it is. It never removes the last active org admin: those removals are skipped,
+with a warning.
 """
 
+import logging
 import uuid
 from typing import Any
 
@@ -13,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.auth.principal import Principal
 from megooflags_api.auth.sso import SsoAssertion, SsoDenied
+from megooflags_api.errors import ApiError
 from megooflags_api.models import (
     Environment,
     Project,
@@ -27,7 +30,10 @@ from megooflags_api.models import (
 )
 from megooflags_api.models.enums import ScopeKind, SubjectKind, UserStatus
 from megooflags_api.services.audit import RequestMeta, record
+from megooflags_api.services.bindings import active_org_admin_ids, guard_last_admin
 from megooflags_api.services.users import create_user, get_user_by_email
+
+logger = logging.getLogger(__name__)
 
 MAX_EMAIL = 320
 MAX_NAME = 200
@@ -52,7 +58,8 @@ async def resolve_user(
 
     Raises SsoDenied: `sso_user_disabled`, `sso_email_conflict` (a local account has the email and
     linking is off or the email is not verified), `sso_not_provisioned` (JIT is off), or
-    `sso_failed` (no usable email to provision with). Flushes; the caller commits.
+    `sso_failed` (no usable, verified email to provision with: an unverified one would claim the
+    address for good). Flushes; the caller commits.
     """
     user = await session.scalar(
         select(User)
@@ -79,6 +86,8 @@ async def resolve_user(
         raise SsoDenied("sso_not_provisioned", f"no account for {email or assertion.subject}")
     if email is None or len(email) > MAX_EMAIL:
         raise SsoDenied("sso_failed", "the identity provider sent no usable email")
+    if not assertion.email_verified:
+        raise SsoDenied("sso_failed", f"the identity provider has not verified {email}")
     name = (assertion.name or email)[:MAX_NAME]
     user = await create_user(session, email, name, None)
     await _link(session, provider, assertion, user)
@@ -146,6 +155,42 @@ async def _keys(
     return {row_id: key for row_id, key in rows}
 
 
+async def _remove(
+    session: AsyncSession,
+    user: User,
+    source: str,
+    teams: set[uuid.UUID],
+    binding_ids: list[uuid.UUID],
+) -> bool:
+    """Remove the memberships and bindings, unless that leaves no active org admin; then keep
+    them, log a warning and return False."""
+    was_admin = user.id in await active_org_admin_ids(session)
+    try:
+        async with session.begin_nested():
+            if teams:
+                await session.execute(
+                    delete(TeamMember).where(
+                        TeamMember.user_id == user.id,
+                        TeamMember.source == source,
+                        TeamMember.team_id.in_(teams),
+                    )
+                )
+            if binding_ids:
+                await session.execute(delete(RoleBinding).where(RoleBinding.id.in_(binding_ids)))
+            if was_admin:
+                await guard_last_admin(session)
+    except ApiError as exc:
+        if exc.code != "last_admin":
+            raise
+        logger.warning(
+            "group sync kept the %s access of %s: it would leave no active org admin",
+            source,
+            user.email,
+        )
+        return False
+    return True
+
+
 async def sync_groups(
     session: AsyncSession,
     provider: SsoProvider,
@@ -186,16 +231,11 @@ async def sync_groups(
         return
 
     before = await _describe(session, have_teams, have_targets)
-    if gone_teams:
-        await session.execute(
-            delete(TeamMember).where(
-                TeamMember.user_id == user.id,
-                TeamMember.source == source,
-                TeamMember.team_id.in_(gone_teams),
-            )
-        )
-    if gone_bindings:
-        await session.execute(delete(RoleBinding).where(RoleBinding.id.in_(gone_bindings)))
+    if gone_teams or gone_bindings:
+        if not await _remove(session, user, source, gone_teams, gone_bindings):
+            gone_teams, gone_bindings = set(), []
+            if not (new_teams or new_targets):
+                return
     session.add_all(TeamMember(team_id=t, user_id=user.id, source=source) for t in new_teams)
     session.add_all(
         RoleBinding(

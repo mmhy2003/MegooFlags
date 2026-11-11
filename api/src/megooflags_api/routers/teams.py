@@ -9,6 +9,7 @@ from megooflags_api.auth.rbac import Permission
 from megooflags_api.auth.require import Authz, authenticated, require
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES
+from megooflags_api.models.enums import SubjectKind
 from megooflags_api.schemas.common import Page
 from megooflags_api.schemas.identity import (
     TeamIn,
@@ -17,7 +18,7 @@ from megooflags_api.schemas.identity import (
     TeamOut,
     TeamUpdate,
 )
-from megooflags_api.services import teams
+from megooflags_api.services import bindings, teams
 from megooflags_api.services.audit import AuditDep, snapshot
 
 router = APIRouter(prefix="/teams", tags=["teams"], responses=ERROR_RESPONSES)
@@ -97,7 +98,9 @@ async def list_members(
 async def add_member(
     session: SessionDep, authz: ManageMembers, audit: AuditDep, key: str, body: TeamMemberIn
 ) -> TeamMemberOut:
+    """The caller must hold every permission the team's bindings grant."""
     team = await teams.get_by_key(session, key)
+    await bindings.check_bindings_grantable(session, authz.authorizer, SubjectKind.TEAM, team.id)
     out = await teams.add_member(session, team, body.user_id)
     await audit.record("team.member.add", "team", key, after=snapshot(out))
     await session.commit()
