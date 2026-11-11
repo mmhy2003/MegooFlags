@@ -2389,7 +2389,7 @@ export interface components {
          * Permission
          * @enum {string}
          */
-        Permission: "org.manage" | "member.manage" | "role.manage" | "token.manage" | "project.create" | "audit.read" | "project.read" | "project.manage" | "environment.manage" | "flag.create" | "flag.update" | "flag.archive" | "segment.write" | "flag.config.write" | "flag.toggle" | "evaluate" | "sdk_key.read" | "sdk_key.manage";
+        Permission: "org.manage" | "member.manage" | "role.manage" | "token.manage" | "project.create" | "audit.read" | "project.read" | "project.manage" | "environment.manage" | "flag.create" | "flag.update" | "flag.archive" | "segment.write" | "flag.config.write" | "flag.toggle" | "change.approve" | "evaluate" | "sdk_key.read" | "sdk_key.manage";
         /**
          * PersonalTokenCreate
          * @description A token acting as you, limited to `permissions` within `project` (and `env`), and never

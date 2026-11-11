@@ -73,3 +73,54 @@ class InvitationPurpose(StrEnum):
 class SsoProtocol(StrEnum):
     OIDC = "oidc"
     SAML = "saml"
+
+
+class FlagLifecycle(StrEnum):
+    """The stored lifecycle state. "archived" is not stored: it comes from `archived_at`."""
+
+    NEW = "new"
+    ACTIVE = "active"
+    PERMANENT = "permanent"
+    STALE = "stale"
+
+
+class ScheduledAction(StrEnum):
+    ENABLE = "enable"
+    DISABLE = "disable"
+    SET_ROLLOUT = "set_rollout"
+
+
+class ScheduleStatus(StrEnum):
+    PENDING = "pending"
+    DONE = "done"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class RolloutStatus(StrEnum):
+    ACTIVE = "active"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    ABORTED = "aborted"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class ChangeRequestKind(StrEnum):
+    CONFIG = "config"
+    TOGGLE = "toggle"
+    SCHEDULE = "schedule"
+    ROLLOUT = "rollout"
+
+
+class ChangeRequestStatus(StrEnum):
+    OPEN = "open"
+    APPLIED = "applied"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+class ReviewDecision(StrEnum):
+    APPROVE = "approve"
+    REJECT = "reject"

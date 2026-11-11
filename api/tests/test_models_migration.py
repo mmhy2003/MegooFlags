@@ -2,9 +2,16 @@ import megooflags_api.models  # noqa: F401
 from megooflags_api.db import Base
 from megooflags_api.models.enums import (
     ApiTokenKind,
+    ChangeRequestKind,
+    ChangeRequestStatus,
+    FlagLifecycle,
     FlagType,
     InvitationPurpose,
     Operator,
+    ReviewDecision,
+    RolloutStatus,
+    ScheduledAction,
+    ScheduleStatus,
     ScopeKind,
     SdkKeyKind,
     SessionState,
@@ -49,6 +56,11 @@ def test_metadata_has_all_tables() -> None:
         "sso_provider",
         "sso_group_mapping",
         "user_identity",
+        "change_request",
+        "change_request_review",
+        "change_request_comment",
+        "scheduled_change",
+        "progressive_rollout",
     }
 
 
@@ -80,3 +92,23 @@ def test_enum_values() -> None:
     assert [k.value for k in ApiTokenKind] == ["service", "personal"]
     assert [p.value for p in InvitationPurpose] == ["invite", "reset"]
     assert [p.value for p in SsoProtocol] == ["oidc", "saml"]
+    assert [s.value for s in FlagLifecycle] == ["new", "active", "permanent", "stale"]
+    assert [a.value for a in ScheduledAction] == ["enable", "disable", "set_rollout"]
+    assert [s.value for s in ScheduleStatus] == ["pending", "done", "failed", "cancelled"]
+    assert [s.value for s in RolloutStatus] == [
+        "active",
+        "paused",
+        "completed",
+        "aborted",
+        "failed",
+        "cancelled",
+    ]
+    assert [k.value for k in ChangeRequestKind] == ["config", "toggle", "schedule", "rollout"]
+    assert [s.value for s in ChangeRequestStatus] == [
+        "open",
+        "applied",
+        "rejected",
+        "cancelled",
+        "failed",
+    ]
+    assert [d.value for d in ReviewDecision] == ["approve", "reject"]

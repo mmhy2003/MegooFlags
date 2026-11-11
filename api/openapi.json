@@ -2262,6 +2262,7 @@
           "segment.write",
           "flag.config.write",
           "flag.toggle",
+          "change.approve",
           "evaluate",
           "sdk_key.read",
           "sdk_key.manage"

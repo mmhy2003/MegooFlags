@@ -11,6 +11,7 @@ def test_every_permission_has_a_level() -> None:
 def test_levels() -> None:
     assert PERMISSION_LEVEL[P.AUDIT_READ] is ScopeKind.PROJECT
     assert PERMISSION_LEVEL[P.FLAG_TOGGLE] is ScopeKind.ENVIRONMENT
+    assert PERMISSION_LEVEL[P.CHANGE_APPROVE] is ScopeKind.ENVIRONMENT
     assert PERMISSION_LEVEL[P.ORG_MANAGE] is ScopeKind.ORG
 
 
@@ -48,6 +49,7 @@ def test_permission_values() -> None:
         "segment.write",
         "flag.config.write",
         "flag.toggle",
+        "change.approve",
         "evaluate",
         "sdk_key.read",
         "sdk_key.manage",
