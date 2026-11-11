@@ -58,6 +58,16 @@ check /healthz '"status":"ok"'
 check /readyz '"status":"ready"'
 check /sign-in 'MegooFlags'
 
+headers=$(curl -sSI "${tls[@]}" "${base}/sign-in" | tr -d '\r' | tr '[:upper:]' '[:lower:]')
+grep -q '^content-security-policy:' <<<"$headers" || fail "/sign-in has no Content-Security-Policy: $headers"
+grep -q '^x-content-type-options: nosniff$' <<<"$headers" || fail "/sign-in has no X-Content-Type-Options: $headers"
+if [ "$mode" = https ]; then
+  grep -q '^strict-transport-security:' <<<"$headers" || fail "/sign-in has no HSTS over HTTPS: $headers"
+else
+  ! grep -q '^strict-transport-security:' <<<"$headers" || fail "/sign-in sends HSTS over plain HTTP"
+fi
+echo "security headers OK"
+
 # First-run setup makes the first admin and signs them in; their session mints an org admin
 # service token for the management API.
 jar="$workdir/cookies"

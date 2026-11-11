@@ -5,6 +5,17 @@
 }
 
 {$MEGOOFLAGS_SITE_ADDRESS::80} {
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		-Server
+	}
+	# HSTS only over HTTPS: in plain-HTTP mode TLS is terminated (or not) by another proxy.
+	@https protocol https
+	header @https Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
 	# Metrics stay inside the compose network: Prometheus scrapes each api replica on :8000.
 	respond /metrics 404
 

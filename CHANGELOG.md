@@ -7,14 +7,24 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 ## [Unreleased]
 
 ### Changed
+- **Breaking / upgrade steps:**
+  - `/api/*` now requires authentication. Open `/setup` right after upgrading to create the first admin (until then anyone who can reach the instance can), then create service tokens (`POST /api/tokens`) for scripts and CI.
+  - Set `MEGOOFLAGS_SECRET_KEY` (32+ characters, e.g. `openssl rand -hex 32`). The API refuses to start without it.
 - **Upgrade step:** the API now requires Valkey. The bundled `docker-compose.yml` runs a `valkey` service; if you run the API elsewhere, set `MEGOOFLAGS_VALKEY_URL`, because the API refuses to start without it.
-- **Security:** the management API has no authentication in this release. Do not expose `/api/*` to untrusted networks until authentication ships.
 - **Upgrade step:** `MEGOOFLAGS_SITE_ADDRESS` now defaults to empty, which means plain HTTP on port 80 only. Caddy publishes port 443 only when it is set to a domain. If your `.env` has `MEGOOFLAGS_SITE_ADDRESS=:80`, change it to `MEGOOFLAGS_SITE_ADDRESS=`, otherwise port 443 is still published on the host.
 - Each `api` container runs several uvicorn worker processes: one per CPU, at most 8, or `MEGOOFLAGS_API_WORKERS`. Each worker adds memory; set it explicitly when the container has a CPU limit. `/metrics` reports the sum over all workers.
 - The API trusts `X-Forwarded-*` headers only from private networks (configurable with `FORWARDED_ALLOW_IPS`), not from any address.
 - API logs are JSON lines on stdout, with one access-log line per request. Set `MEGOOFLAGS_LOG_LEVEL` to change the level.
 
 ### Added
+- Sign-in with a password, plus a second factor: TOTP, passkeys (WebAuthn) or single-use recovery codes. Admins can require MFA for everyone with `require_mfa` (`PUT /api/settings`). Web pages `/setup`, `/sign-in`, `/sign-in/mfa`, `/invite/<token>` and `/account/security`.
+- Single sign-on through OIDC and SAML 2.0 (tested with Keycloak), with just-in-time provisioning and mapping of identity-provider groups to teams and roles.
+- Users, invitations, teams, custom roles and role bindings at org, project or environment scope, alongside the built-in Admin, Editor and Viewer roles.
+- API tokens: service tokens (`/api/tokens`) and personal tokens (`/api/account/tokens`), scoped by project, environment and permission.
+- Rotation with an overlap window for SDK keys and service tokens: the old secret keeps working for `overlap_seconds`.
+- An audit log of every change and sign-in (who, what, when, client IP and a before/after diff), with filters and CSV or NDJSON export under `/api/audit`.
+- Security headers (CSP, `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, and HSTS over HTTPS) from Caddy and the web app. `docs/security.md` maps the OWASP ASVS L2 chapters to how they are met.
+- `MEGOOFLAGS_PUBLIC_URL` is required for passkeys and SSO; without it their endpoints return 409 `public_url_required`.
 - Prometheus metrics on `:8000/metrics` in every `api` container, reachable only inside the compose network. `.env.example` shows a scrape config.
 - OpenTelemetry traces for API requests and database queries, enabled by setting `OTEL_EXPORTER_OTLP_ENDPOINT`.
 - `MEGOOFLAGS_PUBLIC_URL` sets the external URL. When it is empty, the URL is derived from the request.

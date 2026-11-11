@@ -144,6 +144,8 @@ docker run -d --name mf-pg -e POSTGRES_USER=megooflags -e POSTGRES_PASSWORD=mego
 docker run -d --name mf-valkey -p 6379:6379 valkey/valkey:8
 export MEGOOFLAGS_DATABASE_URL=postgresql+asyncpg://megooflags:megooflags@localhost:5432/megooflags
 export MEGOOFLAGS_VALKEY_URL=redis://localhost:6379/0
+# The API refuses to start without it (the tests set their own).
+export MEGOOFLAGS_SECRET_KEY=$(openssl rand -hex 32)
 ```
 
 The SSO end-to-end tests (`api/tests/test_sso_keycloak.py`) run against a Keycloak that imports
@@ -179,7 +181,8 @@ pnpm --dir web gen:api
 git diff --exit-code -- api/openapi.json web/lib/api/schema.d.ts
 
 # images and smoke
-docker build -t megooflags-api:ci api && docker build -t megooflags-web:ci web && bash scripts/smoke.sh
+docker build -t megooflags-api:ci api && docker build -t megooflags-web:ci web && bash scripts/smoke.sh http \
+  && bash scripts/smoke.sh https
 ```
 
 If you change a workflow, also run `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest`.
