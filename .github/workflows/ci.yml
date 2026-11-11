@@ -73,11 +73,18 @@ jobs:
     env:
       MEGOOFLAGS_DATABASE_URL: postgresql+asyncpg://megooflags:megooflags@localhost:5432/megooflags
       MEGOOFLAGS_VALKEY_URL: redis://localhost:6379/0
+      MEGOOFLAGS_KEYCLOAK_URL: http://localhost:8180
     defaults:
       run:
         working-directory: api
     steps:
       - uses: actions/checkout@v4
+      - name: Keycloak for the SSO end-to-end tests
+        working-directory: .
+        env:
+          # Compose checks it for the api service, which is not started here.
+          MEGOOFLAGS_SECRET_KEY: ci-dummy-secret-key-not-used-0123456789
+        run: docker compose -f deploy/docker-compose.yml -f deploy/compose.ci.yml --profile keycloak up -d --wait --wait-timeout 300 keycloak
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}

@@ -146,6 +146,16 @@ export MEGOOFLAGS_DATABASE_URL=postgresql+asyncpg://megooflags:megooflags@localh
 export MEGOOFLAGS_VALKEY_URL=redis://localhost:6379/0
 ```
 
+The SSO end-to-end tests (`api/tests/test_sso_keycloak.py`) run against a Keycloak that imports
+`deploy/keycloak/megooflags-test-realm.json`; they skip when `MEGOOFLAGS_KEYCLOAK_URL` is unset.
+From the repository root (compose needs some `MEGOOFLAGS_SECRET_KEY`, though only Keycloak starts):
+
+```bash
+MEGOOFLAGS_SECRET_KEY=local-dummy-secret-key-0123456789abcdef docker compose \
+  -f deploy/docker-compose.yml -f deploy/compose.ci.yml --profile keycloak up -d --wait keycloak
+export MEGOOFLAGS_KEYCLOAK_URL=http://localhost:8180
+```
+
 Then, from the repository root:
 
 ```bash

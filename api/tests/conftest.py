@@ -52,6 +52,14 @@ def valkey_up() -> None:
 
 
 @pytest.fixture(scope="session")
+def keycloak_url() -> str:
+    """The base URL of the Keycloak that imported deploy/keycloak/megooflags-test-realm.json."""
+    if "MEGOOFLAGS_KEYCLOAK_URL" not in os.environ:
+        pytest.skip("MEGOOFLAGS_KEYCLOAK_URL is not set")
+    return os.environ["MEGOOFLAGS_KEYCLOAK_URL"].rstrip("/")
+
+
+@pytest.fixture(scope="session")
 def migrated() -> None:
     if "MEGOOFLAGS_DATABASE_URL" not in os.environ:
         pytest.skip("MEGOOFLAGS_DATABASE_URL is not set")
