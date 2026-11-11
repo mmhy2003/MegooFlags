@@ -37,6 +37,8 @@ PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/api/auth/providers"),
         ("GET", "/api/auth/sso/{provider}/start"),
         ("GET", "/api/auth/sso/{provider}/callback"),
+        ("GET", "/api/auth/sso/{provider}/saml/metadata"),
+        ("POST", "/api/auth/sso/{provider}/saml/acs"),
         ("GET", "/api/invitations/{token}"),
         ("POST", "/api/invitations/{token}"),
     }

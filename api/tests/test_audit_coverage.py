@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, Literal
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
@@ -30,8 +31,11 @@ from helpers import (
     sign_in,
     totp_code,
 )
+from lxml import etree
+from onelogin.saml2.utils import OneLogin_Saml2_Utils  # type: ignore[import-untyped]
 from soft_webauthn import SoftAuthenticator
 from sqlalchemy import select
+from sso_fixtures import SAML_KEY, enable_sso, idp_metadata, saml_response
 
 from megooflags_api.main import create_app
 from megooflags_api.models import ApiToken, Environment, Project
@@ -207,6 +211,40 @@ async def sso_mapping(client: httpx.AsyncClient, app: FastAPI) -> Params:
     )
     assert r.status_code == 201, r.text
     return params | {"id": r.json()["id"]}
+
+
+async def saml_started(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """A SAML provider, and a sign-in `client` has started: its RelayState and request ID."""
+    enable_sso(app)
+    async with client_from(app, bearer(await seed_service_token(app))) as admin:
+        r = await admin.post(
+            "/api/sso/providers",
+            json={
+                "key": SAML_KEY,
+                "name": "SAML",
+                "protocol": "saml",
+                "saml": {"idp_metadata_xml": idp_metadata()},
+            },
+        )
+        assert r.status_code == 201, r.text
+    r = await client.get(f"/api/auth/sso/{SAML_KEY}/start")
+    assert r.status_code == 302, r.text
+    query = parse_qs(urlsplit(r.headers["location"]).query)
+    request = OneLogin_Saml2_Utils.decode_base64_and_inflate(query["SAMLRequest"][0])
+    return {"relay": query["RelayState"][0], "request_id": etree.fromstring(request).get("ID")}
+
+
+async def saml_sign_in(client: httpx.AsyncClient, params: Params) -> httpx.Response:
+    """POST a valid response to the ACS; it redirects (303), so `/auth/me` stands in for it."""
+    r = await client.post(
+        f"/api/auth/sso/{SAML_KEY}/saml/acs",
+        data={
+            "SAMLResponse": saml_response(in_response_to=params["request_id"]),
+            "RelayState": params["relay"],
+        },
+    )
+    assert (r.status_code, r.headers["location"]) == (303, "/"), r.text
+    return await client.get("/api/auth/me")
 
 
 async def invitation(client: httpx.AsyncClient, app: FastAPI) -> Params:
@@ -592,6 +630,10 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
         ),
         sample(
             "DELETE", "/api/sso/providers/{key}/mappings/{id}", "sso_mapping.delete", sso_mapping
+        ),
+        (
+            ("POST", "/api/auth/sso/{provider}/saml/acs"),
+            Sample(saml_started, saml_sign_in, "auth.sso.sign_in", "anon"),
         ),
     ]
 )

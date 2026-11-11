@@ -2,6 +2,11 @@
 FROM ghcr.io/astral-sh/uv:0.13 AS uv
 
 FROM python:3.12-slim AS build
+# lxml and xmlsec (SAML) are built from source against the system libxml2 (pyproject.toml).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       build-essential pkg-config libxml2-dev libxslt1-dev libxmlsec1-dev zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=uv /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
@@ -18,6 +23,10 @@ LABEL org.opencontainers.image.title="megooflags-api" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.source="https://github.com/mmhy2003/MegooFlags" \
       org.opencontainers.image.licenses="Apache-2.0"
+# The shared libraries lxml and xmlsec were built against (libxml2 comes with them).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libxslt1.1 libxmlsec1t64-openssl \
+    && rm -rf /var/lib/apt/lists/*
 RUN useradd --system --uid 10001 --no-create-home megooflags
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv

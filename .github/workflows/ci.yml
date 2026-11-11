@@ -27,6 +27,8 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
           cache-dependency-glob: api/uv.lock
+      - name: SAML build dependencies (lxml and xmlsec are built from source)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
       - run: python3 scripts/check_version.py
       - run: uv run --frozen --project api pytest scripts/tests
 
@@ -42,6 +44,8 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
           cache-dependency-glob: api/uv.lock
+      - name: SAML build dependencies (lxml and xmlsec are built from source)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
       - run: uv sync --frozen
       - run: uv run ruff check . ../scripts
       - run: uv run ruff format --check . ../scripts
@@ -79,6 +83,8 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
           cache-dependency-glob: api/uv.lock
+      - name: SAML build dependencies (lxml and xmlsec are built from source)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
       - run: uv sync --frozen
       - run: uv run pytest -v
 
@@ -104,6 +110,8 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
           cache-dependency-glob: api/uv.lock
+      - name: SAML build dependencies (lxml and xmlsec are built from source)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
       - run: bash scripts/check_migrations.sh
 
   web:
@@ -126,6 +134,8 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           enable-cache: true
           cache-dependency-glob: api/uv.lock
+      - name: SAML build dependencies (lxml and xmlsec are built from source)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm format:check

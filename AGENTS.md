@@ -127,6 +127,14 @@ Commit both `api/openapi.json` and `web/lib/api/schema.d.ts`. CI regenerates bot
 
 Run all of these before you open a pull request or say a task is done. They are the commands that CI runs.
 
+SAML needs `lxml` and `xmlsec`, which are built from source (`[tool.uv] no-binary-package` in
+`api/pyproject.toml`) so that both use the same system libxml2. Install their build dependencies
+first (Debian or Ubuntu):
+
+```bash
+sudo apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
+```
+
 Start a Postgres for the database tests and a Valkey. The API and its tests need Valkey; Valkey
 tests skip when `MEGOOFLAGS_VALKEY_URL` is unset.
 

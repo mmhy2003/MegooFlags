@@ -9,7 +9,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import RedirectResponse
@@ -19,12 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from megooflags_api.auth import sessions
 from megooflags_api.auth.rbac import Permission
 from megooflags_api.auth.require import Authz, require
-from megooflags_api.auth.sso import SsoDenied, oidc, provisioning
+from megooflags_api.auth.sso import SsoAssertion, SsoDenied, oidc, provisioning, saml
 from megooflags_api.auth.sso.state import STATE_SECONDS, pop_state, put_state
 from megooflags_api.crypto import SecretBox, SecretBoxDep
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES, ErrorBody, not_found, public_url_required
-from megooflags_api.models import SsoProvider
+from megooflags_api.models import SsoProvider, User
 from megooflags_api.models.enums import SsoProtocol
 from megooflags_api.routers.auth import session_principal, set_session_cookie, start_session
 from megooflags_api.schemas.common import Page
@@ -281,15 +281,20 @@ async def _deny(
     responses=FLOW_RESPONSES,
 )
 async def sso_start(
-    session: SessionDep, request: Request, provider: str, next: str | None = None
+    session: SessionDep,
+    request: Request,
+    box: SecretBoxDep,
+    provider: str,
+    next: str | None = None,
 ) -> RedirectResponse:
     """Sends the browser to the identity provider. After signing in it comes back to `next` (a
     path on this site; anything else means "/"), or to `/sign-in?error=<code>`."""
     redirect_uri = _callback_url(request, provider)
     row = await _enabled_provider(session, provider)
-    # SAML providers start here too once SAML sign-in exists.
-    if row is None or row.protocol != SsoProtocol.OIDC:
+    if row is None:
         raise not_found("SSO provider", provider)
+    if row.protocol == SsoProtocol.SAML:
+        return await _saml_start(session, request, box, row, next)
     http = sso_providers.get_sso_http(request.app)
     config = OidcConfig.model_validate(row.config)
     try:
@@ -381,7 +386,18 @@ async def sso_callback(
         user = await provisioning.resolve_user(session, row, assertion)
     except SsoDenied as denied:
         return await _deny(session, request, provider, denied, label)
+    return await _sign_in(session, request, row, user, assertion, stored["next"])
 
+
+async def _sign_in(
+    session: AsyncSession,
+    request: Request,
+    row: SsoProvider,
+    user: User,
+    assertion: SsoAssertion,
+    next: str,
+) -> RedirectResponse:
+    """Start the session, sync the groups, audit and redirect to `next`."""
     incoming = sessions.read_cookie(request)
     if incoming is not None:
         await sessions.end_session_by_token(session, incoming)
@@ -395,7 +411,123 @@ async def sso_callback(
     await provisioning.sync_groups(session, row, user, assertion.groups, principal, meta)
     await record(session, principal, meta, "auth.sso.sign_in", "user", user.email)
     await session.commit()
-    response = RedirectResponse(stored["next"], status_code=303)
+    response = RedirectResponse(next, status_code=303)
     set_session_cookie(response, request, token)
     _clear_sso_cookie(response, request)
     return response
+
+
+# SAML
+
+
+async def _saml_start(
+    session: AsyncSession,
+    request: Request,
+    box: SecretBox | None,
+    row: SsoProvider,
+    next: str | None,
+) -> RedirectResponse:
+    """Redirect with the AuthnRequest. The state is keyed by RelayState only: the ACS request is
+    a cross-site POST, which carries no SameSite=Lax cookie."""
+    assert box is not None, "the lifespan refuses to start without MEGOOFLAGS_SECRET_KEY"
+    base = _base_url(request)
+    relay = secrets.token_urlsafe(32)
+    try:
+        login = saml.login_request(saml.saml_settings(row, base, box), base, row.key, relay)
+    except SsoDenied as denied:
+        return await _deny(session, request, row.key, denied, None)
+    await put_state(
+        request.app.state.valkey,
+        "saml",
+        relay,
+        {"provider_id": str(row.id), "request_id": login.request_id, "next": safe_next(next)},
+    )
+    return RedirectResponse(login.url, status_code=302)
+
+
+async def _enabled_saml_provider(session: AsyncSession, key: str) -> SsoProvider | None:
+    row = await _enabled_provider(session, key)
+    return row if row is not None and row.protocol == SsoProtocol.SAML else None
+
+
+@flow_router.get(
+    "/sso/{provider}/saml/metadata",
+    response_class=Response,
+    responses={
+        200: {"content": {"application/samlmetadata+xml": {"schema": {"type": "string"}}}},
+        **FLOW_RESPONSES,
+    },
+)
+async def saml_metadata(
+    session: SessionDep, request: Request, box: SecretBoxDep, provider: str
+) -> Response:
+    """This service provider's SAML metadata (entity id, ACS URL and signing certificate), for
+    the identity provider's administrator."""
+    assert box is not None, "the lifespan refuses to start without MEGOOFLAGS_SECRET_KEY"
+    base = _base_url(request)
+    row = await _enabled_saml_provider(session, provider)
+    if row is None:
+        raise not_found("SSO provider", provider)
+    try:
+        xml = saml.sp_metadata(row, base, box)
+    except SsoDenied as denied:
+        logger.warning("cannot build the SAML metadata of %r: %s", provider, denied.reason)
+        raise not_found("SSO provider", provider) from None
+    return Response(xml, media_type="application/samlmetadata+xml")
+
+
+ACS_FORM = {
+    "content": {
+        "application/x-www-form-urlencoded": {
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "SAMLResponse": {"type": "string"},
+                    "RelayState": {"type": "string"},
+                },
+                "required": ["SAMLResponse"],
+            }
+        }
+    },
+    "required": True,
+}
+
+
+@flow_router.post(
+    "/sso/{provider}/saml/acs",
+    status_code=303,
+    response_class=RedirectResponse,
+    responses=FLOW_RESPONSES,
+    openapi_extra={"requestBody": ACS_FORM},
+)
+async def saml_acs(
+    session: SessionDep, request: Request, box: SecretBoxDep, provider: str
+) -> RedirectResponse:
+    """The assertion consumer service: the identity provider POSTs the SAML response here. Signs
+    in like the OIDC callback, then redirects to `next`; on any failure, to
+    `/sign-in?error=<code>`."""
+    assert box is not None, "the lifespan refuses to start without MEGOOFLAGS_SECRET_KEY"
+    base = _base_url(request)
+    # Parsed by hand: the body is a plain urlencoded form.
+    form = dict(parse_qsl((await request.body()).decode("utf-8", "replace")))
+    label: str | None = None
+    try:
+        relay = form.get("RelayState")
+        stored = None if relay is None else await pop_state(request.app.state.valkey, "saml", relay)
+        if stored is None:
+            raise SsoDenied("sso_failed", "unknown, used or expired RelayState")
+        row = await _enabled_saml_provider(session, provider)
+        if row is None or str(row.id) != stored["provider_id"]:
+            raise SsoDenied("sso_failed", "the provider is gone, disabled or not the one started")
+        if "SAMLResponse" not in form:
+            raise SsoDenied("sso_failed", "the request has no SAMLResponse")
+        settings = saml.saml_settings(row, base, box)
+        result = saml.complete(settings, base, row, form, stored["request_id"])
+        await saml.remember_assertion(
+            request.app.state.valkey, result.assertion_id, result.not_on_or_after
+        )
+        label = result.assertion.email or result.assertion.subject
+        user = await provisioning.resolve_user(session, row, result.assertion)
+    except SsoDenied as denied:
+        return await _deny(session, request, provider, denied, label)
+    return await _sign_in(session, request, row, user, result.assertion, stored["next"])

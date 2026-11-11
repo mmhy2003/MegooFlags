@@ -1,4 +1,4 @@
-"""Single sign-on: OIDC (and SAML) sign-in flows, JIT provisioning and group sync."""
+"""Single sign-on: OIDC and SAML sign-in flows, JIT provisioning and group sync."""
 
 from dataclasses import dataclass
 
