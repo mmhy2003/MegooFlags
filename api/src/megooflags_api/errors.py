@@ -152,6 +152,18 @@ def mfa_required_by_org() -> ApiError:
     )
 
 
+def public_url_required() -> ApiError:
+    return ApiError(
+        409,
+        "public_url_required",
+        "set MEGOOFLAGS_PUBLIC_URL to use passkeys and single sign-on",
+    )
+
+
+def unavailable(message: str) -> ApiError:
+    return ApiError(503, "unavailable", message)
+
+
 def csrf_failed() -> ApiError:
     return ApiError(403, "csrf_failed", "the request origin is not allowed")
 

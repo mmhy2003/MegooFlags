@@ -3,6 +3,7 @@
 A new mutating route fails `test_every_mutating_route_has_a_sample` until it gets a sample here.
 """
 
+import os
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -15,17 +16,21 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute, iter_route_contexts
 from helpers import (
     ORIGIN,
+    PUBLIC_URL,
     audit_entries,
     bearer,
     create_flag,
     create_project,
     create_sdk_key,
+    enable_passkeys,
     enrol_totp,
+    register_passkey,
     seed_service_token,
     seed_user,
     sign_in,
     totp_code,
 )
+from soft_webauthn import SoftAuthenticator
 from sqlalchemy import select
 
 from megooflags_api.main import create_app
@@ -36,7 +41,12 @@ from megooflags_api.services import invitations, users
 CLIENT_IP = "203.0.113.10"
 MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
 # POSTs that change nothing, so they are not audited ("reads aren't audited").
-NOT_AUDITED = {("POST", "/api/projects/{project}/environments/{env}/evaluate")}
+NOT_AUDITED = {
+    ("POST", "/api/projects/{project}/environments/{env}/evaluate"),
+    # They only store a WebAuthn challenge in Valkey.
+    ("POST", "/api/account/passkeys/options"),
+    ("POST", "/api/auth/webauthn/options"),
+}
 
 Params = dict[str, str]
 Prepare = Callable[[httpx.AsyncClient, FastAPI], Awaitable[Params]]
@@ -241,6 +251,27 @@ async def personal_token(client: httpx.AsyncClient, app: FastAPI) -> Params:
     return {"id": r.json()["token"]["id"]}
 
 
+# The authenticators of the passkeys `passkey` registered, by passkey id.
+AUTHENTICATORS: dict[str, SoftAuthenticator] = {}
+
+
+async def passkeys_enabled(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """Signed in, on an app with a public URL; passkey challenges need Valkey."""
+    if "MEGOOFLAGS_VALKEY_URL" not in os.environ:
+        pytest.skip("MEGOOFLAGS_VALKEY_URL is not set")
+    enable_passkeys(app)
+    return await signed_in(client, app)
+
+
+async def passkey(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """Signed in with a passkey registered just now (a recent verification)."""
+    await passkeys_enabled(client, app)
+    authenticator = SoftAuthenticator(origin=PUBLIC_URL, rp_id="flags.example.test")
+    passkey_id = (await register_passkey(client, authenticator))["passkey"]["id"]
+    AUTHENTICATORS[passkey_id] = authenticator
+    return {"id": passkey_id}
+
+
 # Calls whose body depends on what `prepare` created.
 async def create_binding(client: httpx.AsyncClient, params: Params) -> httpx.Response:
     return await client.post("/api/bindings", json=binding_body(params["user_id"]))
@@ -248,6 +279,28 @@ async def create_binding(client: httpx.AsyncClient, params: Params) -> httpx.Res
 
 async def add_member(client: httpx.AsyncClient, params: Params) -> httpx.Response:
     return await client.post("/api/teams/platform/members", json={"user_id": params["id"]})
+
+
+async def register_new_passkey(client: httpx.AsyncClient, params: Params) -> httpx.Response:
+    options = (await client.post("/api/account/passkeys/options")).json()
+    authenticator = SoftAuthenticator(origin=PUBLIC_URL, rp_id="flags.example.test")
+    return await client.post(
+        "/api/account/passkeys",
+        json={
+            "challenge_id": options["challenge_id"],
+            "name": "Laptop",
+            "credential": authenticator.create(options["options"]),
+        },
+    )
+
+
+async def passkey_sign_in(client: httpx.AsyncClient, params: Params) -> httpx.Response:
+    options = (await client.post("/api/auth/webauthn/options")).json()
+    credential = AUTHENTICATORS.pop(params["id"]).get(options["options"])
+    return await client.post(
+        "/api/auth/webauthn/verify",
+        json={"challenge_id": options["challenge_id"], "credential": credential},
+    )
 
 
 def with_totp_code(path: str, *, steps: int = 0) -> Call:
@@ -311,6 +364,10 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
             ("POST", "/api/auth/mfa/recovery"),
             Sample(mfa_pending, use_recovery_code, "auth.sign_in", "session"),
         ),
+        (
+            ("POST", "/api/auth/webauthn/verify"),
+            Sample(passkey, passkey_sign_in, "auth.sign_in", "session"),
+        ),
         # The signed-in user's account
         sample(
             "PUT",
@@ -361,6 +418,25 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
         ),
         sample(
             "DELETE", "/api/account/totp", "account.totp.remove", totp_enrolled, client="session"
+        ),
+        (
+            ("POST", "/api/account/passkeys"),
+            Sample(passkeys_enabled, register_new_passkey, "account.passkey.register", "session"),
+        ),
+        sample(
+            "PATCH",
+            "/api/account/passkeys/{id}",
+            "account.passkey.rename",
+            passkey,
+            {"name": "Phone"},
+            client="session",
+        ),
+        sample(
+            "DELETE",
+            "/api/account/passkeys/{id}",
+            "account.passkey.delete",
+            passkey,
+            client="session",
         ),
         sample(
             "POST",

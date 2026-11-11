@@ -11,6 +11,8 @@ import pyotp
 import pytest
 import uvicorn
 from fastapi import FastAPI
+from pydantic import AnyHttpUrl
+from soft_webauthn import SoftAuthenticator
 from sqlalchemy import event, func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from valkey.exceptions import ValkeyError
@@ -147,6 +149,36 @@ async def enrol_totp(client: httpx.AsyncClient) -> tuple[str, list[str]]:
     r = await client.post("/api/account/totp/confirm", json={"code": totp_code(secret)})
     assert r.status_code == 200, r.text
     return secret, r.json()["recovery_codes"]
+
+
+PUBLIC_URL = "https://flags.example.test"
+
+
+def enable_passkeys(app: FastAPI) -> SoftAuthenticator:
+    """Give `app` the public URL passkeys need; returns an authenticator for that origin."""
+    app.state.settings = app.state.settings.model_copy(
+        update={"public_url": AnyHttpUrl(PUBLIC_URL)}
+    )
+    return SoftAuthenticator(origin=PUBLIC_URL, rp_id="flags.example.test")
+
+
+async def register_passkey(
+    client: httpx.AsyncClient, authenticator: SoftAuthenticator, name: str = "Laptop"
+) -> dict[str, Any]:
+    """Register `authenticator` for the signed-in `client`; returns the 201 body."""
+    r = await client.post("/api/account/passkeys/options")
+    assert r.status_code == 200, r.text
+    options = r.json()
+    r = await client.post(
+        "/api/account/passkeys",
+        json={
+            "challenge_id": options["challenge_id"],
+            "name": name,
+            "credential": authenticator.create(options["options"]),
+        },
+    )
+    assert r.status_code == 201, r.text
+    return r.json()  # type: ignore[no-any-return]
 
 
 async def audit_entries(app: FastAPI, action: str | None = None) -> list[dict[str, Any]]:

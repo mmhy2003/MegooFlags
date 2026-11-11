@@ -5,7 +5,7 @@ from fastapi import APIRouter, Request, Response
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from megooflags_api.auth import sessions
+from megooflags_api.auth import csrf, sessions, webauthn
 from megooflags_api.auth.mfa import (
     has_factor,
     sign_in_methods,
@@ -25,9 +25,16 @@ from megooflags_api.errors import (
     invalid_credentials,
     rate_limited,
 )
-from megooflags_api.models import TotpCredential, User, UserSession
+from megooflags_api.models import TotpCredential, User, UserSession, WebauthnCredential
 from megooflags_api.models.enums import SessionState, UserStatus
-from megooflags_api.schemas.auth import CodeIn, MeOut, SignInIn, SignInOut
+from megooflags_api.schemas.auth import (
+    CodeIn,
+    MeOut,
+    PasskeyOptionsOut,
+    SignInIn,
+    SignInOut,
+    WebauthnVerifyIn,
+)
 from megooflags_api.services import org_settings
 from megooflags_api.services.audit import record, request_meta
 from megooflags_api.services.users import get_user_by_email
@@ -219,6 +226,162 @@ async def mfa_recovery(
     if not await use_recovery_code(session, user.id, body.code):
         await _mfa_failed(session, request, principal, "recovery")
     return await _finish_sign_in(session, request, response, row, user, "recovery")
+
+
+async def _pending_from_cookie(
+    session: AsyncSession, request: Request
+) -> tuple[UserSession, User] | None:
+    """The session waiting for a second factor, if the cookie names one; otherwise None, and a
+    passkey sign-in is passwordless."""
+    cookie = sessions.read_cookie(request)
+    found = None if cookie is None else await sessions.lookup_session(session, cookie)
+    if found is None:
+        return None
+    row, user = found
+    if row.state != SessionState.PENDING_MFA or user.status != UserStatus.ACTIVE:
+        return None
+    csrf.check_origin(request)
+    return row, user
+
+
+async def _check_mfa_throttle(request: Request, user: User) -> None:
+    throttle: AuthThrottle = request.app.state.auth_throttle
+    retry_after = await throttle.mfa_blocked(user.id)
+    if retry_after is not None:
+        raise rate_limited(retry_after)
+
+
+@router.post(
+    "/webauthn/options",
+    responses={409: {"model": ErrorBody}, 429: {"model": ErrorBody}, 503: {"model": ErrorBody}},
+)
+async def webauthn_options(session: SessionDep, request: Request) -> PasskeyOptionsOut:
+    """Options for `navigator.credentials.get()`. After a password sign-in that needs a second
+    factor they list the user's passkeys; without one the sign-in is passwordless and the
+    authenticator offers its own. Send the answer to `/auth/webauthn/verify` within 5 minutes."""
+    party = webauthn.rp(request.app.state.settings)
+    pending = await _pending_from_cookie(session, request)
+    if pending is None:
+        challenge, options = webauthn.authentication_options(party, [], passwordless=True)
+        stored = webauthn.Challenge(challenge=challenge, purpose="authenticate")
+    else:
+        row, user = pending
+        await _check_mfa_throttle(request, user)
+        passkeys = await session.scalars(
+            select(WebauthnCredential)
+            .where(WebauthnCredential.user_id == user.id)
+            .order_by(WebauthnCredential.created_at, WebauthnCredential.id)
+        )
+        challenge, options = webauthn.authentication_options(
+            party, list(passkeys), passwordless=False
+        )
+        stored = webauthn.Challenge(
+            challenge=challenge, purpose="authenticate", user_id=user.id, session_id=row.id
+        )
+    challenge_id = await webauthn.save_challenge(request.app.state.valkey, stored)
+    return PasskeyOptionsOut(challenge_id=challenge_id, options=options)
+
+
+async def _passkey_failed(
+    session: AsyncSession, request: Request, user: User | None, pending: UserSession | None
+) -> NoReturn:
+    """A second-factor failure is audited as the pending session's user; a passwordless one
+    anonymously, since nobody has signed in. Either way a known user's MFA throttle counts it."""
+    if user is not None and pending is not None:
+        await _mfa_failed(session, request, session_principal(user, pending), "webauthn")
+    if user is not None:
+        throttle: AuthThrottle = request.app.state.auth_throttle
+        await throttle.mfa_failed(user.id)
+    label = "unknown passkey" if user is None else user.email
+    await record(
+        session,
+        None,
+        request_meta(request),
+        "auth.mfa.failed",
+        "user",
+        label,
+        after={"method": "webauthn"},
+        actor_label=label,
+    )
+    await session.commit()
+    raise invalid_code()
+
+
+@router.post(
+    "/webauthn/verify",
+    responses={409: {"model": ErrorBody}, 429: {"model": ErrorBody}, 503: {"model": ErrorBody}},
+)
+async def webauthn_verify(
+    session: SessionDep, request: Request, response: Response, body: WebauthnVerifyIn
+) -> SignInOut:
+    """Finish signing in with a passkey, as the second factor or on its own. Each challenge works
+    once, and the authenticator's counter must increase."""
+    party = webauthn.rp(request.app.state.settings)
+    challenge = await webauthn.take_challenge(request.app.state.valkey, body.challenge_id)
+    pending = await _pending_from_cookie(session, request)
+    if challenge is None or challenge.purpose != "authenticate":
+        raise invalid_code()
+    passwordless = challenge.session_id is None
+    if not passwordless and (pending is None or pending[0].id != challenge.session_id):
+        raise invalid_code()
+    pending_row = None if pending is None or passwordless else pending[0]
+
+    credential_id = webauthn.raw_id(body.credential)
+    stored = (
+        None
+        if credential_id is None
+        else await session.scalar(
+            select(WebauthnCredential)
+            .where(WebauthnCredential.credential_id == credential_id)
+            .with_for_update()
+        )
+    )
+    if pending is not None and not passwordless:
+        user: User | None = pending[1]
+        if stored is not None and stored.user_id != pending[1].id:
+            stored = None
+    else:
+        user = None if stored is None else await session.get(User, stored.user_id)
+    if user is not None:
+        await _check_mfa_throttle(request, user)
+    new_count = (
+        None
+        if stored is None or user is None or user.status != UserStatus.ACTIVE
+        else webauthn.verify_authentication(
+            party, challenge.challenge, body.credential, stored, passwordless=passwordless
+        )
+    )
+    if stored is None or user is None or new_count is None:
+        await _passkey_failed(session, request, user, pending_row)
+    stored.sign_count = new_count
+    stored.last_used_at = datetime.now(UTC)
+    if pending_row is not None:
+        return await _finish_sign_in(session, request, response, pending_row, user, "webauthn")
+
+    incoming = sessions.read_cookie(request)
+    if incoming is not None:
+        await sessions.end_session_by_token(session, incoming)
+    user.last_login_at = datetime.now(UTC)
+    row, token = await sessions.create_session(
+        session,
+        request,
+        user,
+        state=SessionState.ACTIVE,
+        auth_method="passkey",
+        settings=request.app.state.settings,
+        mfa_verified=True,
+    )
+    await record(
+        session,
+        session_principal(user, row),
+        request_meta(request),
+        "auth.sign_in",
+        "user",
+        user.email,
+    )
+    await session.commit()
+    set_session_cookie(response, request, token)
+    return SignInOut(status="signed_in")
 
 
 @router.post("/sign-out", status_code=204)

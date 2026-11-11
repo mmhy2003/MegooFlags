@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import StringConstraints
 
@@ -96,3 +96,41 @@ class SessionOut(ApiModel):
     user_agent: str | None
     auth_method: str
     current: bool
+
+
+class PasskeyOptionsOut(ApiModel):
+    """Pass `options` to `navigator.credentials.create()` or `.get()` (after decoding the
+    base64url fields), then send the result back with `challenge_id` within 5 minutes."""
+
+    challenge_id: str
+    options: dict[str, Any]
+
+
+class PasskeyRegister(ApiModel):
+    challenge_id: Annotated[str, StringConstraints(max_length=64)]
+    name: Name
+    credential: dict[str, Any]
+
+
+class PasskeyOut(ApiModel):
+    id: uuid.UUID
+    name: str
+    created_at: datetime
+    last_used_at: datetime | None
+    transports: list[str]
+
+
+class PasskeyRename(ApiModel):
+    name: Name
+
+
+class PasskeyRegistered(ApiModel):
+    """`recovery_codes` is set when the account had none left, shown once."""
+
+    passkey: PasskeyOut
+    recovery_codes: list[str] | None
+
+
+class WebauthnVerifyIn(ApiModel):
+    challenge_id: Annotated[str, StringConstraints(max_length=64)]
+    credential: dict[str, Any]

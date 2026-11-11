@@ -1,8 +1,8 @@
-"""The signed-in user's own account (`/account/*`): password change, sessions, TOTP, recovery
-codes and personal API tokens.
+"""The signed-in user's own account (`/account/*`): password change, sessions, TOTP, passkeys,
+recovery codes and personal API tokens.
 
-Every route needs a signed-in session; API tokens get 403. The TOTP routes also accept a session
-that must enrol a factor before it can do anything else (the org's `require_mfa`).
+Every route needs a signed-in session; API tokens get 403. The TOTP and passkey routes also accept
+a session that must enrol a factor before it can do anything else (the org's `require_mfa`).
 """
 
 import uuid
@@ -12,7 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import delete, select
 
-from megooflags_api.auth import mfa, sessions
+from megooflags_api.auth import mfa, sessions, webauthn
 from megooflags_api.auth.passwords import verify_password
 from megooflags_api.auth.rbac import Permission
 from megooflags_api.auth.require import Authz, authenticated
@@ -30,12 +30,24 @@ from megooflags_api.errors import (
     reauth_required,
     totp_exists,
     unauthorized,
+    validation_error,
 )
-from megooflags_api.models import TotpCredential, User, UserSession
+from megooflags_api.models import (
+    RecoveryCode,
+    TotpCredential,
+    User,
+    UserSession,
+    WebauthnCredential,
+)
 from megooflags_api.models.enums import SessionState
 from megooflags_api.routers.auth import set_session_cookie
 from megooflags_api.schemas.auth import (
     CodeIn,
+    PasskeyOptionsOut,
+    PasskeyOut,
+    PasskeyRegister,
+    PasskeyRegistered,
+    PasskeyRename,
     PasswordChange,
     RecoveryCodes,
     SessionOut,
@@ -257,6 +269,155 @@ async def remove_totp(session: SessionDep, authz: MayEnrol, audit: AuditDep) -> 
             raise reauth_required()
     await mfa.remove_totp(session, user.id, with_recovery_codes=no_passkeys)
     await audit.record("account.totp.remove", "user", user.email)
+    await session.commit()
+
+
+def _passkey_out(row: WebauthnCredential) -> PasskeyOut:
+    return PasskeyOut(
+        id=row.id,
+        name=row.name,
+        created_at=row.created_at,
+        last_used_at=row.last_used_at,
+        transports=row.transports,
+    )
+
+
+async def _passkeys(session: SessionDep, user_id: uuid.UUID) -> list[WebauthnCredential]:
+    rows = await session.scalars(
+        select(WebauthnCredential)
+        .where(WebauthnCredential.user_id == user_id)
+        .order_by(WebauthnCredential.created_at, WebauthnCredential.id)
+    )
+    return list(rows)
+
+
+async def _own_passkey(session: SessionDep, user: User, id: uuid.UUID) -> WebauthnCredential:
+    row = await session.scalar(
+        select(WebauthnCredential)
+        .where(WebauthnCredential.id == id, WebauthnCredential.user_id == user.id)
+        .with_for_update()
+    )
+    if row is None:
+        raise not_found("passkey", str(id))
+    return row
+
+
+@router.get("/passkeys")
+async def list_passkeys(session: SessionDep, authz: MayEnrol) -> list[PasskeyOut]:
+    """Your passkeys, oldest first."""
+    assert authz.principal.user_id is not None
+    return [_passkey_out(row) for row in await _passkeys(session, authz.principal.user_id)]
+
+
+@router.post("/passkeys/options")
+async def passkey_registration_options(
+    session: SessionDep, authz: MayEnrol, request: Request
+) -> PasskeyOptionsOut:
+    """Start registering a passkey: pass `options` to `navigator.credentials.create()`, then
+    send the result to `POST /account/passkeys` within 5 minutes. Needs MEGOOFLAGS_PUBLIC_URL
+    (409 public_url_required)."""
+    party = webauthn.rp(request.app.state.settings)
+    user, _ = await _current(session, authz)
+    challenge, options = webauthn.registration_options(
+        party, user, await _passkeys(session, user.id)
+    )
+    challenge_id = await webauthn.save_challenge(
+        request.app.state.valkey,
+        webauthn.Challenge(challenge=challenge, purpose="register", user_id=user.id),
+    )
+    return PasskeyOptionsOut(challenge_id=challenge_id, options=options)
+
+
+@router.post("/passkeys", status_code=201)
+async def register_passkey(
+    session: SessionDep,
+    authz: MayEnrol,
+    audit: AuditDep,
+    request: Request,
+    response: Response,
+    body: PasskeyRegister,
+) -> PasskeyRegistered:
+    """Finish registering a passkey with the browser's answer to the options. Returns ten
+    recovery codes when you have none left. A session that had to enrol a factor becomes a full
+    one, with a new cookie."""
+    party = webauthn.rp(request.app.state.settings)
+    user, row = await _current(session, authz)
+    challenge = await webauthn.take_challenge(request.app.state.valkey, body.challenge_id)
+    if challenge is None or challenge.purpose != "register" or challenge.user_id != user.id:
+        raise validation_error("the passkey challenge is unknown or expired; start again")
+    verified = webauthn.verify_registration(party, challenge.challenge, body.credential)
+    if verified is None:
+        raise validation_error("the passkey could not be verified", "credential")
+    passkey = WebauthnCredential(
+        user_id=user.id,
+        credential_id=verified.credential_id,
+        public_key=verified.credential_public_key,
+        sign_count=verified.sign_count,
+        transports=webauthn.transports(body.credential),
+        name=body.name,
+    )
+    session.add(passkey)
+    await session.flush()
+    codes = None
+    if (await mfa.user_factors(session, user.id)).recovery_codes_left == 0:
+        codes = await mfa.replace_recovery_codes(session, user.id)
+    token = None
+    if row.state == SessionState.ENROL_MFA:
+        _, token = await sessions.rotate(
+            session,
+            request,
+            row,
+            state=SessionState.ACTIVE,
+            settings=request.app.state.settings,
+            mfa_verified=True,
+        )
+    else:
+        row.mfa_verified_at = datetime.now(UTC)
+    out = _passkey_out(passkey)
+    await audit.record("account.passkey.register", "passkey", str(passkey.id), after=snapshot(out))
+    await session.commit()
+    if token is not None:
+        set_session_cookie(response, request, token)
+    return PasskeyRegistered(passkey=out, recovery_codes=codes)
+
+
+@router.patch("/passkeys/{id}")
+async def rename_passkey(
+    session: SessionDep, authz: MayEnrol, audit: AuditDep, id: uuid.UUID, body: PasskeyRename
+) -> PasskeyOut:
+    user, _ = await _current(session, authz)
+    row = await _own_passkey(session, user, id)
+    before = _passkey_out(row)
+    row.name = body.name
+    after = _passkey_out(row)
+    await audit.record(
+        "account.passkey.rename", "passkey", str(id), before=snapshot(before), after=snapshot(after)
+    )
+    await session.commit()
+    return after
+
+
+@router.delete("/passkeys/{id}", status_code=204)
+async def delete_passkey(
+    session: SessionDep, authz: MayEnrol, audit: AuditDep, id: uuid.UUID
+) -> None:
+    """Remove a passkey. If it is your last factor, your recovery codes go too; you must have
+    verified a factor in the last 10 minutes (403 reauth_required), and the org must not require
+    MFA (409 mfa_required_by_org)."""
+    user, current = await _current(session, authz)
+    row = await _own_passkey(session, user, id)
+    factors = await mfa.user_factors(session, user.id)
+    last = not factors.totp and factors.passkeys == 1
+    if last:
+        if await org_settings.require_mfa(session):
+            raise mfa_required_by_org()
+        if not mfa.recently_verified(current):
+            raise reauth_required()
+    before = _passkey_out(row)
+    await session.delete(row)
+    if last:
+        await session.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
+    await audit.record("account.passkey.delete", "passkey", str(id), before=snapshot(before))
     await session.commit()
 
 
