@@ -19,6 +19,7 @@ from megooflags_api.models.identity import (
 from megooflags_api.models.project import Environment, Project
 from megooflags_api.models.sdk import EvaluationCount, ExposureEvent, SdkKey
 from megooflags_api.models.segment import Segment, SegmentRule, SegmentTarget
+from megooflags_api.models.sso import SsoGroupMapping, SsoProvider, UserIdentity
 from megooflags_api.models.targeting import (
     Clause,
     ClauseSegment,
@@ -53,10 +54,13 @@ __all__ = [
     "Segment",
     "SegmentRule",
     "SegmentTarget",
+    "SsoGroupMapping",
+    "SsoProvider",
     "Team",
     "TeamMember",
     "TotpCredential",
     "User",
+    "UserIdentity",
     "UserSession",
     "Variation",
     "WebauthnCredential",

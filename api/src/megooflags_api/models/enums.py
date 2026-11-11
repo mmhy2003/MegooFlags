@@ -68,3 +68,8 @@ class ApiTokenKind(StrEnum):
 class InvitationPurpose(StrEnum):
     INVITE = "invite"  # a new user sets their first password
     RESET = "reset"  # an admin-issued password reset
+
+
+class SsoProtocol(StrEnum):
+    OIDC = "oidc"
+    SAML = "saml"

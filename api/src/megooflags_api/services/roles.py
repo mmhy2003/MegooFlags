@@ -6,9 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.auth.rbac import Permission
 from megooflags_api.errors import builtin_role, in_use, key_conflict, not_found
-from megooflags_api.models import Role, RoleBinding
+from megooflags_api.models import Role, RoleBinding, SsoGroupMapping, SsoProvider
 from megooflags_api.schemas.identity import RoleIn, RoleOut, RoleUpdate
 from megooflags_api.services.pagination import decode_cursor, page_slice
+
+USED_BY_LIMIT = 20
 
 
 def _catalogue_order(permissions: list[Permission]) -> list[str]:
@@ -79,26 +81,47 @@ async def update_role(session: AsyncSession, role: Role, body: RoleUpdate) -> No
 
 
 async def role_in_use(session: AsyncSession, role: Role) -> list[dict[str, str]]:
-    """The bindings that use `role` (the first 20)."""
+    """What uses `role` (the first 20): bindings, then SSO providers that grant it by default,
+    then SSO group mappings."""
     rows = await session.execute(
         select(RoleBinding.subject_kind, RoleBinding.subject_id)
         .where(RoleBinding.role_id == role.id)
         .order_by(RoleBinding.created_at, RoleBinding.id)
-        .limit(20)
+        .limit(USED_BY_LIMIT)
     )
-    return [
+    used_by = [
         {"kind": "binding", "subject_kind": kind.value, "subject_id": str(subject_id)}
         for kind, subject_id in rows
     ]
+    if len(used_by) < USED_BY_LIMIT:
+        providers = await session.scalars(
+            select(SsoProvider.key)
+            .where(SsoProvider.default_role_id == role.id)
+            .order_by(SsoProvider.key)
+            .limit(USED_BY_LIMIT - len(used_by))
+        )
+        used_by += [{"kind": "sso_provider", "provider": key} for key in providers]
+    if len(used_by) < USED_BY_LIMIT:
+        mappings = await session.execute(
+            select(SsoProvider.key, SsoGroupMapping.idp_group)
+            .join(SsoProvider, SsoProvider.id == SsoGroupMapping.provider_id)
+            .where(SsoGroupMapping.role_id == role.id)
+            .order_by(SsoProvider.key, SsoGroupMapping.idp_group, SsoGroupMapping.id)
+            .limit(USED_BY_LIMIT - len(used_by))
+        )
+        used_by += [
+            {"kind": "sso_mapping", "provider": key, "group": group} for key, group in mappings
+        ]
+    return used_by
 
 
 async def delete_role(session: AsyncSession, role: Role) -> None:
-    """Refused for built-in roles and while a binding uses the role (the FK is RESTRICT, so a
-    binding added concurrently still fails the delete, as 409 in_use)."""
+    """Refused for built-in roles and while a binding, SSO provider or SSO mapping uses the role
+    (their FKs are RESTRICT, so one added concurrently still fails the delete, as 409 in_use)."""
     if role.builtin:
         raise builtin_role(role.key)
     used_by = await role_in_use(session, role)
     if used_by:
-        raise in_use(f"role '{role.key}' is bound to subjects", used_by)
+        raise in_use(f"role '{role.key}' is in use", used_by)
     await session.delete(role)
     await session.flush()

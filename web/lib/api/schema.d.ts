@@ -370,6 +370,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Public Providers
+         * @description The enabled providers, for the sign-in page. Empty without MEGOOFLAGS_PUBLIC_URL, since
+         *     SSO needs a stable callback URL.
+         */
+        get: operations["list_public_providers_api_auth_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/sign-in": {
         parameters: {
             query?: never;
@@ -996,6 +1017,89 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sso/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Providers */
+        get: operations["list_providers_api_sso_providers_get"];
+        put?: never;
+        /**
+         * Create Provider
+         * @description OIDC providers need `oidc` and `client_secret`; SAML providers need `saml`, with the IdP
+         *     metadata as XML or as a URL that is fetched now. Secrets are stored encrypted and never
+         *     returned.
+         */
+        post: operations["create_provider_api_sso_providers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sso/providers/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Provider */
+        get: operations["read_provider_api_sso_providers__key__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Provider
+         * @description Also deletes its group mappings and the links of users to it.
+         */
+        delete: operations["delete_provider_api_sso_providers__key__delete"];
+        options?: never;
+        head?: never;
+        /** Update Provider */
+        patch: operations["update_provider_api_sso_providers__key__patch"];
+        trace?: never;
+    };
+    "/api/sso/providers/{key}/mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Mappings */
+        get: operations["list_mappings_api_sso_providers__key__mappings_get"];
+        put?: never;
+        /**
+         * Create Mapping
+         * @description On each sign-in, members of the IdP group join the team, or get the role at the scope.
+         */
+        post: operations["create_mapping_api_sso_providers__key__mappings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sso/providers/{key}/mappings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Mapping */
+        delete: operations["delete_mapping_api_sso_providers__key__mappings__id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1999,6 +2103,27 @@ export interface components {
             /** Variant */
             variant?: string | null;
         };
+        /** OidcConfig */
+        OidcConfig: {
+            /** Client Id */
+            client_id: string;
+            /**
+             * Groups Claim
+             * @default groups
+             */
+            groups_claim: string;
+            /** Issuer */
+            issuer: string;
+            /**
+             * Scopes
+             * @default [
+             *       "openid",
+             *       "email",
+             *       "profile"
+             *     ]
+             */
+            scopes: string[];
+        };
         /**
          * Operator
          * @enum {string}
@@ -2053,6 +2178,20 @@ export interface components {
         Page_SegmentSummary_: {
             /** Items */
             items: components["schemas"]["SegmentSummary"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[SsoMappingOut] */
+        Page_SsoMappingOut_: {
+            /** Items */
+            items: components["schemas"]["SsoMappingOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[SsoProviderOut] */
+        Page_SsoProviderOut_: {
+            /** Items */
+            items: components["schemas"]["SsoProviderOut"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -2287,6 +2426,16 @@ export interface components {
             /** Name */
             name?: string | null;
         };
+        /** PublicProvider */
+        PublicProvider: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            protocol: components["schemas"]["SsoProtocol"];
+            /** Start Url */
+            start_url: string;
+        };
         /** ReadyResponse */
         ReadyResponse: {
             /** Status */
@@ -2384,6 +2533,57 @@ export interface components {
             rollout?: components["schemas"]["RolloutIn"] | null;
             /** Variation */
             variation?: string | null;
+        };
+        /**
+         * SamlConfig
+         * @description IdP metadata as XML or as a URL the server fetches (exactly one), plus attribute names.
+         */
+        SamlConfig: {
+            /**
+             * Email Attribute
+             * @default email
+             */
+            email_attribute: string;
+            /**
+             * Groups Attribute
+             * @default groups
+             */
+            groups_attribute: string;
+            /** Idp Metadata Url */
+            idp_metadata_url?: string | null;
+            /** Idp Metadata Xml */
+            idp_metadata_xml?: string | null;
+            /**
+             * Name Attribute
+             * @default name
+             */
+            name_attribute: string;
+            /** Sp Entity Id */
+            sp_entity_id?: string | null;
+        };
+        /** SamlConfigOut */
+        SamlConfigOut: {
+            /**
+             * Email Attribute
+             * @default email
+             */
+            email_attribute: string;
+            /**
+             * Groups Attribute
+             * @default groups
+             */
+            groups_attribute: string;
+            /** Idp Metadata Url */
+            idp_metadata_url?: string | null;
+            /** Idp Metadata Xml */
+            idp_metadata_xml?: string | null;
+            /**
+             * Name Attribute
+             * @default name
+             */
+            name_attribute: string;
+            /** Sp Entity Id */
+            sp_entity_id?: string | null;
         };
         /**
          * ScopeKind
@@ -2676,6 +2876,143 @@ export interface components {
              * @enum {string}
              */
             status: "signed_in" | "mfa_required" | "enrol_mfa";
+        };
+        /**
+         * SsoMappingIn
+         * @description An IdP group mapped to a team, or to a role at a scope (`org`, `project` with `project`,
+         *     or `environment` with `project` and `env`).
+         */
+        SsoMappingIn: {
+            /** Env */
+            env?: string | null;
+            /** Group */
+            group: string;
+            /** Project */
+            project?: string | null;
+            /** Role */
+            role?: string | null;
+            scope?: components["schemas"]["ScopeKind"] | null;
+            /** Team */
+            team?: string | null;
+        };
+        /** SsoMappingOut */
+        SsoMappingOut: {
+            /** Env */
+            env: string | null;
+            /** Group */
+            group: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Project */
+            project: string | null;
+            /** Role */
+            role: string | null;
+            scope: components["schemas"]["ScopeKind"] | null;
+            /** Team */
+            team: string | null;
+        };
+        /**
+         * SsoProtocol
+         * @enum {string}
+         */
+        SsoProtocol: "oidc" | "saml";
+        /** SsoProviderCreate */
+        SsoProviderCreate: {
+            /** Client Secret */
+            client_secret?: string | null;
+            /** Default Role */
+            default_role?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Jit Enabled
+             * @default true
+             */
+            jit_enabled: boolean;
+            /** Key */
+            key: string;
+            /**
+             * Link By Verified Email
+             * @default false
+             */
+            link_by_verified_email: boolean;
+            /** Name */
+            name: string;
+            oidc?: components["schemas"]["OidcConfig"] | null;
+            protocol: components["schemas"]["SsoProtocol"];
+            saml?: components["schemas"]["SamlConfig"] | null;
+            /** Sp Certificate */
+            sp_certificate?: string | null;
+            /** Sp Private Key */
+            sp_private_key?: string | null;
+        };
+        /** SsoProviderOut */
+        SsoProviderOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Default Role */
+            default_role: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Has Client Secret */
+            has_client_secret: boolean;
+            /** Has Sp Key */
+            has_sp_key: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Jit Enabled */
+            jit_enabled: boolean;
+            /** Key */
+            key: string;
+            /** Link By Verified Email */
+            link_by_verified_email: boolean;
+            /** Name */
+            name: string;
+            oidc: components["schemas"]["OidcConfig"] | null;
+            protocol: components["schemas"]["SsoProtocol"];
+            saml: components["schemas"]["SamlConfigOut"] | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SsoProviderUpdate
+         * @description Absent or null fields are kept, except `default_role`, which null clears. Blocks and
+         *     secrets must match the provider's protocol; a new block replaces the old one.
+         */
+        SsoProviderUpdate: {
+            /** Client Secret */
+            client_secret?: string | null;
+            /** Default Role */
+            default_role?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Jit Enabled */
+            jit_enabled?: boolean | null;
+            /** Link By Verified Email */
+            link_by_verified_email?: boolean | null;
+            /** Name */
+            name?: string | null;
+            oidc?: components["schemas"]["OidcConfig"] | null;
+            saml?: components["schemas"]["SamlConfig"] | null;
+            /** Sp Certificate */
+            sp_certificate?: string | null;
+            /** Sp Private Key */
+            sp_private_key?: string | null;
         };
         /**
          * SubjectKind
@@ -4297,6 +4634,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_public_providers_api_auth_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicProvider"][];
                 };
             };
         };
@@ -7962,6 +8319,553 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_providers_api_sso_providers_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SsoProviderOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_provider_api_sso_providers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SsoProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoProviderOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_provider_api_sso_providers__key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoProviderOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_provider_api_sso_providers__key__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_provider_api_sso_providers__key__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SsoProviderUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoProviderOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_mappings_api_sso_providers__key__mappings_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SsoMappingOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_mapping_api_sso_providers__key__mappings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SsoMappingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoMappingOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_mapping_api_sso_providers__key__mappings__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Conflict */

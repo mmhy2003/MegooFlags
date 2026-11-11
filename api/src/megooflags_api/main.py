@@ -31,6 +31,7 @@ from megooflags_api.routers import (
     sdk_keys,
     segments,
     setup,
+    sso,
     teams,
     users,
 )
@@ -83,6 +84,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.ruleset_cache.aclose()
         await shutdown_jobs(app)
         await app.state.valkey.aclose()
+        if app.state.sso_http is not None:
+            await app.state.sso_http.aclose()
         if app.state.tracer_provider is not None:
             app.state.tracer_provider.shutdown()
         await app.state.engine.dispose()
@@ -101,6 +104,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = create_engine(settings)
     app.state.sessionmaker = create_sessionmaker(app.state.engine)
     app.state.valkey = create_valkey(settings.valkey_url)
+    # Created on first use by services.sso_providers.get_sso_http.
+    app.state.sso_http = None
     app.state.ruleset_cache = RulesetCache(app.state.sessionmaker)
     app.state.key_resolver = KeyResolver()
     app.state.auth_throttle = AuthThrottle(app.state.valkey)
@@ -125,6 +130,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth.router, prefix="/api")
     app.include_router(users.public_router, prefix="/api")
     app.include_router(account.router, prefix="/api")
+    app.include_router(sso.flow_router, prefix="/api")
     for module in (
         projects,
         environments,
@@ -140,6 +146,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         audit,
     ):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_principal)])
+    app.include_router(sso.admin_router, prefix="/api", dependencies=[Depends(get_principal)])
     app.include_router(sdk.router)
     app.include_router(ofrep.router)
     app.state.tracer_provider = configure_tracing(app, app.state.engine)

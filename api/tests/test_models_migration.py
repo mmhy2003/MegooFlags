@@ -8,6 +8,7 @@ from megooflags_api.models.enums import (
     ScopeKind,
     SdkKeyKind,
     SessionState,
+    SsoProtocol,
     SubjectKind,
     UserStatus,
 )
@@ -45,6 +46,9 @@ def test_metadata_has_all_tables() -> None:
         "totp_credential",
         "recovery_code",
         "webauthn_credential",
+        "sso_provider",
+        "sso_group_mapping",
+        "user_identity",
     }
 
 
@@ -75,3 +79,4 @@ def test_enum_values() -> None:
     assert [s.value for s in SessionState] == ["pending_mfa", "enrol_mfa", "active"]
     assert [k.value for k in ApiTokenKind] == ["service", "personal"]
     assert [p.value for p in InvitationPurpose] == ["invite", "reset"]
+    assert [p.value for p in SsoProtocol] == ["oidc", "saml"]

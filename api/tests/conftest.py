@@ -18,6 +18,15 @@ from megooflags_api.settings import Settings
 
 API_DIR = Path(__file__).resolve().parents[1]
 
+
+async def close_app(app: FastAPI) -> None:
+    """What the lifespan would close, for apps the tests run without it."""
+    if app.state.sso_http is not None:
+        await app.state.sso_http.aclose()
+    await app.state.valkey.aclose()
+    await app.state.engine.dispose()
+
+
 ClientFactory = Callable[[Settings | None], AbstractAsyncContextManager[httpx.AsyncClient]]
 
 
@@ -31,8 +40,7 @@ def client_for() -> ClientFactory:
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 yield client
         finally:
-            await app.state.valkey.aclose()
-            await app.state.engine.dispose()
+            await close_app(app)
 
     return factory
 
@@ -59,8 +67,7 @@ async def app(migrated: None) -> AsyncIterator[FastAPI]:
         yield app
     finally:
         await app.state.ruleset_cache.aclose()
-        await app.state.valkey.aclose()
-        await app.state.engine.dispose()
+        await close_app(app)
 
 
 @pytest.fixture

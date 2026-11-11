@@ -101,6 +101,18 @@ class RoleOut(ApiModel):
     permissions: list[Permission]
 
 
+def check_scope_fields(scope: ScopeKind, project: str | None, env: str | None) -> None:
+    """ValueError unless `project` and `env` are given exactly when `scope` needs them."""
+    needs_project = scope != ScopeKind.ORG
+    needs_env = scope == ScopeKind.ENVIRONMENT
+    if (project is not None) != needs_project:
+        raise ValueError(
+            f"'project' is {'required' if needs_project else 'not allowed'} at {scope} scope"
+        )
+    if (env is not None) != needs_env:
+        raise ValueError(f"'env' is {'required' if needs_env else 'not allowed'} at {scope} scope")
+
+
 class ScopeFields(ApiModel):
     """A scope: `org`, or `project` with `project`, or `environment` with `project` and `env`."""
 
@@ -110,17 +122,7 @@ class ScopeFields(ApiModel):
 
     @model_validator(mode="after")
     def _fields_match_scope(self) -> Self:
-        needs_project = self.scope != ScopeKind.ORG
-        needs_env = self.scope == ScopeKind.ENVIRONMENT
-        if (self.project is not None) != needs_project:
-            raise ValueError(
-                f"'project' is {'required' if needs_project else 'not allowed'}"
-                f" at {self.scope} scope"
-            )
-        if (self.env is not None) != needs_env:
-            raise ValueError(
-                f"'env' is {'required' if needs_env else 'not allowed'} at {self.scope} scope"
-            )
+        check_scope_fields(self.scope, self.project, self.env)
         return self
 
 

@@ -184,6 +184,31 @@ async def token(client: httpx.AsyncClient, app: FastAPI) -> Params:
     return {"id": r.json()["token"]["id"]}
 
 
+SSO_PROVIDER = {
+    "key": "keycloak",
+    "name": "Keycloak",
+    "protocol": "oidc",
+    "oidc": {"issuer": "https://idp.example.test/realms/test", "client_id": "megooflags"},
+    "client_secret": "oidc-client-secret",
+}
+
+
+async def sso_provider(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    r = await client.post("/api/sso/providers", json=SSO_PROVIDER)
+    assert r.status_code == 201, r.text
+    return {"key": "keycloak"}
+
+
+async def sso_mapping(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    params = await sso_provider(client, app)
+    r = await client.post(
+        "/api/sso/providers/keycloak/mappings",
+        json={"group": "admins", "role": "admin", "scope": "org"},
+    )
+    assert r.status_code == 201, r.text
+    return params | {"id": r.json()["id"]}
+
+
 async def invitation(client: httpx.AsyncClient, app: FastAPI) -> Params:
     async with app.state.sessionmaker() as session:
         row = await users.create_user(session, "new@example.com", "New", None)
@@ -552,6 +577,22 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
         sample("POST", "/api/tokens", "token.create", nothing, {"name": "ci"}),
         sample("DELETE", "/api/tokens/{id}", "token.revoke", token),
         sample("POST", "/api/tokens/{id}/rotate", "token.rotate", token, {"overlap_seconds": 60}),
+        # SSO providers and group mappings
+        sample("POST", "/api/sso/providers", "sso_provider.create", nothing, SSO_PROVIDER),
+        sample(
+            "PATCH", "/api/sso/providers/{key}", "sso_provider.update", sso_provider, {"name": "K"}
+        ),
+        sample("DELETE", "/api/sso/providers/{key}", "sso_provider.delete", sso_provider),
+        sample(
+            "POST",
+            "/api/sso/providers/{key}/mappings",
+            "sso_mapping.create",
+            sso_provider,
+            {"group": "platform", "role": "viewer", "scope": "org"},
+        ),
+        sample(
+            "DELETE", "/api/sso/providers/{key}/mappings/{id}", "sso_mapping.delete", sso_mapping
+        ),
     ]
 )
 
