@@ -116,6 +116,35 @@ async def test_patch_updates_name_and_description(api: httpx.AsyncClient) -> Non
     assert (await api.get("/api/projects/demo")).json()["name"] == "Renamed"
 
 
+async def test_stale_after_days_defaults_to_30(api: httpx.AsyncClient) -> None:
+    created = await create_project(api)
+
+    assert created["stale_after_days"] == 30
+    listed = (await api.get("/api/projects")).json()["items"]
+    assert [p["stale_after_days"] for p in listed] == [30]
+
+
+async def test_patch_stale_after_days(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+
+    r = await api.patch("/api/projects/demo", json={"stale_after_days": 7})
+
+    assert r.status_code == 200, r.text
+    assert r.json()["stale_after_days"] == 7
+    assert (await api.get("/api/projects/demo")).json()["stale_after_days"] == 7
+
+
+@pytest.mark.parametrize("days", [0, 366])
+async def test_patch_stale_after_days_out_of_range_is_422(
+    api: httpx.AsyncClient, days: int
+) -> None:
+    await create_project(api)
+
+    r = await api.patch("/api/projects/demo", json={"stale_after_days": days})
+
+    assert_error(r, 422, "validation_error")
+
+
 async def test_patch_key_is_422(api: httpx.AsyncClient) -> None:
     await create_project(api)
 

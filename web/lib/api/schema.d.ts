@@ -926,6 +926,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project}/flags/{flag}/lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Flag Lifecycle
+         * @description Mark the flag permanent (never stale), or clear the mark.
+         */
+        put: operations["set_flag_lifecycle_api_projects__project__flags__flag__lifecycle_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project}/flags/{flag}/restore": {
         parameters: {
             query?: never;
@@ -2013,6 +2033,13 @@ export interface components {
             environments: components["schemas"]["FlagEnvironmentState"][];
             /** Key */
             key: string;
+            /** Last Evaluated At */
+            last_evaluated_at: string | null;
+            /**
+             * Lifecycle
+             * @enum {string}
+             */
+            lifecycle: "new" | "active" | "permanent" | "stale" | "archived";
             /** Name */
             name: string;
             /** Off Variation */
@@ -2047,6 +2074,13 @@ export interface components {
             environments: components["schemas"]["FlagEnvironmentState"][];
             /** Key */
             key: string;
+            /** Last Evaluated At */
+            last_evaluated_at: string | null;
+            /**
+             * Lifecycle
+             * @enum {string}
+             */
+            lifecycle: "new" | "active" | "permanent" | "stale" | "archived";
             /** Name */
             name: string;
             /** Owner */
@@ -2130,6 +2164,14 @@ export interface components {
             url: string;
         };
         JsonValue: unknown;
+        /** LifecycleIn */
+        LifecycleIn: {
+            /**
+             * Permanent
+             * @description Permanent flags are never stale. Clearing the mark gives active or new.
+             */
+            permanent: boolean;
+        };
         /** MeOut */
         MeOut: {
             /** Auth Method */
@@ -2492,6 +2534,8 @@ export interface components {
             key: string;
             /** Name */
             name: string;
+            /** Stale After Days */
+            stale_after_days: number;
             /**
              * Updated At
              * Format: date-time
@@ -2511,6 +2555,8 @@ export interface components {
             key: string;
             /** Name */
             name: string;
+            /** Stale After Days */
+            stale_after_days: number;
             /**
              * Updated At
              * Format: date-time
@@ -2523,6 +2569,11 @@ export interface components {
             description?: string | null;
             /** Name */
             name?: string | null;
+            /**
+             * Stale After Days
+             * @description A flag no environment has evaluated for this many days is stale.
+             */
+            stale_after_days?: number | null;
         };
         /** PublicProvider */
         PublicProvider: {
@@ -6600,6 +6651,8 @@ export interface operations {
                 /** @description List only archived flags instead of live ones. */
                 archived?: boolean;
                 type?: components["schemas"]["FlagType"] | null;
+                /** @description Only flags in this state; wins over `archived` ("archived" lists archived flags, the other states live ones). */
+                lifecycle?: ("new" | "active" | "permanent" | "stale" | "archived") | null;
                 cursor?: string | null;
                 limit?: number;
             };
@@ -7387,6 +7440,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FlagEnvironmentState"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_flag_lifecycle_api_projects__project__flags__flag__lifecycle_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LifecycleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagOut"];
                 };
             };
             /** @description Unauthorized */

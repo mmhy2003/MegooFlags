@@ -538,6 +538,7 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
             {"key": "new-ui", "name": "New UI", "type": "boolean"},
         ),
         sample("PATCH", F, "flag.update", flag, {"name": "Colour"}),
+        sample("PUT", f"{F}/lifecycle", "flag.lifecycle.update", flag, {"permanent": True}),
         sample("POST", f"{F}/archive", "flag.archive", flag),
         sample("POST", f"{F}/restore", "flag.restore", archived_flag),
         sample("DELETE", F, "flag.delete", archived_flag),

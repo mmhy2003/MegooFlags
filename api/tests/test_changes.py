@@ -57,6 +57,7 @@ WRITES: list[tuple[str, str, dict[str, str], Any, str]] = [
         "demo",
     ),
     ("PATCH", F, {}, {"name": "Colour"}, "demo"),
+    ("PUT", f"{F}/lifecycle", {}, {"permanent": True}, "demo"),
     ("POST", f"{F}/variations", {}, {"key": "c", "value": "green"}, "demo"),
     ("PATCH", f"{F}/variations/{{variation}}", {}, {"name": "Green"}, "demo"),
     ("DELETE", f"{F}/variations/{{variation}}", {}, None, "demo"),

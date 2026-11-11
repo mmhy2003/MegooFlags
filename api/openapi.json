@@ -1095,6 +1095,29 @@
             "title": "Key",
             "type": "string"
           },
+          "last_evaluated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Evaluated At"
+          },
+          "lifecycle": {
+            "enum": [
+              "new",
+              "active",
+              "permanent",
+              "stale",
+              "archived"
+            ],
+            "title": "Lifecycle",
+            "type": "string"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -1146,6 +1169,8 @@
           "owner",
           "archived",
           "archived_at",
+          "lifecycle",
+          "last_evaluated_at",
           "environments",
           "created_at",
           "updated_at",
@@ -1194,6 +1219,29 @@
             "title": "Key",
             "type": "string"
           },
+          "last_evaluated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Evaluated At"
+          },
+          "lifecycle": {
+            "enum": [
+              "new",
+              "active",
+              "permanent",
+              "stale",
+              "archived"
+            ],
+            "title": "Lifecycle",
+            "type": "string"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -1234,6 +1282,8 @@
           "owner",
           "archived",
           "archived_at",
+          "lifecycle",
+          "last_evaluated_at",
           "environments",
           "created_at",
           "updated_at"
@@ -1430,6 +1480,21 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LifecycleIn": {
+        "additionalProperties": false,
+        "properties": {
+          "permanent": {
+            "description": "Permanent flags are never stale. Clearing the mark gives active or new.",
+            "title": "Permanent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "permanent"
+        ],
+        "title": "LifecycleIn",
+        "type": "object"
+      },
       "MeOut": {
         "additionalProperties": false,
         "properties": {
@@ -2555,6 +2620,10 @@
             "title": "Name",
             "type": "string"
           },
+          "stale_after_days": {
+            "title": "Stale After Days",
+            "type": "integer"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -2565,6 +2634,7 @@
           "key",
           "name",
           "description",
+          "stale_after_days",
           "created_at",
           "updated_at",
           "environments"
@@ -2592,6 +2662,10 @@
             "title": "Name",
             "type": "string"
           },
+          "stale_after_days": {
+            "title": "Stale After Days",
+            "type": "integer"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -2602,6 +2676,7 @@
           "key",
           "name",
           "description",
+          "stale_after_days",
           "created_at",
           "updated_at"
         ],
@@ -2635,6 +2710,20 @@
               }
             ],
             "title": "Name"
+          },
+          "stale_after_days": {
+            "anyOf": [
+              {
+                "maximum": 365.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A flag no environment has evaluated for this many days is stale.",
+            "title": "Stale After Days"
           }
         },
         "title": "ProjectUpdate",
@@ -9424,6 +9513,31 @@
             }
           },
           {
+            "description": "Only flags in this state; wins over `archived` (\"archived\" lists archived flags, the other states live ones).",
+            "in": "query",
+            "name": "lifecycle",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "new",
+                    "active",
+                    "permanent",
+                    "stale",
+                    "archived"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only flags in this state; wins over `archived` (\"archived\" lists archived flags, the other states live ones).",
+              "title": "Lifecycle"
+            }
+          },
+          {
             "in": "query",
             "name": "cursor",
             "required": false,
@@ -10593,6 +10707,108 @@
         "summary": "Toggle Flag",
         "tags": [
           "flag-environments"
+        ]
+      }
+    },
+    "/api/projects/{project}/flags/{flag}/lifecycle": {
+      "put": {
+        "description": "Mark the flag permanent (never stale), or clear the mark.",
+        "operationId": "set_flag_lifecycle_api_projects__project__flags__flag__lifecycle_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "flag",
+            "required": true,
+            "schema": {
+              "title": "Flag",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LifecycleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlagOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Set Flag Lifecycle",
+        "tags": [
+          "flags"
         ]
       }
     },
