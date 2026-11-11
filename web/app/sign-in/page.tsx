@@ -33,6 +33,10 @@ const SSO_ERRORS: Record<string, string> = {
     "No account exists for you. Ask an admin to invite you first.",
 };
 
+const NOTICES: Record<string, string> = {
+  password_set: "Your password is set. Sign in with it now.",
+};
+
 function failureMessage(response: Response, fallback: string): string {
   if (response.status === 401) return "Invalid email or password";
   if (response.status === 429) {
@@ -48,6 +52,7 @@ function SignInForm() {
   const params = useSearchParams();
   const next = params.get("next");
   const ssoError = params.get("error");
+  const notice = NOTICES[params.get("notice") ?? ""] ?? null;
   const [error, setError] = useState<string | null>(
     ssoError ? (SSO_ERRORS[ssoError] ?? SSO_ERRORS.sso_failed) : null,
   );
@@ -119,6 +124,11 @@ function SignInForm() {
       </CardHeader>
       <form onSubmit={onSubmit}>
         <CardContent className="flex flex-col gap-4">
+          {notice && !error && (
+            <Alert>
+              <AlertDescription>{notice}</AlertDescription>
+            </Alert>
+          )}
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
