@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI
 
 from megooflags_api import __version__, metrics
 from megooflags_api.auth.principal import get_principal
+from megooflags_api.auth.sso.oidc import OidcCache
 from megooflags_api.auth.throttle import AuthThrottle
 from megooflags_api.cors import SdkCorsMiddleware
 from megooflags_api.crypto import SecretBox, require_secret_key
@@ -106,6 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.valkey = create_valkey(settings.valkey_url)
     # Created on first use by services.sso_providers.get_sso_http.
     app.state.sso_http = None
+    app.state.oidc_cache = OidcCache()
     app.state.ruleset_cache = RulesetCache(app.state.sessionmaker)
     app.state.key_resolver = KeyResolver()
     app.state.auth_throttle = AuthThrottle(app.state.valkey)

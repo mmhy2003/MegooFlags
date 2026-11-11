@@ -22,6 +22,9 @@ dependencies = [
   "argon2-cffi>=25.1.0",
   "pyotp>=2.10.0",
   "webauthn>=3.0.1",
+  "authlib>=1.9.5",
+  "joserfc>=1.8.0",
+  "httpx>=0.28.1",
 ]
 
 [dependency-groups]

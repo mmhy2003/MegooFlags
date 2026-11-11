@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from megooflags_api import __version__
 
 # The stream is long-lived, and client keys may travel in its `?key=` query string; invitation
-# links carry their token in the path.
-EXCLUDED_URLS = "/healthz,/readyz,/metrics,/sdk/v1/stream,/api/invitations"
+# links carry their token in the path, and SSO callbacks an authorization code in the query.
+EXCLUDED_URLS = "/healthz,/readyz,/metrics,/sdk/v1/stream,/api/invitations,/api/auth/sso"
 
 logger = logging.getLogger(__name__)
 

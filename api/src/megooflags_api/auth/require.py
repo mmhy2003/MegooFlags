@@ -35,6 +35,8 @@ PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/auth/webauthn/options"),
         ("POST", "/api/auth/webauthn/verify"),
         ("GET", "/api/auth/providers"),
+        ("GET", "/api/auth/sso/{provider}/start"),
+        ("GET", "/api/auth/sso/{provider}/callback"),
         ("GET", "/api/invitations/{token}"),
         ("POST", "/api/invitations/{token}"),
     }

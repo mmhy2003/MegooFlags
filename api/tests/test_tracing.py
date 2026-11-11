@@ -43,3 +43,8 @@ async def test_tracing_records_spans_when_configured(monkeypatch: pytest.MonkeyP
 def test_stream_is_not_traced() -> None:
     # The instrumentation records the full URL, and client keys may travel in `?key=`.
     assert "/sdk/v1/stream" in EXCLUDED_URLS.split(",")
+
+
+def test_sso_flow_is_not_traced() -> None:
+    # SSO callbacks carry an authorization code and state in the query string.
+    assert "/api/auth/sso" in EXCLUDED_URLS.split(",")
