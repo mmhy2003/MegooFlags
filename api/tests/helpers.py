@@ -21,6 +21,7 @@ from valkey.exceptions import ValkeyError
 from megooflags_api.models import AuditEntry, Role, RoleBinding
 from megooflags_api.models.enums import ScopeKind, SubjectKind
 from megooflags_api.services.api_tokens import create_service_token
+from megooflags_api.services.scheduler import Scheduler
 from megooflags_api.services.users import create_user
 
 # Empties every table the tests write to, keeping the built-in roles and the org_settings row.
@@ -334,3 +335,8 @@ async def next_events(lines: AsyncIterator[str], count: int, within: float) -> l
     if len(events) < count:
         pytest.fail(f"the stream ended after {events}, expected {count} events")
     return events
+
+
+def make_scheduler(app: FastAPI, clock: FakeClock) -> Scheduler:
+    """The app's jobs on a scheduler whose ticks the test drives with `clock`."""
+    return Scheduler(app.state.engine, app.state.sessionmaker, app.state.change_bus, clock=clock)

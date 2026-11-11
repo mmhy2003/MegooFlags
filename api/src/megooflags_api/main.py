@@ -44,6 +44,7 @@ from megooflags_api.services.events import (
 )
 from megooflags_api.services.rate_limit import RateLimiter
 from megooflags_api.services.ruleset_cache import RulesetCache
+from megooflags_api.services.scheduler import Scheduler
 from megooflags_api.services.sdk_keys import KeyResolver
 from megooflags_api.services.streams import StreamHub
 from megooflags_api.settings import Settings, get_settings
@@ -54,12 +55,15 @@ logger = logging.getLogger(__name__)
 
 
 def background_jobs(app: FastAPI) -> list[Coroutine[Any, Any, None]]:
-    return [
+    jobs = [
         app.state.change_bus.run(),
         app.state.stream_hub.run_recheck_loop(app.state.settings.stream_recheck_seconds),
         app.state.evaluation_counter.run(app.state.sessionmaker),
         run_retention(app.state.sessionmaker, app.state.settings.exposure_retention_days),
     ]
+    if app.state.settings.scheduler_enabled:
+        jobs.append(app.state.scheduler.run())
+    return jobs
 
 
 async def shutdown_jobs(app: FastAPI) -> None:
@@ -89,6 +93,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await app.state.sso_http.aclose()
         if app.state.tracer_provider is not None:
             app.state.tracer_provider.shutdown()
+        await app.state.scheduler.close()
         await app.state.engine.dispose()
         metrics.worker_exited()
 
@@ -120,6 +125,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.change_bus.on_key_revoked.append(app.state.stream_hub.notify_key_revoked)
     app.state.change_bus.on_resubscribe.append(app.state.stream_hub.recheck_all)
     app.state.evaluation_counter = EvaluationCounter()
+    app.state.scheduler = Scheduler(
+        app.state.engine,
+        app.state.sessionmaker,
+        app.state.change_bus,
+        interval=settings.scheduler_interval_seconds,
+    )
     install_error_handlers(app)
     app.add_middleware(EventsBodyLimitMiddleware)
     app.add_middleware(AccessLogMiddleware)

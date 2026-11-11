@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     session_idle_hours: float = Field(12, gt=0)
     session_absolute_days: float = Field(7, gt=0)
     pending_mfa_minutes: float = Field(5, gt=0)
+    # Off in tests that drive `scheduler.tick()` by hand.
+    scheduler_enabled: bool = True
+    scheduler_interval_seconds: float = Field(5, gt=0)
 
     @field_validator("public_url", "secret_key", mode="before")
     @classmethod
