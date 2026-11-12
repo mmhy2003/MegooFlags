@@ -5202,6 +5202,8 @@ export interface operations {
                 actor?: string | null;
                 action?: string | null;
                 resource_type?: string | null;
+                /** @description An exact resource key, such as a flag key. */
+                resource_key?: string | null;
                 /** @description A project key. */
                 project?: string | null;
                 /** @description An environment key; needs `project`. */
@@ -5281,6 +5283,8 @@ export interface operations {
                 actor?: string | null;
                 action?: string | null;
                 resource_type?: string | null;
+                /** @description An exact resource key, such as a flag key. */
+                resource_key?: string | null;
                 /** @description A project key. */
                 project?: string | null;
                 /** @description An environment key; needs `project`. */

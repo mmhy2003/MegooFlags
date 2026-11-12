@@ -18,6 +18,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 
 ### Added
 - `GET /api/projects/{project}/flags` accepts `env` and `enabled` to list only flags that are on or off in an environment.
+- `GET /api/audit` and `/api/audit/export` accept `resource_key` to show the history of one flag or other resource.
 - Web UI app shell: a sidebar with a project switcher and a menu that follows your permissions (it collapses to icons and becomes a drawer on phones), and a header with ⌘K/Ctrl+K search, a light/dark/system theme switcher and an account menu. It uses the cyberpunk neon palette, works from 280 px wide, and warns when MegooFlags is opened over plain HTTP. Flags, Segments, Environments, Change requests, Audit log, API & SDK keys, Integrations and Settings are placeholder pages for now.
 - Your theme and sidebar choices are saved on your account (`PATCH /api/account/preferences`) and returned by `/api/auth/me`, so they follow you to other devices.
 - `GET /api/auth/me/permissions?project=<key>` lists what you may do org-wide, in a project and in each of its environments.

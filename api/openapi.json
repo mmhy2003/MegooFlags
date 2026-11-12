@@ -7438,6 +7438,24 @@
             }
           },
           {
+            "description": "An exact resource key, such as a flag key.",
+            "in": "query",
+            "name": "resource_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An exact resource key, such as a flag key.",
+              "title": "Resource Key"
+            }
+          },
+          {
             "description": "A project key.",
             "in": "query",
             "name": "project",
@@ -7647,6 +7665,24 @@
                 }
               ],
               "title": "Resource Type"
+            }
+          },
+          {
+            "description": "An exact resource key, such as a flag key.",
+            "in": "query",
+            "name": "resource_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An exact resource key, such as a flag key.",
+              "title": "Resource Key"
             }
           },
           {

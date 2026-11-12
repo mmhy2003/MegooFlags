@@ -58,6 +58,9 @@ async def get_filters(
     actor: Annotated[str | None, Query(description="An actor id, or an exact label.")] = None,
     action: str | None = None,
     resource_type: str | None = None,
+    resource_key: Annotated[
+        str | None, Query(description="An exact resource key, such as a flag key.")
+    ] = None,
     project: Annotated[str | None, Query(description="A project key.")] = None,
     env: Annotated[str | None, Query(description="An environment key; needs `project`.")] = None,
     occurred_from: Annotated[datetime | None, Query(alias="from", description="Inclusive.")] = None,
@@ -79,6 +82,7 @@ async def get_filters(
         actor=actor,
         action=action,
         resource_type=resource_type,
+        resource_key=resource_key,
         project_id=project_id,
         environment_id=environment_id,
         occurred_from=occurred_from,

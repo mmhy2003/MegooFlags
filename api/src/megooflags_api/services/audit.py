@@ -258,6 +258,7 @@ class AuditFilters:
     actor: str | None = None
     action: str | None = None
     resource_type: str | None = None
+    resource_key: str | None = None
     project_id: uuid.UUID | None = None
     environment_id: uuid.UUID | None = None
     occurred_from: datetime | None = None
@@ -311,6 +312,8 @@ def _select(filters: AuditFilters, scope: set[uuid.UUID] | None) -> Select[Any]:
         query = query.where(AuditEntry.action == filters.action)
     if filters.resource_type is not None:
         query = query.where(AuditEntry.resource_type == filters.resource_type)
+    if filters.resource_key is not None:
+        query = query.where(AuditEntry.resource_key == filters.resource_key)
     if filters.project_id is not None:
         query = query.where(AuditEntry.project_id == filters.project_id)
     if filters.environment_id is not None:
