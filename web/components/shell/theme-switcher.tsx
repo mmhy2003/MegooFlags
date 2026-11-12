@@ -13,17 +13,26 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { writeCookie } from "@/lib/cookie";
 import { savePreferences } from "@/lib/preferences";
-import { parseTheme, type Theme } from "@/lib/theme";
+import {
+  parseTheme,
+  THEME_COOKIE,
+  THEME_UNSAVED_COOKIE,
+  type Theme,
+} from "@/lib/theme";
 
 const noop = () => () => {};
 
-/** Applies a theme at once, then stores the choice on the user. */
+/** Applies a theme at once and keeps it in the cookie, then stores the choice on the user. If
+ * that fails, the cookie marks it unsaved so the next load keeps it (`ThemeSync`). */
 export function useApplyTheme(): (theme: Theme) => void {
   const { setTheme } = useTheme();
   return (theme) => {
     setTheme(theme);
+    writeCookie(THEME_COOKIE, theme);
     void savePreferences({ theme }).then((saved) => {
+      writeCookie(THEME_UNSAVED_COOKIE, saved ? null : "1");
       if (!saved)
         toast.error(
           "Couldn't save this preference. It applies in this browser only.",

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { parseTheme, sidebarOpen, themeCookieToSet } from "@/lib/theme";
+import {
+  parseTheme,
+  sidebarOpen,
+  themeCookieToSet,
+  themeToSync,
+} from "@/lib/theme";
 
 describe("parseTheme", () => {
   it.each(["light", "dark", "system"] as const)("accepts %s", (theme) => {
@@ -39,5 +44,24 @@ describe("sidebarOpen", () => {
   it("defaults to open", () => {
     expect(sidebarOpen(undefined, undefined)).toBe(true);
     expect(sidebarOpen("junk", false)).toBe(true);
+  });
+});
+
+describe("themeToSync", () => {
+  it("applies the stored theme when it differs", () => {
+    expect(themeToSync("light", "dark", false)).toBe("dark");
+  });
+
+  it("does nothing when the theme already matches", () => {
+    expect(themeToSync("dark", "dark", false)).toBeNull();
+  });
+
+  it("does nothing without a stored theme", () => {
+    expect(themeToSync("light", null, false)).toBeNull();
+    expect(themeToSync("light", undefined, false)).toBeNull();
+  });
+
+  it("keeps this browser's choice when its last save failed", () => {
+    expect(themeToSync("light", "dark", true)).toBeNull();
   });
 });

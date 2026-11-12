@@ -71,6 +71,37 @@ test("the collapsed sidebar survives a reload and a new browser", async ({
   }
 });
 
+test("Ctrl+B while the sidebar is forced to icons leaves the choice alone", async ({
+  page,
+}) => {
+  const r = await page.request.patch("/api/account/preferences", {
+    data: { sidebar_collapsed: true },
+    headers: { Origin: ORIGIN },
+  });
+  expect(r.ok()).toBe(true);
+  await page.context().clearCookies({ name: "sidebar_state" });
+
+  await page.setViewportSize({ width: 880, height: 900 });
+  await page.goto("/projects/demo/flags");
+  const sidebar = page.locator("[data-slot=sidebar][data-state]");
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+  // Shortcut listeners exist only once the page has hydrated; the palette opening shows it has.
+  const palette = page.getByRole("dialog").getByRole("combobox");
+  await expect(async () => {
+    if (!(await palette.isVisible()))
+      await page.keyboard.press("ControlOrMeta+k");
+    await expect(palette).toBeVisible({ timeout: 1000 });
+  }).toPass();
+  await page.keyboard.press("Escape");
+  await expect(palette).toBeHidden();
+  await page.keyboard.press("ControlOrMeta+b");
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.reload();
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+});
+
 test("the stored theme applies on first paint, with no flash", async ({
   page,
   browser,
@@ -168,6 +199,24 @@ test("a failed save says so", async ({ page }) => {
   );
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
   await expect(page.getByText("Couldn't save this preference")).toBeVisible();
+});
+
+test("a theme whose save failed stays in this browser", async ({ page }) => {
+  await page.goto("/projects/demo/flags");
+  await page.route("**/api/account/preferences", (r) =>
+    r.fulfill({ status: 500 }),
+  );
+  await page.getByRole("button", { name: "Theme" }).click();
+  await page.getByRole("menuitemradio", { name: "Dark" }).click();
+  await expect(page.getByText("Couldn't save this preference")).toBeVisible();
+  await page.unroute("**/api/account/preferences");
+
+  await page.reload();
+  await expect(page.locator("html")).toHaveClass(/\bdark\b/);
+  // Give the load-time sync its chance to (wrongly) restore the stored "system".
+  await page.waitForTimeout(1000);
+  await expect(page.locator("html")).toHaveClass(/\bdark\b/);
+  await page.context().clearCookies({ name: "mf_theme_unsaved" });
 });
 
 test("sign out lands on the sign-in page", async ({ page }) => {

@@ -22,11 +22,15 @@ export default defineConfig({
     toHaveScreenshot: { maxDiffPixelRatio: 0.01, animations: "disabled" },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // The standalone server, laid out as the web image does (Dockerfile), so tests run what ships.
   webServer: {
-    command: "pnpm start -H 0.0.0.0 -p 3000",
+    command:
+      "cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/ && node .next/standalone/server.js",
     url: "http://localhost:3000/sign-in",
     reuseExistingServer: !CI,
     env: {
+      PORT: "3000",
+      HOSTNAME: "0.0.0.0",
       MEGOOFLAGS_UI_KIT: "1",
       MEGOOFLAGS_API_URL:
         process.env.MEGOOFLAGS_API_URL ?? "http://localhost:8000",

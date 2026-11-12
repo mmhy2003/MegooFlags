@@ -24,8 +24,10 @@ import {
 } from "@/components/ui/sidebar";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { navItems } from "@/lib/nav";
+import { writeCookie } from "@/lib/cookie";
 import { savePreferences } from "@/lib/preferences";
 import type { ShellData } from "@/lib/shell-data";
+import { SIDEBAR_COOKIE } from "@/lib/theme";
 
 function CollapseButton() {
   const { open, toggleSidebar } = useSidebar();
@@ -67,9 +69,12 @@ export function AppShell({
   const isDesktop = useMediaQuery("(min-width: 1024px)", true);
   const [userOpen, setUserOpen] = useState(shell.sidebarOpen);
 
+  // Below 1024 px the sidebar is forced closed, so a toggle (Ctrl/⌘+B) changes nothing and
+  // must not overwrite the saved choice.
   function onOpenChange(open: boolean) {
     if (!isDesktop) return;
     setUserOpen(open);
+    writeCookie(SIDEBAR_COOKIE, String(open));
     void savePreferences({ sidebar_collapsed: !open }).then((saved) => {
       if (!saved)
         toast.error(

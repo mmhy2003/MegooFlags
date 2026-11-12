@@ -190,8 +190,9 @@ jobs:
       HOME: /root
     steps:
       - uses: actions/checkout@v4
+      # uv uses the image's Python 3.12, which ships without headers (Python.h).
       - name: SAML build dependencies (lxml and xmlsec are built from source)
-        run: apt-get update && apt-get install -y --no-install-recommends build-essential libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
+        run: apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -205,11 +206,23 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
+      - name: API dependencies
+        working-directory: api
+        run: uv sync --frozen
+      - name: Migrate
+        working-directory: api
+        run: uv run alembic upgrade head
       - name: API
         working-directory: api
         run: |
-          uv sync --frozen && uv run alembic upgrade head
           nohup uv run python -m megooflags_api.serve > /tmp/api.log 2>&1 &
+          for _ in $(seq 60); do
+            if curl -fsS http://localhost:8000/readyz > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "API not ready after 60 s:"
+          cat /tmp/api.log
+          exit 1
       - name: Build
         working-directory: web
         run: pnpm install --frozen-lockfile && pnpm build
