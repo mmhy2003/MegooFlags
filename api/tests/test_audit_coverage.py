@@ -159,6 +159,19 @@ async def change_request(client: httpx.AsyncClient, app: FastAPI) -> Params:
     return params | {"id": r.json()["id"]}
 
 
+async def others_change_request(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """`change_request`, written by another token, so `client` may review it."""
+    params = await flag(client, app)
+    r = await client.patch(
+        "/api/projects/demo/environments/production", json={"approvals_required": 1}
+    )
+    assert r.status_code == 200, r.text
+    async with client_from(app, bearer(await seed_service_token(app, name="author"))) as author:
+        r = await author.post("/api/projects/demo/change-requests", json=TOGGLE_CHANGE_REQUEST)
+    assert r.status_code == 201, r.text
+    return params | {"id": r.json()["id"]}
+
+
 async def segment(client: httpx.AsyncClient, app: FastAPI) -> Params:
     params = await project(client, app)
     r = await client.post("/api/projects/demo/segments", json={"key": "beta", "name": "Beta"})
@@ -635,6 +648,19 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
         ),
         sample(
             "POST", f"{P}/change-requests/{{id}}/cancel", "change_request.cancel", change_request
+        ),
+        sample(
+            "POST",
+            f"{P}/change-requests/{{id}}/approve",
+            "change_request.approve",
+            others_change_request,
+        ),
+        sample(
+            "POST",
+            f"{P}/change-requests/{{id}}/reject",
+            "change_request.reject",
+            others_change_request,
+            {"comment": "no"},
         ),
         # Segments
         sample("POST", f"{P}/segments", "segment.create", project, {"key": "beta", "name": "B"}),

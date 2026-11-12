@@ -60,6 +60,10 @@ def invalid_state(message: str) -> ApiError:
     return ApiError(409, "invalid_state", message)
 
 
+def self_approval() -> ApiError:
+    return ApiError(403, "self_approval", "you cannot review your own change request")
+
+
 def approval_required(env_key: str) -> ApiError:
     return ApiError(
         409,

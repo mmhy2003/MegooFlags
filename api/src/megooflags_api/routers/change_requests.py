@@ -12,15 +12,18 @@ from megooflags_api.errors import ERROR_RESPONSES, not_found
 from megooflags_api.models import Environment, Project
 from megooflags_api.models.enums import ChangeRequestStatus
 from megooflags_api.schemas.change_requests import (
+    ApproveIn,
     ChangeRequestCreate,
     ChangeRequestOut,
     ChangeRequestSummary,
     CommentIn,
     CommentOut,
+    RejectIn,
 )
 from megooflags_api.schemas.common import Page
 from megooflags_api.services import change_requests
 from megooflags_api.services.audit import Actor, AuditDep
+from megooflags_api.services.changes import ChangesDep
 from megooflags_api.services.lookup import get_environment, get_flag
 
 router = APIRouter(tags=["change-requests"], responses=ERROR_RESPONSES)
@@ -123,6 +126,60 @@ async def cancel_change_request(
     if authz.principal.actor_id != cr.author_id:
         authz.check(Permission.PROJECT_MANAGE, project_row.id)
     await change_requests.cancel(session, audit, cr, datetime.now(UTC))
+    out = await change_requests.out(session, cr)
+    await session.commit()
+    return out
+
+
+@router.post(f"{CHANGE_REQUESTS}/{{id}}/approve")
+async def approve_change_request(
+    session: SessionDep,
+    authz: ReadProject,
+    audit: AuditDep,
+    bus: ChangesDep,
+    project: str,
+    id: uuid.UUID,
+    body: ApproveIn | None = None,
+) -> ChangeRequestOut:
+    """Approve an open change request; needs change.approve in its environment, and its author
+    cannot. The approval that reaches the environment's requirement applies the change, or
+    fails the request when the flag changed since it was made or the change is no longer valid.
+    """
+    project_row = _project(authz)
+    cr = await change_requests.get(session, project_row, id, _visible(authz))
+    authz.check(Permission.CHANGE_APPROVE, project_row.id, cr.environment_id)
+    applied = await change_requests.approve(
+        session,
+        audit,
+        cr.id,
+        Actor.of(authz.principal),
+        None if body is None else body.comment,
+        datetime.now(UTC),
+    )
+    out = await change_requests.out(session, cr)
+    await session.commit()
+    if applied:
+        await bus.publish(project_row.id)
+    return out
+
+
+@router.post(f"{CHANGE_REQUESTS}/{{id}}/reject")
+async def reject_change_request(
+    session: SessionDep,
+    authz: ReadProject,
+    audit: AuditDep,
+    project: str,
+    id: uuid.UUID,
+    body: RejectIn,
+) -> ChangeRequestOut:
+    """Reject an open change request, which closes it; needs change.approve in its environment,
+    and its author cannot."""
+    project_row = _project(authz)
+    cr = await change_requests.get(session, project_row, id, _visible(authz))
+    authz.check(Permission.CHANGE_APPROVE, project_row.id, cr.environment_id)
+    await change_requests.reject(
+        session, audit, cr.id, Actor.of(authz.principal), body.comment, datetime.now(UTC)
+    )
     out = await change_requests.out(session, cr)
     await session.commit()
     return out

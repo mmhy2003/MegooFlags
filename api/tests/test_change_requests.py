@@ -1,13 +1,29 @@
+import asyncio
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 import pytest
 from fastapi import FastAPI
-from helpers import assert_error, audit_entries, create_flag
+from helpers import (
+    ORIGIN,
+    FakeClock,
+    assert_error,
+    audit_entries,
+    bearer,
+    create_flag,
+    make_scheduler,
+    seed_service_token,
+    seed_user,
+    sign_in,
+)
 from test_approvals_gate import protect
+from test_changes import record_publishes
 from test_rollouts import BODY as ROLLOUT_BODY
-from test_rollouts import ROLLOUT, color_flag, config
+from test_rollouts import CONFIG, ROLLOUT, color_flag, config, demo_id
 from test_schedules import SCHEDULES, custom_role, in_, token_client
 
 C = "/api/projects/demo/change-requests"
@@ -299,3 +315,263 @@ async def test_others_without_project_manage_cannot_cancel(
         assert r.status_code == 200, r.text
 
     assert (await api.get(f"{C}/{cr['id']}")).json()["status"] == "open"
+
+
+@asynccontextmanager
+async def client_from(app: FastAPI, headers: dict[str, str]) -> AsyncIterator[httpx.AsyncClient]:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=headers
+    ) as client:
+        yield client
+
+
+@asynccontextmanager
+async def reviewer(
+    app: FastAPI, role: str = "editor", name: str = "reviewer"
+) -> AsyncIterator[httpx.AsyncClient]:
+    """A client with an org `role` service token called `name`, another person than `api`."""
+    async with client_from(app, bearer(await seed_service_token(app, role, name=name))) as client:
+        yield client
+
+
+async def approve(client: httpx.AsyncClient, cr: dict[str, Any], **body: Any) -> httpx.Response:
+    return await client.post(f"{C}/{cr['id']}/approve", json=body or None)
+
+
+async def test_an_approval_applies_a_config_change_request(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await color_flag(api)
+    await protect(api)
+    project_id = await demo_id(app)
+    cr = await created(api)
+    published = record_publishes(app)
+
+    async with reviewer(app) as client:
+        r = await approve(client, cr, comment="ship it")
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert (body["status"], body["approvals"], body["error"]) == ("applied", 1, None)
+    assert body["closed_at"] is not None
+    [review] = body["reviews"]
+    assert (review["reviewer"], review["decision"], review["comment"]) == (
+        "reviewer",
+        "approve",
+        "ship it",
+    )
+    current = await config(api)
+    assert (current["fallthrough"]["variation"], current["version"]) == ("b", 2)
+    assert published == [project_id]
+    [approved] = await audit_entries(app, "change_request.approve")
+    [applied] = await audit_entries(app, "change_request.apply")
+    assert approved["resource_key"] == applied["resource_key"] == cr["id"]
+    assert applied["after"]["status"] == "applied"
+    [update] = await audit_entries(app, "flag.config.update")
+    assert update["actor_label"] == "reviewer"
+    assert (update["after"]["change_request_id"], update["after"]["created_by"]) == (
+        cr["id"],
+        "tests",
+    )
+
+
+async def test_toggle_schedule_and_rollout_change_requests_apply(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await color_flag(api)
+    await protect(api)
+    payloads = {
+        "toggle": {"enabled": True},
+        "schedule": {"action": "disable", "run_at": in_(hours=1)},
+        "rollout": ROLLOUT_BODY,
+    }
+    applied: dict[str, dict[str, Any]] = {}
+
+    # One after the other: each applied change moves the version the next one is based on.
+    async with reviewer(app) as client:
+        for kind, payload in payloads.items():
+            applied[kind] = await created(api, kind=kind, payload=payload)
+            r = await approve(client, applied[kind])
+            assert (r.status_code, r.json()["status"]) == (200, "applied"), r.text
+    schedule = applied["schedule"]
+
+    assert (await config(api))["enabled"] is True
+    current = (await api.get(ROLLOUT)).json()["current"]
+    assert (current["status"], current["created_by"]) == ("active", "tests")
+    [pending] = (await api.get(SCHEDULES)).json()
+    assert (pending["status"], pending["created_by"]) == ("pending", "tests")
+    assert pending["change_request_id"] == schedule["id"]
+
+    clock = FakeClock(datetime.now(UTC))
+    clock.advance(hours=2)
+    await make_scheduler(app, clock).tick()
+
+    [done] = (await api.get(SCHEDULES)).json()
+    assert done["status"] == "done"
+    assert (await config(api))["enabled"] is False
+
+
+async def test_two_required_approvals(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await color_flag(api)
+    await protect(api, approvals=2)
+    cr = await created(api)
+    published = record_publishes(app)
+
+    async with reviewer(app) as client:
+        r = await approve(client, cr)
+    assert r.status_code == 200, r.text
+    assert (r.json()["status"], r.json()["approvals"], r.json()["approvals_required"]) == (
+        "open",
+        1,
+        2,
+    )
+    assert published == []
+    assert (await config(api))["version"] == 1
+
+    async with reviewer(app, name="second") as client:
+        r = await approve(client, cr)
+    assert r.status_code == 200, r.text
+    assert (r.json()["status"], r.json()["approvals"]) == ("applied", 2)
+    assert published == [await demo_id(app)]
+
+
+async def test_raising_the_requirement_keeps_an_open_request_open(
+    api: httpx.AsyncClient, app: FastAPI
+) -> None:
+    await color_flag(api)
+    await protect(api)
+    cr = await created(api)
+    await protect(api, approvals=2)
+
+    async with reviewer(app) as client:
+        r = await approve(client, cr)
+
+    assert r.status_code == 200, r.text
+    assert (r.json()["status"], r.json()["approvals"]) == ("open", 1)
+    assert (await config(api))["version"] == 1
+
+
+async def test_the_author_cannot_review(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await color_flag(api)
+    cr = await created(api)
+
+    assert_error(await approve(api, cr), 403, "self_approval")
+    r = await api.post(f"{C}/{cr['id']}/reject", json={"comment": "no"})
+    body = assert_error(r, 403, "self_approval")
+    assert body["message"] == "you cannot review your own change request"
+    assert (await api.get(f"{C}/{cr['id']}")).json()["reviews"] == []
+
+
+async def test_a_session_author_cannot_approve_with_a_personal_token(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await color_flag(api)
+    await seed_user(app)
+    async with client_from(app, ORIGIN) as session:
+        assert (await sign_in(session)).status_code == 200
+        cr = await created(session)
+        r = await session.post(
+            "/api/account/tokens",
+            json={"name": "laptop", "permissions": ["project.read", "change.approve"]},
+        )
+        assert r.status_code == 201, r.text
+        secret = r.json()["secret"]
+
+    async with client_from(app, bearer(secret)) as personal:
+        assert_error(await approve(personal, cr), 403, "self_approval")
+
+
+async def test_one_review_per_reviewer(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await color_flag(api)
+    await protect(api, approvals=2)
+    cr = await created(api)
+
+    async with reviewer(app) as client:
+        assert (await approve(client, cr)).status_code == 200
+        assert_error(await approve(client, cr), 409, "invalid_state")
+        r = await client.post(f"{C}/{cr['id']}/reject", json={"comment": "changed my mind"})
+        assert_error(r, 409, "invalid_state")
+
+
+async def test_reject(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await color_flag(api)
+    cr = await created(api)
+    published = record_publishes(app)
+
+    async with reviewer(app) as client:
+        r = await client.post(f"{C}/{cr['id']}/reject", json={})
+        assert r.status_code == 422, r.text
+        r = await client.post(f"{C}/{cr['id']}/reject", json={"comment": "not now"})
+        assert r.status_code == 200, r.text
+        assert (r.json()["status"], r.json()["approvals"]) == ("rejected", 0)
+        assert r.json()["closed_at"] is not None
+        [review] = r.json()["reviews"]
+        assert (review["decision"], review["comment"]) == ("reject", "not now")
+
+    async with reviewer(app, name="second") as client:
+        assert_error(await approve(client, cr), 409, "invalid_state")
+
+    assert published == []
+    assert (await config(api))["version"] == 1
+    [entry] = await audit_entries(app, "change_request.reject")
+    assert (entry["resource_key"], entry["after"]["status"]) == (cr["id"], "rejected")
+
+
+async def test_a_changed_flag_fails_the_request(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await color_flag(api)
+    r = await api.post(f"{CONFIG}/toggle", json={"enabled": True})
+    assert r.status_code == 200, r.text
+    await protect(api)
+    cr = await created(api, payload={**CONFIG_PAYLOAD, "version": 2})
+    r = await api.post(f"{CONFIG}/kill")
+    assert r.status_code == 200, r.text
+    before = await config(api)
+    published = record_publishes(app)
+
+    async with reviewer(app) as client:
+        r = await approve(client, cr)
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert (body["status"], body["approvals"]) == ("failed", 1)
+    assert body["error"] == "the flag changed since this request was made (version 2, now 3)"
+    assert body["closed_at"] is not None
+    assert await config(api) == before
+    assert published == []
+    [entry] = await audit_entries(app, "change_request.fail")
+    assert entry["after"]["status"] == "failed"
+    assert await audit_entries(app, "change_request.apply") == []
+
+
+async def test_a_schedule_that_became_due_fails(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await color_flag(api)
+    await protect(api)
+    cr = await created(api, kind="schedule", payload={"action": "enable", "run_at": in_(seconds=2)})
+    await asyncio.sleep(2.1)
+
+    async with reviewer(app) as client:
+        r = await approve(client, cr)
+
+    assert r.status_code == 200, r.text
+    assert (r.json()["status"], r.json()["error"]) == ("failed", "run_at must be in the future")
+    assert (await api.get(SCHEDULES)).json() == []
+
+
+async def test_reviewing_needs_change_approve(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await color_flag(api)
+    await protect(api, approvals=3)
+    cr = await created(api)
+    role = await custom_role(api, "writers", ["project.read", "flag.config.write"])
+
+    for limited in ("viewer", role):
+        async with token_client(app, limited, "project") as client:
+            assert_error(await approve(client, cr), 403, "forbidden")
+            r = await client.post(f"{C}/{cr['id']}/reject", json={"comment": "no"})
+            assert_error(r, 403, "forbidden")
+
+    for allowed in ("editor", "admin"):
+        async with reviewer(app, allowed, name=allowed) as client:
+            r = await approve(client, cr)
+            assert r.status_code == 200, r.text
+    assert (await api.get(f"{C}/{cr['id']}")).json()["approvals"] == 2

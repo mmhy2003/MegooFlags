@@ -13,6 +13,7 @@ from megooflags_api.errors import (
     ApiError,
     invalid_state,
     not_found,
+    self_approval,
     validation_error,
     version_conflict,
 )
@@ -224,6 +225,7 @@ async def _snapshot(session: AsyncSession, cr: ChangeRequest) -> dict[str, Any]:
         "description": cr.description,
         "payload": cr.payload,
         "base_version": cr.base_version,
+        "error": cr.error,
     }
 
 
@@ -388,3 +390,150 @@ async def cancel(
         after=await _snapshot(session, cr),
     )
     return cr
+
+
+async def _lock(session: AsyncSession, cr_id: uuid.UUID) -> ChangeRequest:
+    query = (
+        select(ChangeRequest)
+        .where(ChangeRequest.id == cr_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return (await session.scalars(query)).one()
+
+
+async def _review(
+    session: AsyncSession,
+    cr: ChangeRequest,
+    actor: Actor,
+    decision: ReviewDecision,
+    comment: str | None,
+) -> ReviewOut:
+    """Record `actor`'s review of `cr`, which the caller has locked: 409 once it is closed or
+    `actor` reviewed it already, 403 for its author."""
+    _ensure_open(cr)
+    if actor.id == cr.author_id:
+        raise self_approval()
+    earlier = await session.scalar(
+        select(ChangeRequestReview.id).where(
+            ChangeRequestReview.change_request_id == cr.id,
+            ChangeRequestReview.reviewer_id == actor.id,
+        )
+    )
+    if earlier is not None:
+        raise invalid_state(f"you already reviewed change request '{cr.id}'")
+    row = ChangeRequestReview(
+        change_request_id=cr.id,
+        reviewer_id=actor.id,
+        reviewer_label=actor.label,
+        decision=decision,
+        comment=comment,
+    )
+    session.add(row)
+    await session.flush()
+    return ReviewOut(
+        reviewer=row.reviewer_label,
+        decision=row.decision,
+        comment=row.comment,
+        created_at=row.created_at,
+    )
+
+
+async def _close(
+    session: AsyncSession,
+    audit: AuditSink,
+    cr: ChangeRequest,
+    action: str,
+    status: ChangeRequestStatus,
+    now: datetime,
+    error: str | None = None,
+    **extra: Any,
+) -> None:
+    """Close `cr` with `status` and audit it as `action`; `extra` joins the after snapshot."""
+    before = await _snapshot(session, cr)
+    cr.status, cr.error, cr.closed_at = status, error, now
+    await session.flush()
+    after = await _snapshot(session, cr) | snapshot(extra)
+    await audit.record(
+        action,
+        "change_request",
+        str(cr.id),
+        project_id=cr.project_id,
+        environment_id=cr.environment_id,
+        before=before,
+        after=after,
+    )
+
+
+async def approve(
+    session: AsyncSession,
+    audit: AuditSink,
+    cr_id: uuid.UUID,
+    actor: Actor,
+    comment: str | None,
+    now: datetime,
+) -> bool:
+    """Approve the change request as `actor`; the approval that reaches the environment's
+    requirement applies it. Returns whether it was applied.
+
+    A flag changed since the request was made, or a change that is no longer valid, fails the
+    request instead; the approval is kept either way.
+    """
+    cr = await _lock(session, cr_id)
+    review = await _review(session, cr, actor, ReviewDecision.APPROVE, comment)
+    await audit.record(
+        "change_request.approve",
+        "change_request",
+        str(cr.id),
+        project_id=cr.project_id,
+        environment_id=cr.environment_id,
+        after=snapshot(review),
+    )
+    env = await session.get_one(Environment, cr.environment_id, populate_existing=True)
+    count = await session.scalar(select(_approvals()).where(ChangeRequest.id == cr.id))
+    if (count or 0) < approvals.required_approvals(env):
+        return False
+
+    flag = await session.get_one(Flag, cr.flag_id)
+    fe = await get_flag_environment(session, flag, env, lock=True)
+    if fe.version != cr.base_version:
+        message = (
+            "the flag changed since this request was made "
+            f"(version {cr.base_version}, now {fe.version})"
+        )
+        await _close(
+            session, audit, cr, "change_request.fail", ChangeRequestStatus.FAILED, now, message
+        )
+        return False
+    try:
+        async with session.begin_nested():
+            await apply_payload(session, audit, cr, flag, env, fe, now)
+    except ApiError as exc:
+        await _close(
+            session, audit, cr, "change_request.fail", ChangeRequestStatus.FAILED, now, exc.message
+        )
+        return False
+    await _close(session, audit, cr, "change_request.apply", ChangeRequestStatus.APPLIED, now)
+    return True
+
+
+async def reject(
+    session: AsyncSession,
+    audit: AuditSink,
+    cr_id: uuid.UUID,
+    actor: Actor,
+    comment: str,
+    now: datetime,
+) -> None:
+    """Reject the change request as `actor`, which closes it."""
+    cr = await _lock(session, cr_id)
+    review = await _review(session, cr, actor, ReviewDecision.REJECT, comment)
+    await _close(
+        session,
+        audit,
+        cr,
+        "change_request.reject",
+        ChangeRequestStatus.REJECTED,
+        now,
+        review=review,
+    )

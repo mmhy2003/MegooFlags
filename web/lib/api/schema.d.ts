@@ -696,6 +696,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project}/change-requests/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Change Request
+         * @description Approve an open change request; needs change.approve in its environment, and its author
+         *     cannot. The approval that reaches the environment's requirement applies the change, or
+         *     fails the request when the flag changed since it was made or the change is no longer valid.
+         */
+        post: operations["approve_change_request_api_projects__project__change_requests__id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project}/change-requests/{id}/cancel": {
         parameters: {
             query?: never;
@@ -730,6 +752,27 @@ export interface paths {
          * @description Comment on an open change request; 409 once it is closed.
          */
         post: operations["comment_on_change_request_api_projects__project__change_requests__id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/change-requests/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Change Request
+         * @description Reject an open change request, which closes it; needs change.approve in its environment,
+         *     and its author cannot.
+         */
+        post: operations["reject_change_request_api_projects__project__change_requests__id__reject_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1851,6 +1894,11 @@ export interface components {
          * @enum {string}
          */
         ApiTokenKind: "service" | "personal";
+        /** ApproveIn */
+        ApproveIn: {
+            /** Comment */
+            comment?: string | null;
+        };
         /** AuditActor */
         AuditActor: {
             /** Auth Method */
@@ -3016,6 +3064,11 @@ export interface components {
         RecoveryCodes: {
             /** Recovery Codes */
             recovery_codes: string[];
+        };
+        /** RejectIn */
+        RejectIn: {
+            /** Comment */
+            comment: string;
         };
         /**
          * ReviewDecision
@@ -6681,6 +6734,78 @@ export interface operations {
             };
         };
     };
+    approve_change_request_api_projects__project__change_requests__id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApproveIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeRequestOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     cancel_change_request_api_projects__project__change_requests__id__cancel_post: {
         parameters: {
             query?: never;
@@ -6772,6 +6897,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CommentOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reject_change_request_api_projects__project__change_requests__id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeRequestOut"];
                 };
             };
             /** @description Unauthorized */

@@ -28,6 +28,14 @@ class CommentIn(ApiModel):
     body: str = Field(min_length=1, max_length=10000)
 
 
+class ApproveIn(ApiModel):
+    comment: str | None = Field(default=None, max_length=10000)
+
+
+class RejectIn(ApiModel):
+    comment: str = Field(min_length=1, max_length=10000)
+
+
 class ReviewOut(ApiModel):
     reviewer: str
     decision: ReviewDecision

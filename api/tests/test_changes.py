@@ -31,6 +31,9 @@ EXCLUDED = {
     ("POST", "/api/projects/{project}/change-requests"),
     ("POST", "/api/projects/{project}/change-requests/{id}/comments"),
     ("POST", "/api/projects/{project}/change-requests/{id}/cancel"),
+    # Approving publishes only when it applies the change; test_change_requests covers it.
+    ("POST", "/api/projects/{project}/change-requests/{id}/approve"),
+    ("POST", "/api/projects/{project}/change-requests/{id}/reject"),
 }
 P = "/api/projects/{project}"
 F = f"{P}/flags/{{flag}}"
