@@ -14,6 +14,10 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Generated from api/openapi.json.
     "lib/api/schema.d.ts",
+    // Playwright output and saved sessions.
+    "e2e/.auth/**",
+    "test-results/**",
+    "playwright-report/**",
   ]),
 ]);
 

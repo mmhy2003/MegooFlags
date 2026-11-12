@@ -3,3 +3,6 @@ node_modules
 pnpm-lock.yaml
 lib/api/schema.d.ts
 next-env.d.ts
+/e2e/.auth
+/test-results
+/playwright-report

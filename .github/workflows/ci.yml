@@ -147,6 +147,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm typecheck
+      - run: pnpm test
       - run: pnpm build
       - name: OpenAPI spec and client drift
         working-directory: .
@@ -155,6 +156,88 @@ jobs:
           pnpm --dir web gen:api
           git diff --exit-code -- api/openapi.json web/lib/api/schema.d.ts \
             || { echo "::error::api/openapi.json or web/lib/api/schema.d.ts is stale. Run the commands in AGENTS.md and commit."; exit 1; }
+
+  web-e2e:
+    runs-on: ubuntu-24.04
+    # Pinned to @playwright/test in web/package.json, so visual baselines match (e2e/docker.sh).
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.0-noble
+      options: --ipc=host
+    services:
+      postgres:  # same block as api-test, reached by service name
+        image: postgres:16
+        env:
+          POSTGRES_USER: megooflags
+          POSTGRES_PASSWORD: megooflags
+          POSTGRES_DB: megooflags
+        options: >-
+          --health-cmd "pg_isready -U megooflags" --health-interval 5s
+          --health-timeout 5s --health-retries 20
+      valkey:
+        image: valkey/valkey:8
+        options: >-
+          --health-cmd "valkey-cli ping" --health-interval 5s
+          --health-timeout 5s --health-retries 20
+    env:
+      MEGOOFLAGS_DATABASE_URL: postgresql+asyncpg://megooflags:megooflags@postgres:5432/megooflags
+      MEGOOFLAGS_VALKEY_URL: redis://valkey:6379/0
+      MEGOOFLAGS_SECRET_KEY: ci-e2e-secret-key-not-used-anywhere-else-0123456789
+      # The browser's Origin, so sign-in passes the API's CSRF check.
+      MEGOOFLAGS_PUBLIC_URL: http://localhost:3000
+      MEGOOFLAGS_API_URL: http://localhost:8000
+      MEGOOFLAGS_API_WORKERS: "1"
+      MEGOOFLAGS_UI_KIT: "1"
+      HOME: /root
+    steps:
+      - uses: actions/checkout@v4
+      # uv uses the image's Python 3.12, which ships without headers (Python.h).
+      - name: SAML build dependencies (lxml and xmlsec are built from source)
+        run: apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: API dependencies
+        working-directory: api
+        run: uv sync --frozen
+      - name: Migrate
+        working-directory: api
+        run: uv run alembic upgrade head
+      - name: API
+        working-directory: api
+        run: |
+          # Not `uv run`: a live uv process holds the cache lock and blocks setup-uv's post-job prune.
+          nohup .venv/bin/python -m megooflags_api.serve > /tmp/api.log 2>&1 &
+          for _ in $(seq 60); do
+            if curl -fsS http://localhost:8000/readyz > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "API not ready after 60 s:"
+          cat /tmp/api.log
+          exit 1
+      - name: Build
+        working-directory: web
+        run: pnpm install --frozen-lockfile && pnpm build
+      - name: E2E
+        working-directory: web
+        run: pnpm e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-e2e
+          path: |
+            web/playwright-report
+            web/test-results
+            /tmp/api.log
 
   images:
     runs-on: ubuntu-24.04

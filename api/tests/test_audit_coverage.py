@@ -51,6 +51,8 @@ NOT_AUDITED = {
     # They only store a WebAuthn challenge in Valkey.
     ("POST", "/api/account/passkeys/options"),
     ("POST", "/api/auth/webauthn/options"),
+    # Personal UI settings.
+    ("PATCH", "/api/account/preferences"),
 }
 
 Params = dict[str, str]

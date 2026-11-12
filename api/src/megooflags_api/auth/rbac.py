@@ -234,6 +234,21 @@ def not_held(
     ]
 
 
+def held(
+    authorizer: Authorizer,
+    levels: Iterable[ScopeKind],
+    project_id: uuid.UUID | None = None,
+    environment_id: uuid.UUID | None = None,
+) -> list[Permission]:
+    """The permissions of `levels` that `authorizer` holds there, in catalogue order."""
+    wanted = set(levels)
+    return [
+        p
+        for p in Permission
+        if PERMISSION_LEVEL[p] in wanted and authorizer.can(p, project_id, environment_id)
+    ]
+
+
 def _scope_of(project_id: uuid.UUID | None, environment_id: uuid.UUID | None) -> ScopeKind:
     if environment_id is not None:
         return ScopeKind.ENVIRONMENT

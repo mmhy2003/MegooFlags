@@ -1913,6 +1913,16 @@
             ],
             "title": "Name"
           },
+          "preferences": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Preferences"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "require_mfa": {
             "title": "Require Mfa",
             "type": "boolean"
@@ -1937,9 +1947,54 @@
           "auth_method",
           "session_state",
           "mfa",
-          "require_mfa"
+          "require_mfa",
+          "preferences"
         ],
         "title": "MeOut",
+        "type": "object"
+      },
+      "MePermissions": {
+        "additionalProperties": false,
+        "description": "What the caller may do: org-wide, in `project` and in each of its visible environments.",
+        "properties": {
+          "environments": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/Permission"
+              },
+              "type": "array"
+            },
+            "title": "Environments",
+            "type": "object"
+          },
+          "org": {
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            },
+            "title": "Org",
+            "type": "array"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Permission"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          }
+        },
+        "required": [
+          "org",
+          "project",
+          "environments"
+        ],
+        "title": "MePermissions",
         "type": "object"
       },
       "MfaStatus": {
@@ -2912,6 +2967,53 @@
           "last_used_at"
         ],
         "title": "PersonalTokenOut",
+        "type": "object"
+      },
+      "Preferences": {
+        "additionalProperties": false,
+        "properties": {
+          "sidebar_collapsed": {
+            "title": "Sidebar Collapsed",
+            "type": "boolean"
+          },
+          "theme": {
+            "$ref": "#/components/schemas/UserTheme"
+          }
+        },
+        "required": [
+          "theme",
+          "sidebar_collapsed"
+        ],
+        "title": "Preferences",
+        "type": "object"
+      },
+      "PreferencesIn": {
+        "additionalProperties": false,
+        "description": "Only the fields given change.",
+        "properties": {
+          "sidebar_collapsed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sidebar Collapsed"
+          },
+          "theme": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserTheme"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "PreferencesIn",
         "type": "object"
       },
       "PrerequisiteIn": {
@@ -5745,6 +5847,15 @@
         "title": "UserStatus",
         "type": "string"
       },
+      "UserTheme": {
+        "enum": [
+          "light",
+          "dark",
+          "system"
+        ],
+        "title": "UserTheme",
+        "type": "string"
+      },
       "UserUpdate": {
         "additionalProperties": false,
         "properties": {
@@ -6416,6 +6527,88 @@
           }
         },
         "summary": "Change Password",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/preferences": {
+      "patch": {
+        "description": "Your UI preferences (theme, sidebar). Personal settings: not audited.",
+        "operationId": "update_preferences_api_account_preferences_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Update Preferences",
         "tags": [
           "account"
         ]
@@ -7642,6 +7835,86 @@
           }
         },
         "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/me/permissions": {
+      "get": {
+        "description": "What you may do org-wide and, given `project`, there and in each environment you can see.",
+        "operationId": "my_permissions_api_auth_me_permissions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MePermissions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "My Permissions",
         "tags": [
           "auth"
         ]

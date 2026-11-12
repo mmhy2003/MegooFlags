@@ -6,6 +6,7 @@ from megooflags_api.auth.rbac import (
     CappedAuthorizer,
     Grant,
     Permission,
+    held,
 )
 from megooflags_api.models.enums import ScopeKind
 
@@ -134,3 +135,12 @@ def test_capped_authorizer_never_exceeds_the_owner() -> None:
     assert not authz.can(P.FLAG_UPDATE, PROJECT_P)
     assert not authz.can_anywhere(P.FLAG_UPDATE)
     assert authz.projects_with(P.FLAG_UPDATE) == set()
+
+
+def test_held_lists_permissions_of_the_levels_in_catalogue_order() -> None:
+    assert held(Authorizer([org("viewer")]), ScopeKind) == [
+        P.AUDIT_READ,
+        P.PROJECT_READ,
+        P.EVALUATE,
+        P.SDK_KEY_READ,
+    ]

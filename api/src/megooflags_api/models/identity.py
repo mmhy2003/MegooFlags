@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -26,6 +28,7 @@ from megooflags_api.models.enums import (
     SessionState,
     SubjectKind,
     UserStatus,
+    UserTheme,
 )
 
 
@@ -44,6 +47,12 @@ class User(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    theme: Mapped[UserTheme] = mapped_column(
+        pg_enum(UserTheme, "user_theme"),
+        default=UserTheme.SYSTEM,
+        server_default=UserTheme.SYSTEM.value,
+    )
+    sidebar_collapsed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
     __table_args__ = (Index("uq_user_email_lower", func.lower(email), unique=True),)
 

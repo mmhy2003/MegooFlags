@@ -1,6 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { apiBaseUrl } from "@/lib/api/base";
 import type { components } from "@/lib/api/schema";
+import { projectFromPath } from "@/lib/routes";
+import { PROJECT_COOKIE, THEME_COOKIE, themeCookieToSet } from "@/lib/theme";
 
 type MeOut = components["schemas"]["MeOut"];
 type SetupStatus = components["schemas"]["SetupStatus"];
@@ -16,13 +19,44 @@ function redirect(request: NextRequest, pathname: string, search = "") {
   return NextResponse.redirect(url);
 }
 
+const COOKIE_OPTIONS = {
+  path: "/",
+  sameSite: "lax",
+  maxAge: 31536000,
+} as const;
+
+/**
+ * Mirrors the stored theme (when this browser has none yet) and the URL's project into cookies,
+ * both on the request the page renders with and on the response, so the first render uses them.
+ */
+function withPreferenceCookies(request: NextRequest, me: MeOut) {
+  const values: [string, string | null][] = [
+    [
+      THEME_COOKIE,
+      themeCookieToSet(
+        request.cookies.get(THEME_COOKIE)?.value,
+        me.preferences?.theme,
+      ),
+    ],
+    [PROJECT_COOKIE, projectFromPath(request.nextUrl.pathname)],
+  ];
+  const set = values.filter((entry): entry is [string, string] => !!entry[1]);
+  for (const [name, value] of set) request.cookies.set(name, value);
+  const response = NextResponse.next({
+    request: { headers: request.headers },
+  });
+  for (const [name, value] of set)
+    response.cookies.set(name, value, COOKIE_OPTIONS);
+  return response;
+}
+
 /** Sends visitors without an active session to sign-in, MFA, enrolment or first-run setup. */
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   if (PUBLIC_PATHS.has(pathname) || pathname.startsWith("/invite/")) {
     return NextResponse.next();
   }
-  const apiUrl = process.env.MEGOOFLAGS_API_URL ?? "http://localhost:8000";
+  const apiUrl = apiBaseUrl();
   // The API names the session cookie after the scheme, so it needs the visitor's one.
   const headers = {
     cookie: request.headers.get("cookie") ?? "",
@@ -43,7 +77,7 @@ export async function proxy(request: NextRequest) {
       if (me.session_state === "enrol_mfa" && pathname !== ENROL_PATH) {
         return redirect(request, ENROL_PATH, "?enrol=1");
       }
-      return NextResponse.next();
+      return withPreferenceCookies(request, me);
     }
     if (res.status === 401) {
       const status = await fetch(`${apiUrl}/api/setup/status`, {
@@ -62,5 +96,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|sdk|ofrep|_next|favicon.ico|healthz|readyz).*)"],
+  matcher: ["/((?!api|sdk|ofrep|_next|favicon.ico|icon.svg|healthz|readyz).*)"],
 };

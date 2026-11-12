@@ -96,6 +96,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Preferences
+         * @description Your UI preferences (theme, sidebar). Personal settings: not audited.
+         */
+        patch: operations["update_preferences_api_account_preferences_patch"];
+        trace?: never;
+    };
     "/api/account/recovery-codes": {
         parameters: {
             query?: never;
@@ -324,6 +344,26 @@ export interface paths {
         };
         /** Me */
         get: operations["me_api_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/me/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Permissions
+         * @description What you may do org-wide and, given `project`, there and in each environment you can see.
+         */
+        get: operations["my_permissions_api_auth_me_permissions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2592,9 +2632,24 @@ export interface components {
             mfa: components["schemas"]["MfaStatus"] | null;
             /** Name */
             name: string | null;
+            preferences: components["schemas"]["Preferences"] | null;
             /** Require Mfa */
             require_mfa: boolean;
             session_state: components["schemas"]["SessionState"] | null;
+        };
+        /**
+         * MePermissions
+         * @description What the caller may do: org-wide, in `project` and in each of its visible environments.
+         */
+        MePermissions: {
+            /** Environments */
+            environments: {
+                [key: string]: components["schemas"]["Permission"][];
+            };
+            /** Org */
+            org: components["schemas"]["Permission"][];
+            /** Project */
+            project: components["schemas"]["Permission"][] | null;
         };
         /** MfaStatus */
         MfaStatus: {
@@ -2896,6 +2951,21 @@ export interface components {
             project: string | null;
             /** Revoked At */
             revoked_at: string | null;
+        };
+        /** Preferences */
+        Preferences: {
+            /** Sidebar Collapsed */
+            sidebar_collapsed: boolean;
+            theme: components["schemas"]["UserTheme"];
+        };
+        /**
+         * PreferencesIn
+         * @description Only the fields given change.
+         */
+        PreferencesIn: {
+            /** Sidebar Collapsed */
+            sidebar_collapsed?: boolean | null;
+            theme?: components["schemas"]["UserTheme"] | null;
         };
         /**
          * PrerequisiteIn
@@ -3913,6 +3983,11 @@ export interface components {
          * @enum {string}
          */
         UserStatus: "active" | "disabled";
+        /**
+         * UserTheme
+         * @enum {string}
+         */
+        UserTheme: "light" | "dark" | "system";
         /** UserUpdate */
         UserUpdate: {
             /** Name */
@@ -4347,6 +4422,75 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_preferences_api_account_preferences_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreferencesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Preferences"];
+                };
             };
             /** @description Unauthorized */
             401: {
@@ -5238,6 +5382,64 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    my_permissions_api_auth_me_permissions_get: {
+        parameters: {
+            query?: {
+                project?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MePermissions"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
