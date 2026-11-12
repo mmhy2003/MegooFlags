@@ -226,19 +226,19 @@ async def record_flag_change(
     action: str,
     flag: Flag,
     env: Environment,
-    before: BaseModel | Mapping[str, Any],
+    before: BaseModel | Mapping[str, Any] | None,
     after: BaseModel | Mapping[str, Any],
     **context: Any,
 ) -> AuditEntry:
     """A change to `flag` in `env`; `context` (such as schedule_id or created_by) is merged into
-    `after`."""
+    `after`. `before` is None for something new, such as a schedule."""
     return await audit.record(
         action,
         "flag",
         flag.key,
         project_id=env.project_id,
         environment_id=env.id,
-        before=snapshot(before),
+        before=None if before is None else snapshot(before),
         after={**snapshot(after), **context},
     )
 
