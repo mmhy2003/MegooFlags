@@ -10,6 +10,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "gen:api": "openapi-typescript ../api/openapi.json -o lib/api/schema.d.ts"
   },
   "dependencies": {
@@ -36,7 +37,8 @@
     "openapi-typescript": "^7.13.0",
     "prettier": "^3.9.10",
     "tailwindcss": "4.3.3",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.1.0"
   },
   "packageManager": "pnpm@10.34.9"
 }

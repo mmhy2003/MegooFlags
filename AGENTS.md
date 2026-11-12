@@ -173,7 +173,7 @@ uv run --frozen --project api pytest scripts/tests
 bash scripts/check_migrations.sh
 
 # web
-(cd web && pnpm install --frozen-lockfile && pnpm lint && pnpm format:check && pnpm typecheck && pnpm build)
+(cd web && pnpm install --frozen-lockfile && pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test)
 
 # OpenAPI spec and client drift
 uv run --frozen --project api python -m megooflags_api.export_openapi api/openapi.json
