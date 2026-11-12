@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import exists, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -138,11 +138,13 @@ async def list_flags(
     limit: int,
     visible: set[uuid.UUID] | None = None,
     lifecycle: LifecycleState | None = None,
+    env_state: tuple[uuid.UUID, bool] | None = None,
 ) -> tuple[list[FlagSummary], str | None]:
     """One query for the page of flags, one for their environment states; no variations.
 
     `lifecycle` wins over `archived`: "archived" lists archived flags, other states live flags
-    in that state. `visible` limits the states to those environment ids (None means all)."""
+    in that state. `visible` limits the states to those environment ids (None means all).
+    `env_state` is (environment id, enabled): only flags in that state in that environment."""
     if lifecycle is not None:
         archived = lifecycle == "archived"
     query = (
@@ -180,6 +182,15 @@ async def list_flags(
         query = query.where(Flag.type == type)
     if lifecycle is not None and lifecycle != "archived":
         query = query.where(Flag.lifecycle == FlagLifecycle(lifecycle))
+    if env_state is not None:
+        env_id, on = env_state
+        query = query.where(
+            exists().where(
+                FlagEnvironment.flag_id == Flag.id,
+                FlagEnvironment.environment_id == env_id,
+                FlagEnvironment.enabled.is_(on),
+            )
+        )
     if cursor is not None:
         query = query.where(Flag.key > decode_cursor(cursor))
 

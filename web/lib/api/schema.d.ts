@@ -7929,6 +7929,10 @@ export interface operations {
                 type?: components["schemas"]["FlagType"] | null;
                 /** @description Only flags in this state; wins over `archived` ("archived" lists archived flags, the other states live ones). */
                 lifecycle?: ("new" | "active" | "permanent" | "stale" | "archived") | null;
+                /** @description An environment key; with `enabled`, only flags in that state there. */
+                env?: string | null;
+                /** @description Needs `env`. */
+                enabled?: boolean | null;
                 cursor?: string | null;
                 limit?: number;
             };

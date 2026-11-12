@@ -11415,6 +11415,42 @@
             }
           },
           {
+            "description": "An environment key; with `enabled`, only flags in that state there.",
+            "in": "query",
+            "name": "env",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An environment key; with `enabled`, only flags in that state there.",
+              "title": "Env"
+            }
+          },
+          {
+            "description": "Needs `env`.",
+            "in": "query",
+            "name": "enabled",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Needs `env`.",
+              "title": "Enabled"
+            }
+          },
+          {
             "in": "query",
             "name": "cursor",
             "required": false,

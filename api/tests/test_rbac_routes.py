@@ -153,6 +153,12 @@ async def test_flag_reads_show_only_visible_environments(client_as: ClientAs) ->
         assert envs == ["development", "production", "staging"]
 
 
+async def test_list_flags_by_hidden_environment_is_404(client_as: ClientAs) -> None:
+    async with client_as(("editor", "demo", "production")) as editor:
+        r = await editor.get("/api/projects/demo/flags?env=staging&enabled=true")
+        assert_error(r, 404, "not_found")
+
+
 async def test_token_on_another_project_gets_404_on_demo(client_as: ClientAs) -> None:
     async with client_as(("admin", "other", None)) as other:
         for path in (

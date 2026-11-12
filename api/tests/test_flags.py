@@ -2,7 +2,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI
-from helpers import assert_error, create_flag, create_project
+from helpers import assert_error, count_statements, create_flag, create_project
 from sqlalchemy import text
 
 STRING_VARIATIONS = [{"key": "a", "value": "A"}, {"key": "b", "value": "B"}]
@@ -296,6 +296,58 @@ async def test_list_items_have_env_states(api: httpx.AsyncClient) -> None:
         ("staging", False, 1),
         ("production", False, 1),
     ]
+
+
+async def toggle_on(api: httpx.AsyncClient, flag: str, env: str) -> None:
+    r = await api.post(
+        f"/api/projects/demo/flags/{flag}/environments/{env}/toggle", json={"enabled": True}
+    )
+    assert r.status_code == 200, r.text
+
+
+async def test_list_filters_by_state_in_environment(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    for key in ["a", "b", "c"]:
+        await create_flag(api, key=key)
+    await toggle_on(api, "b", "staging")
+    await toggle_on(api, "c", "production")
+
+    assert await list_keys(api, env="staging", enabled="true") == ["b"]
+    assert await list_keys(api, env="staging", enabled="false") == ["a", "c"]
+    assert await list_keys(api, env="production", enabled="true") == ["c"]
+    assert await list_keys(api, env="staging", enabled="true", q="b") == ["b"]
+    assert await list_keys(api, env="staging") == ["a", "b", "c"]
+
+
+async def test_list_enabled_needs_env(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+
+    r = await api.get("/api/projects/demo/flags", params={"enabled": "true"})
+
+    body = assert_error(r, 422, "validation_error")
+    assert body["details"] == {"path": "enabled"}
+
+
+async def test_list_unknown_environment_is_404(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+
+    r = await api.get("/api/projects/demo/flags", params={"env": "nope", "enabled": "true"})
+
+    assert_error(r, 404, "not_found")
+
+
+async def test_list_env_filter_query_count_is_fixed(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await create_project(api)
+
+    async def add_flags_and_count(start: int, stop: int) -> int:
+        for i in range(start, stop):
+            await create_flag(api, key=f"f{i:02d}")
+        with count_statements(app.state.engine) as statements:
+            keys = await list_keys(api, env="staging", enabled="false")
+        assert len(keys) == stop
+        return len(statements)
+
+    assert await add_flags_and_count(0, 3) == await add_flags_and_count(3, 33)
 
 
 async def test_patch_flag(api: httpx.AsyncClient) -> None:
