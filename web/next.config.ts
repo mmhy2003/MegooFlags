@@ -29,6 +29,13 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+  // Local dev without Caddy; behind Caddy /api never reaches the web app.
+  async rewrites() {
+    const api = process.env.MEGOOFLAGS_API_URL ?? "http://localhost:8000";
+    return {
+      fallback: [{ source: "/api/:path*", destination: `${api}/api/:path*` }],
+    };
+  },
   turbopack: {
     rules: {
       "*.css": {
