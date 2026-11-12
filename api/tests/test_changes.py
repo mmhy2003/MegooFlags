@@ -24,6 +24,16 @@ EXCLUDED = {
     ("POST", "/api/projects/{project}/environments/{env}/sdk-keys"),
     ("DELETE", "/api/projects/{project}/environments/{env}/sdk-keys/{id}"),
     ("POST", "/api/projects/{project}/environments/{env}/sdk-keys/{id}/rotate"),
+    ("POST", "/api/projects/{project}/flags/{flag}/environments/{env}/schedules"),
+    ("DELETE", "/api/projects/{project}/flags/{flag}/environments/{env}/schedules/{id}"),
+    ("POST", "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/pause"),
+    ("POST", "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/resume"),
+    ("POST", "/api/projects/{project}/change-requests"),
+    ("POST", "/api/projects/{project}/change-requests/{id}/comments"),
+    ("POST", "/api/projects/{project}/change-requests/{id}/cancel"),
+    # Approving publishes only when it applies the change; test_change_requests covers it.
+    ("POST", "/api/projects/{project}/change-requests/{id}/approve"),
+    ("POST", "/api/projects/{project}/change-requests/{id}/reject"),
 }
 P = "/api/projects/{project}"
 F = f"{P}/flags/{{flag}}"
@@ -57,6 +67,7 @@ WRITES: list[tuple[str, str, dict[str, str], Any, str]] = [
         "demo",
     ),
     ("PATCH", F, {}, {"name": "Colour"}, "demo"),
+    ("PUT", f"{F}/lifecycle", {}, {"permanent": True}, "demo"),
     ("POST", f"{F}/variations", {}, {"key": "c", "value": "green"}, "demo"),
     ("PATCH", f"{F}/variations/{{variation}}", {}, {"name": "Green"}, "demo"),
     ("DELETE", f"{F}/variations/{{variation}}", {}, None, "demo"),
@@ -64,6 +75,18 @@ WRITES: list[tuple[str, str, dict[str, str], Any, str]] = [
     ("POST", f"{FE}/toggle", {}, {"enabled": True}, "demo"),
     ("POST", f"{FE}/kill", {}, None, "demo"),
     ("POST", f"{F}/copy", {}, {"from": "production", "to": ["staging"]}, "demo"),
+    (
+        "POST",
+        f"{FE}/rollout",
+        {},
+        {
+            "from_variation": "a",
+            "to_variation": "b",
+            "steps": [{"percentage": 10000}, {"percentage": 100000}],
+        },
+        "demo",
+    ),
+    ("POST", f"{FE}/rollout/abort", {}, None, "demo"),
     ("POST", f"{F}/archive", {}, None, "demo"),
     ("POST", f"{F}/restore", {}, None, "demo"),
     ("POST", f"{P}/segments", {}, {"key": "beta", "name": "Beta"}, "demo"),

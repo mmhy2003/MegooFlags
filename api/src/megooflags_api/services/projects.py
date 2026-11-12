@@ -95,6 +95,8 @@ async def update_project(session: AsyncSession, project: Project, body: ProjectU
         project.name = body.name
     if body.description is not None:
         project.description = body.description
+    if body.stale_after_days is not None:
+        project.stale_after_days = body.stale_after_days
     await session.flush()
 
 

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -8,11 +9,11 @@ from megooflags_api.auth.rbac import Permission
 from megooflags_api.auth.require import Authz, require
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES, not_found, version_conflict
-from megooflags_api.models import Environment, Flag, FlagEnvironment, Project
+from megooflags_api.models import Environment, FlagEnvironment, Project
 from megooflags_api.schemas.common import FlagEnvironmentState
 from megooflags_api.schemas.targeting import CopyIn, FlagConfigIn, FlagConfigOut, ToggleIn
-from megooflags_api.services import targeting
-from megooflags_api.services.audit import AuditDep, Auditor, snapshot
+from megooflags_api.services import approvals, rollouts, targeting
+from megooflags_api.services.audit import AuditDep, record_flag_change
 from megooflags_api.services.changes import ChangesDep
 from megooflags_api.services.flags import environment_states
 from megooflags_api.services.lookup import get_environment, get_flag, get_flag_environment
@@ -59,11 +60,12 @@ async def replace_flag_config(
     """Replace the whole config; `version` must match the current one, or 409."""
     project_row, env_row = _project(authz), _environment(authz)
     flag_row = await get_flag(session, project_row, flag)
+    approvals.ensure_direct_write(env_row)
     fe = await get_flag_environment(session, flag_row, env_row, lock=True)
     before = await targeting.load_config(session, flag_row, fe, env_row.key)
     await targeting.replace_config(session, flag_row, fe, body)
     out = await targeting.load_config(session, flag_row, fe, env_row.key)
-    await _record(audit, "flag.config.update", flag_row, env_row, before, out)
+    await record_flag_change(audit, "flag.config.update", flag_row, env_row, before, out)
     await session.commit()
     await bus.publish(project_row.id)
     return out
@@ -83,15 +85,18 @@ async def toggle_flag(
     """Turn the flag on or off; when `version` is set it must match the current one, or 409."""
     project_row, env_row = _project(authz), _environment(authz)
     flag_row = await get_flag(session, project_row, flag)
+    approvals.ensure_direct_write(env_row)
     fe = await get_flag_environment(session, flag_row, env_row, lock=True)
     if body.version is not None and body.version != fe.version:
         raise version_conflict(fe.version)
-    before = _state(fe, env_row.key)
+    before = targeting.state_of(fe, env_row.key)
     await targeting.set_enabled(session, fe, body.enabled)
-    await _record(audit, "flag.toggle", flag_row, env_row, before, _state(fe, env_row.key))
+    await record_flag_change(
+        audit, "flag.toggle", flag_row, env_row, before, targeting.state_of(fe, env_row.key)
+    )
     await session.commit()
     await bus.publish(project_row.id)
-    return _state(fe, env_row.key)
+    return targeting.state_of(fe, env_row.key)
 
 
 @router.post("/projects/{project}/flags/{flag}/environments/{env}/kill")
@@ -111,12 +116,17 @@ async def kill_flag(
     project_row, env_row = _project(authz), _environment(authz)
     flag_row = await get_flag(session, project_row, flag)
     fe = await get_flag_environment(session, flag_row, env_row, lock=True)
-    before = _state(fe, env_row.key)
+    before = targeting.state_of(fe, env_row.key)
     await targeting.set_enabled(session, fe, False)
-    await _record(audit, "flag.kill", flag_row, env_row, before, _state(fe, env_row.key))
+    await rollouts.pause_live(
+        session, audit, flag_row, env_row, fe, datetime.now(UTC), reason="kill switch"
+    )
+    await record_flag_change(
+        audit, "flag.kill", flag_row, env_row, before, targeting.state_of(fe, env_row.key)
+    )
     await session.commit()
     await bus.publish(project_row.id)
-    return _state(fe, env_row.key)
+    return targeting.state_of(fe, env_row.key)
 
 
 @router.post("/projects/{project}/flags/{flag}/copy")
@@ -141,6 +151,7 @@ async def copy_flag_config(
     targets = [await _visible_environment(session, authz, key) for key in body.to]
     for target in targets:
         authz.check(Permission.FLAG_CONFIG_WRITE, project_row.id, target.id)
+        approvals.ensure_direct_write(target)
     # Locked in id order before copy_config's prerequisite locks, like a PUT, for the snapshots.
     rows = await session.scalars(
         select(FlagEnvironment)
@@ -159,36 +170,11 @@ async def copy_flag_config(
     await targeting.copy_config(session, flag_row, source, targets, body.include_enabled)
     for target in targets:
         after = await targeting.load_config(session, flag_row, fes[target.id], target.key)
-        await _record(audit, "flag.copy", flag_row, target, before[target.id], after)
+        await record_flag_change(audit, "flag.copy", flag_row, target, before[target.id], after)
     await session.commit()
     await bus.publish(project_row.id)
     states = (await environment_states(session, [flag_row.id]))[flag_row.id]
     return [state for state in states if state.environment in body.to]
-
-
-async def _record(
-    audit: Auditor,
-    action: str,
-    flag: Flag,
-    env: Environment,
-    before: FlagConfigOut | FlagEnvironmentState,
-    after: FlagConfigOut | FlagEnvironmentState,
-) -> None:
-    await audit.record(
-        action,
-        "flag",
-        flag.key,
-        project_id=env.project_id,
-        environment_id=env.id,
-        before=snapshot(before),
-        after=snapshot(after),
-    )
-
-
-def _state(fe: FlagEnvironment, env_key: str) -> FlagEnvironmentState:
-    return FlagEnvironmentState(
-        environment=env_key, enabled=fe.enabled, version=fe.version, updated_at=fe.updated_at
-    )
 
 
 def _project(authz: Authz) -> Project:

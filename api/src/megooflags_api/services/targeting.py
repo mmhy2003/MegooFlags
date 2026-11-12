@@ -17,6 +17,7 @@ from megooflags_api.models import (
     RolloutWeight,
     Variation,
 )
+from megooflags_api.schemas.common import FlagEnvironmentState
 from megooflags_api.schemas.targeting import (
     ClauseIn,
     FlagConfigIn,
@@ -148,6 +149,13 @@ async def set_enabled(session: AsyncSession, fe: FlagEnvironment, enabled: bool)
     await session.refresh(fe)  # load the updated_at the database set
 
 
+def state_of(fe: FlagEnvironment, env_key: str) -> FlagEnvironmentState:
+    """`fe`'s on/off state and version, as the toggle and kill switch return it."""
+    return FlagEnvironmentState(
+        environment=env_key, enabled=fe.enabled, version=fe.version, updated_at=fe.updated_at
+    )
+
+
 TOTAL_WEIGHT = 100000
 
 
@@ -163,16 +171,92 @@ def _check_targets(body: FlagConfigIn) -> None:
             seen.add(key)
 
 
-def _check_rollout(rollout: RolloutIn, path: str) -> None:
+def _check_weights(weights: list[WeightIn], path: str) -> None:
     seen: set[str] = set()
-    for j, weight in enumerate(rollout.weights):
+    for j, weight in enumerate(weights):
         if weight.variation in seen:
             raise validation_error(
-                f"variation '{weight.variation}' is listed twice", f"{path}.weights[{j}].variation"
+                f"variation '{weight.variation}' is listed twice", f"{path}[{j}].variation"
             )
         seen.add(weight.variation)
-    if sum(w.weight for w in rollout.weights) != TOTAL_WEIGHT:
-        raise validation_error(f"weights must add up to {TOTAL_WEIGHT}", f"{path}.weights")
+    if sum(w.weight for w in weights) != TOTAL_WEIGHT:
+        raise validation_error(f"weights must add up to {TOTAL_WEIGHT}", path)
+
+
+def _check_rollout(rollout: RolloutIn, path: str) -> None:
+    _check_weights(rollout.weights, f"{path}.weights")
+
+
+async def check_fallthrough_weights(
+    session: AsyncSession, flag: Flag, weights: list[WeightIn]
+) -> dict[str, uuid.UUID]:
+    """Validate the `weights` of a fallthrough rollout; returns the variation ids by key."""
+    variation_ids: dict[str, uuid.UUID] = {
+        key: id_
+        for key, id_ in await session.execute(
+            select(Variation.key, Variation.id).where(Variation.flag_id == flag.id)
+        )
+    }
+    for j, weight in enumerate(weights):
+        if weight.variation not in variation_ids:
+            raise invalid_reference(
+                f"unknown variation '{weight.variation}'", f"weights[{j}].variation"
+            )
+    _check_weights(weights, "weights")
+    return variation_ids
+
+
+async def set_fallthrough_rollout(
+    session: AsyncSession,
+    flag: Flag,
+    fe: FlagEnvironment,
+    weights: list[WeightIn],
+    *,
+    bucket_by: str | None = None,
+) -> None:
+    """Serve a rollout of `weights` as the fallthrough of `fe`, which the caller has locked.
+
+    `bucket_by` defaults to the current one, or "key"; targets and rules are left as they are.
+    """
+    variation_ids = await check_fallthrough_weights(session, flag, weights)
+    await session.execute(delete(RolloutWeight).where(RolloutWeight.flag_environment_id == fe.id))
+    await session.execute(
+        insert(RolloutWeight),
+        _weight_rows(RolloutIn(weights=weights), variation_ids, flag_environment_id=fe.id),
+    )
+    fe.fallthrough_variation_id = None
+    fe.fallthrough_bucket_by = bucket_by or fe.fallthrough_bucket_by or "key"
+    fe.version = fe.version + 1
+    fe.updated_at = func.now()
+    await session.flush()
+    await session.refresh(fe)  # load the updated_at the database set
+
+
+async def set_fallthrough_variation(
+    session: AsyncSession, fe: FlagEnvironment, variation_id: uuid.UUID
+) -> None:
+    """Serve `variation_id` as the fallthrough of `fe`, which the caller has locked."""
+    await session.execute(delete(RolloutWeight).where(RolloutWeight.flag_environment_id == fe.id))
+    fe.fallthrough_variation_id = variation_id
+    fe.fallthrough_bucket_by = None
+    fe.version = fe.version + 1
+    fe.updated_at = func.now()
+    await session.flush()
+    await session.refresh(fe)  # load the updated_at the database set
+
+
+async def fallthrough_weights(session: AsyncSession, fe: FlagEnvironment) -> dict[str, int] | None:
+    """The fallthrough rollout of `fe` as weights by variation key; None for a fixed variation."""
+    if fe.fallthrough_variation_id is not None:
+        return None
+    return {
+        key: weight
+        for key, weight in await session.execute(
+            select(Variation.key, RolloutWeight.weight)
+            .join(Variation, Variation.id == RolloutWeight.variation_id)
+            .where(RolloutWeight.flag_environment_id == fe.id)
+        )
+    }
 
 
 def _serves(body: FlagConfigIn) -> list[tuple[str, Serve]]:

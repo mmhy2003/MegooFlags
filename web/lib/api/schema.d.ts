@@ -652,6 +652,133 @@ export interface paths {
         patch: operations["update_project_api_projects__project__patch"];
         trace?: never;
     };
+    "/api/projects/{project}/change-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Change Requests
+         * @description Change requests in the environments the caller can see, newest first.
+         */
+        get: operations["list_change_requests_api_projects__project__change_requests_get"];
+        put?: never;
+        /**
+         * Create Change Request
+         * @description Open a change request; it needs the permission of the change it carries.
+         *
+         *     The change is dry-run first, so an invalid payload or a stale config `version` is refused
+         *     now. Change requests are allowed in unprotected environments too.
+         */
+        post: operations["create_change_request_api_projects__project__change_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/change-requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Change Request */
+        get: operations["read_change_request_api_projects__project__change_requests__id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/change-requests/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Change Request
+         * @description Approve an open change request; needs change.approve in its environment, and its author
+         *     cannot. The approval that reaches the environment's requirement applies the change, or
+         *     fails the request when the flag changed since it was made or the change is no longer valid.
+         */
+        post: operations["approve_change_request_api_projects__project__change_requests__id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/change-requests/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Change Request
+         * @description Close an open change request without applying it; for its author or project.manage.
+         */
+        post: operations["cancel_change_request_api_projects__project__change_requests__id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/change-requests/{id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Comment On Change Request
+         * @description Comment on an open change request; 409 once it is closed.
+         */
+        post: operations["comment_on_change_request_api_projects__project__change_requests__id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/change-requests/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Change Request
+         * @description Reject an open change request, which closes it; needs change.approve in its environment,
+         *     and its author cannot.
+         */
+        post: operations["reject_change_request_api_projects__project__change_requests__id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project}/environments": {
         parameters: {
             query?: never;
@@ -906,6 +1033,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project}/flags/{flag}/environments/{env}/rollout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Rollout */
+        get: operations["read_rollout_api_projects__project__flags__flag__environments__env__rollout_get"];
+        put?: never;
+        /**
+         * Start Rollout
+         * @description Start a progressive rollout of the fallthrough and apply its first step at once.
+         */
+        post: operations["start_rollout_api_projects__project__flags__flag__environments__env__rollout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/abort": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abort Rollout
+         * @description Stop the rollout and serve the "from" variation to all of the fallthrough again.
+         */
+        post: operations["abort_rollout_api_projects__project__flags__flag__environments__env__rollout_abort_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Rollout
+         * @description Stop the clock of the active rollout; the traffic split stays as it is.
+         */
+        post: operations["pause_rollout_api_projects__project__flags__flag__environments__env__rollout_pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Rollout
+         * @description Restart the clock of a paused rollout with the wait it had left.
+         */
+        post: operations["resume_rollout_api_projects__project__flags__flag__environments__env__rollout_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/flags/{flag}/environments/{env}/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Schedules
+         * @description The flag's scheduled changes in the environment, latest `run_at` first (at most 100).
+         */
+        get: operations["list_schedules_api_projects__project__flags__flag__environments__env__schedules_get"];
+        put?: never;
+        /**
+         * Create Schedule
+         * @description Schedule a change; enable and disable need flag.toggle, set_rollout flag.config.write.
+         */
+        post: operations["create_schedule_api_projects__project__flags__flag__environments__env__schedules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/flags/{flag}/environments/{env}/schedules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Cancel Schedule
+         * @description Cancel a pending schedule; it needs the permission of the schedule's action.
+         */
+        delete: operations["cancel_schedule_api_projects__project__flags__flag__environments__env__schedules__id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project}/flags/{flag}/environments/{env}/toggle": {
         parameters: {
             query?: never;
@@ -920,6 +1172,26 @@ export interface paths {
          * @description Turn the flag on or off; when `version` is set it must match the current one, or 409.
          */
         post: operations["toggle_flag_api_projects__project__flags__flag__environments__env__toggle_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/flags/{flag}/lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Flag Lifecycle
+         * @description Mark the flag permanent (never stale), or clear the mark.
+         */
+        put: operations["set_flag_lifecycle_api_projects__project__flags__flag__lifecycle_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1622,6 +1894,11 @@ export interface components {
          * @enum {string}
          */
         ApiTokenKind: "service" | "personal";
+        /** ApproveIn */
+        ApproveIn: {
+            /** Comment */
+            comment?: string | null;
+        };
         /** AuditActor */
         AuditActor: {
             /** Auth Method */
@@ -1717,6 +1994,123 @@ export interface components {
             /** Subject Label */
             subject_label: string | null;
         };
+        /**
+         * ChangeRequestCreate
+         * @description A change to `flag` in `environment` that waits for approval.
+         *
+         *     `payload` is the body of the direct endpoint: FlagConfigIn for config, ToggleIn for toggle,
+         *     ScheduleIn for schedule and ProgressiveRolloutIn for rollout. It is checked by a dry run, so
+         *     an invalid change is refused now; creating needs the permission of the direct endpoint.
+         */
+        ChangeRequestCreate: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Environment */
+            environment: string;
+            /** Flag */
+            flag: string;
+            kind: components["schemas"]["ChangeRequestKind"];
+            /** Payload */
+            payload: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Title */
+            title: string;
+        };
+        /**
+         * ChangeRequestKind
+         * @enum {string}
+         */
+        ChangeRequestKind: "config" | "toggle" | "schedule" | "rollout";
+        /**
+         * ChangeRequestOut
+         * @description `current` (the live config) and `proposed` are set for config change requests only.
+         */
+        ChangeRequestOut: {
+            /** Approvals */
+            approvals: number;
+            /** Approvals Required */
+            approvals_required: number;
+            /** Author */
+            author: string;
+            /** Base Version */
+            base_version: number;
+            /** Closed At */
+            closed_at: string | null;
+            /** Comments */
+            comments: components["schemas"]["CommentOut"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            current: components["schemas"]["FlagConfigOut"] | null;
+            /** Description */
+            description: string;
+            /** Environment */
+            environment: string;
+            /** Error */
+            error: string | null;
+            /** Flag */
+            flag: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["ChangeRequestKind"];
+            /** Payload */
+            payload: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            proposed: components["schemas"]["FlagConfigIn"] | null;
+            /** Reviews */
+            reviews: components["schemas"]["ReviewOut"][];
+            status: components["schemas"]["ChangeRequestStatus"];
+            /** Title */
+            title: string;
+        };
+        /**
+         * ChangeRequestStatus
+         * @enum {string}
+         */
+        ChangeRequestStatus: "open" | "applied" | "rejected" | "cancelled" | "failed";
+        /**
+         * ChangeRequestSummary
+         * @description `approvals` counts the approving reviews; `approvals_required` is the environment's
+         *     current setting, at least 1.
+         */
+        ChangeRequestSummary: {
+            /** Approvals */
+            approvals: number;
+            /** Approvals Required */
+            approvals_required: number;
+            /** Author */
+            author: string;
+            /** Closed At */
+            closed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Environment */
+            environment: string;
+            /** Flag */
+            flag: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["ChangeRequestKind"];
+            status: components["schemas"]["ChangeRequestStatus"];
+            /** Title */
+            title: string;
+        };
         /** ClauseIn */
         ClauseIn: {
             /**
@@ -1753,6 +2147,28 @@ export interface components {
         CodeIn: {
             /** Code */
             code: string;
+        };
+        /** CommentIn */
+        CommentIn: {
+            /** Body */
+            body: string;
+        };
+        /** CommentOut */
+        CommentOut: {
+            /** Author */
+            author: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
         };
         /**
          * CopyIn
@@ -1802,6 +2218,8 @@ export interface components {
         };
         /** EnvironmentOut */
         EnvironmentOut: {
+            /** Approvals Required */
+            approvals_required: number;
             /**
              * Created At
              * Format: date-time
@@ -1823,6 +2241,11 @@ export interface components {
         };
         /** EnvironmentUpdate */
         EnvironmentUpdate: {
+            /**
+             * Approvals Required
+             * @description Approvals a change request needs here; 0 lets changes be made directly.
+             */
+            approvals_required?: number | null;
             /** Description */
             description?: string | null;
             /** Name */
@@ -2013,6 +2436,13 @@ export interface components {
             environments: components["schemas"]["FlagEnvironmentState"][];
             /** Key */
             key: string;
+            /** Last Evaluated At */
+            last_evaluated_at: string | null;
+            /**
+             * Lifecycle
+             * @enum {string}
+             */
+            lifecycle: "new" | "active" | "permanent" | "stale" | "archived";
             /** Name */
             name: string;
             /** Off Variation */
@@ -2047,6 +2477,13 @@ export interface components {
             environments: components["schemas"]["FlagEnvironmentState"][];
             /** Key */
             key: string;
+            /** Last Evaluated At */
+            last_evaluated_at: string | null;
+            /**
+             * Lifecycle
+             * @enum {string}
+             */
+            lifecycle: "new" | "active" | "permanent" | "stale" | "archived";
             /** Name */
             name: string;
             /** Owner */
@@ -2130,6 +2567,14 @@ export interface components {
             url: string;
         };
         JsonValue: unknown;
+        /** LifecycleIn */
+        LifecycleIn: {
+            /**
+             * Permanent
+             * @description Permanent flags are never stale. Clearing the mark gives active or new.
+             */
+            permanent: boolean;
+        };
         /** MeOut */
         MeOut: {
             /** Auth Method */
@@ -2248,6 +2693,13 @@ export interface components {
         Page_BindingOut_: {
             /** Items */
             items: components["schemas"]["BindingOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[ChangeRequestSummary] */
+        Page_ChangeRequestSummary_: {
+            /** Items */
+            items: components["schemas"]["ChangeRequestSummary"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -2389,7 +2841,7 @@ export interface components {
          * Permission
          * @enum {string}
          */
-        Permission: "org.manage" | "member.manage" | "role.manage" | "token.manage" | "project.create" | "audit.read" | "project.read" | "project.manage" | "environment.manage" | "flag.create" | "flag.update" | "flag.archive" | "segment.write" | "flag.config.write" | "flag.toggle" | "evaluate" | "sdk_key.read" | "sdk_key.manage";
+        Permission: "org.manage" | "member.manage" | "role.manage" | "token.manage" | "project.create" | "audit.read" | "project.read" | "project.manage" | "environment.manage" | "flag.create" | "flag.update" | "flag.archive" | "segment.write" | "flag.config.write" | "flag.toggle" | "change.approve" | "evaluate" | "sdk_key.read" | "sdk_key.manage";
         /**
          * PersonalTokenCreate
          * @description A token acting as you, limited to `permissions` within `project` (and `env`), and never
@@ -2460,6 +2912,63 @@ export interface components {
          * @enum {string}
          */
         PrincipalKind: "user" | "service_token" | "personal_token";
+        /**
+         * ProgressiveRolloutIn
+         * @description Moves the fallthrough from `from_variation` to `to_variation` in steps whose percentages
+         *     strictly increase and end at 100000.
+         */
+        ProgressiveRolloutIn: {
+            /** From Variation */
+            from_variation: string;
+            /** Steps */
+            steps: components["schemas"]["RolloutStepIn"][];
+            /** To Variation */
+            to_variation: string;
+        };
+        /**
+         * ProgressiveRolloutOut
+         * @description `from_variation` or `to_variation` is null once that variation is deleted.
+         */
+        ProgressiveRolloutOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Current Step */
+            current_step: number;
+            /** Environment */
+            environment: string;
+            /** Error */
+            error: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** From Variation */
+            from_variation: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Applied Weights */
+            last_applied_weights: components["schemas"]["WeightIn"][] | null;
+            /** Next Step At */
+            next_step_at: string | null;
+            /** Remaining Seconds */
+            remaining_seconds: number | null;
+            status: components["schemas"]["RolloutStatus"];
+            /** Steps */
+            steps: components["schemas"]["RolloutStepIn"][];
+            /** To Variation */
+            to_variation: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** ProjectCreate */
         ProjectCreate: {
             /**
@@ -2492,6 +3001,8 @@ export interface components {
             key: string;
             /** Name */
             name: string;
+            /** Stale After Days */
+            stale_after_days: number;
             /**
              * Updated At
              * Format: date-time
@@ -2511,6 +3022,8 @@ export interface components {
             key: string;
             /** Name */
             name: string;
+            /** Stale After Days */
+            stale_after_days: number;
             /**
              * Updated At
              * Format: date-time
@@ -2523,6 +3036,11 @@ export interface components {
             description?: string | null;
             /** Name */
             name?: string | null;
+            /**
+             * Stale After Days
+             * @description A flag no environment has evaluated for this many days is stale.
+             */
+            stale_after_days?: number | null;
         };
         /** PublicProvider */
         PublicProvider: {
@@ -2546,6 +3064,29 @@ export interface components {
         RecoveryCodes: {
             /** Recovery Codes */
             recovery_codes: string[];
+        };
+        /** RejectIn */
+        RejectIn: {
+            /** Comment */
+            comment: string;
+        };
+        /**
+         * ReviewDecision
+         * @enum {string}
+         */
+        ReviewDecision: "approve" | "reject";
+        /** ReviewOut */
+        ReviewOut: {
+            /** Comment */
+            comment: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            decision: components["schemas"]["ReviewDecision"];
+            /** Reviewer */
+            reviewer: string;
         };
         /** RoleIn */
         RoleIn: {
@@ -2597,6 +3138,34 @@ export interface components {
             bucket_by: string;
             /** Weights */
             weights: components["schemas"]["WeightIn"][];
+        };
+        /**
+         * RolloutStatus
+         * @enum {string}
+         */
+        RolloutStatus: "active" | "paused" | "completed" | "aborted" | "failed" | "cancelled";
+        /**
+         * RolloutStepIn
+         * @description The "to" variation's share in thousandths of a percent, then the wait in minutes before
+         *     the next step (ignored on the last step).
+         */
+        RolloutStepIn: {
+            /** Percentage */
+            percentage: number;
+            /**
+             * Wait Minutes
+             * @default 60
+             */
+            wait_minutes: number;
+        };
+        /**
+         * RolloutView
+         * @description The live (active or paused) rollout, if any, and the 10 most recent finished ones.
+         */
+        RolloutView: {
+            current: components["schemas"]["ProgressiveRolloutOut"] | null;
+            /** Recent */
+            recent: components["schemas"]["ProgressiveRolloutOut"][];
         };
         /**
          * RotateIn
@@ -2683,6 +3252,64 @@ export interface components {
             /** Sp Entity Id */
             sp_entity_id?: string | null;
         };
+        /**
+         * ScheduleIn
+         * @description A change to apply at `run_at`, which must be in the future and at most 365 days ahead.
+         *
+         *     `weights` (the new fallthrough rollout) is required for set_rollout and refused otherwise.
+         */
+        ScheduleIn: {
+            action: components["schemas"]["ScheduledAction"];
+            /**
+             * Run At
+             * Format: date-time
+             */
+            run_at: string;
+            /** Weights */
+            weights?: components["schemas"]["WeightIn"][] | null;
+        };
+        /** ScheduleOut */
+        ScheduleOut: {
+            action: components["schemas"]["ScheduledAction"];
+            /** Change Request Id */
+            change_request_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Environment */
+            environment: string;
+            /** Error */
+            error: string | null;
+            /** Executed At */
+            executed_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Run At
+             * Format: date-time
+             */
+            run_at: string;
+            status: components["schemas"]["ScheduleStatus"];
+            /** Weights */
+            weights: components["schemas"]["WeightIn"][] | null;
+        };
+        /**
+         * ScheduleStatus
+         * @enum {string}
+         */
+        ScheduleStatus: "pending" | "done" | "failed" | "cancelled";
+        /**
+         * ScheduledAction
+         * @enum {string}
+         */
+        ScheduledAction: "enable" | "disable" | "set_rollout";
         /**
          * ScopeKind
          * @enum {string}
@@ -5893,6 +6520,504 @@ export interface operations {
             };
         };
     };
+    list_change_requests_api_projects__project__change_requests_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["ChangeRequestStatus"] | null;
+                /** @description An environment key. */
+                env?: string | null;
+                /** @description A flag key. */
+                flag?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ChangeRequestSummary_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_change_request_api_projects__project__change_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeRequestOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_change_request_api_projects__project__change_requests__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeRequestOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    approve_change_request_api_projects__project__change_requests__id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApproveIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeRequestOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    cancel_change_request_api_projects__project__change_requests__id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeRequestOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    comment_on_change_request_api_projects__project__change_requests__id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reject_change_request_api_projects__project__change_requests__id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeRequestOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_environments_api_projects__project__environments_get: {
         parameters: {
             query?: never;
@@ -6600,6 +7725,8 @@ export interface operations {
                 /** @description List only archived flags instead of live ones. */
                 archived?: boolean;
                 type?: components["schemas"]["FlagType"] | null;
+                /** @description Only flags in this state; wins over `archived` ("archived" lists archived flags, the other states live ones). */
+                lifecycle?: ("new" | "active" | "permanent" | "stale" | "archived") | null;
                 cursor?: string | null;
                 limit?: number;
             };
@@ -7363,6 +8490,567 @@ export interface operations {
             };
         };
     };
+    read_rollout_api_projects__project__flags__flag__environments__env__rollout_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolloutView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_rollout_api_projects__project__flags__flag__environments__env__rollout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgressiveRolloutIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressiveRolloutOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    abort_rollout_api_projects__project__flags__flag__environments__env__rollout_abort_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressiveRolloutOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pause_rollout_api_projects__project__flags__flag__environments__env__rollout_pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressiveRolloutOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    resume_rollout_api_projects__project__flags__flag__environments__env__rollout_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressiveRolloutOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_schedules_api_projects__project__flags__flag__environments__env__schedules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_schedule_api_projects__project__flags__flag__environments__env__schedules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    cancel_schedule_api_projects__project__flags__flag__environments__env__schedules__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                env: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     toggle_flag_api_projects__project__flags__flag__environments__env__toggle_post: {
         parameters: {
             query?: never;
@@ -7387,6 +9075,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FlagEnvironmentState"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_flag_lifecycle_api_projects__project__flags__flag__lifecycle_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LifecycleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlagOut"];
                 };
             };
             /** @description Unauthorized */

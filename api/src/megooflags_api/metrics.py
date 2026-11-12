@@ -38,6 +38,16 @@ CHANGE_PUBLISH_ERRORS = Counter(
     "megooflags_change_publish_errors",
     "Change messages that could not be published to Valkey (the periodic re-check delivers them).",
 )
+SCHEDULER_LEADER = Gauge(
+    "megooflags_scheduler_leader",
+    "1 while this process is the background scheduler's leader.",
+    multiprocess_mode="livesum",
+)
+SCHEDULER_JOBS = Counter(
+    "megooflags_scheduler_jobs",
+    "Rows the scheduler's jobs handled, by outcome (ok, failed, or error for a job that raised).",
+    ["job", "outcome"],
+)
 BUILD_INFO = Gauge(
     "megooflags_build_info", "MegooFlags API build.", ["version"], multiprocess_mode="max"
 )

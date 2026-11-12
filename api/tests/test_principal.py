@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, FastAPI, Request
 from helpers import assert_error, bearer, count_statements, seed_service_token, seed_user
 from sqlalchemy import update
 
-from megooflags_api.auth.principal import PrincipalDep
+from megooflags_api.auth.principal import Principal, PrincipalDep, PrincipalKind
 from megooflags_api.auth.rbac import Permission
 from megooflags_api.auth.require import Authz, authenticated, require
 from megooflags_api.auth.sessions import COOKIE_PLAIN, create_session
@@ -216,3 +216,11 @@ async def test_bindings_are_queried_once_per_request(
     assert r.status_code == 200, r.text
     assert sum("role_binding" in s for s in statements) == 1
     assert sum("api_token" in s for s in statements) == 1
+
+
+def test_actor_id_is_the_person_or_the_service_token() -> None:
+    user, token = uuid.uuid4(), uuid.uuid4()
+    as_user = Principal(PrincipalKind.USER, user, "u@example.com", "password", user_id=user)
+    as_pat = Principal(PrincipalKind.PERSONAL_TOKEN, token, "u (t)", "token", user_id=user)
+    as_service = Principal(PrincipalKind.SERVICE_TOKEN, token, "ci", "token")
+    assert (as_user.actor_id, as_pat.actor_id, as_service.actor_id) == (user, user, token)

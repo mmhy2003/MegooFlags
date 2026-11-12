@@ -77,3 +77,33 @@ def test_committed_spec_is_current() -> None:
         "api/openapi.json is stale. "
         "Run `uv run python -m megooflags_api.export_openapi openapi.json` from api/."
     )
+
+
+def test_spec_documents_release_workflows() -> None:
+    spec = json.loads(render())
+    flag = "/api/projects/{project}/flags/{flag}"
+    fe = f"{flag}/environments/{{env}}"
+    cr = "/api/projects/{project}/change-requests"
+
+    assert {
+        f"{flag}/lifecycle",
+        f"{fe}/schedules",
+        f"{fe}/schedules/{{id}}",
+        f"{fe}/rollout",
+        f"{fe}/rollout/pause",
+        f"{fe}/rollout/resume",
+        f"{fe}/rollout/abort",
+        cr,
+        f"{cr}/{{id}}",
+        f"{cr}/{{id}}/comments",
+        f"{cr}/{{id}}/approve",
+        f"{cr}/{{id}}/reject",
+        f"{cr}/{{id}}/cancel",
+    } <= spec["paths"].keys()
+    assert {
+        "ScheduleOut",
+        "ProgressiveRolloutOut",
+        "RolloutView",
+        "ChangeRequestOut",
+        "ChangeRequestSummary",
+    } <= spec["components"]["schemas"].keys()

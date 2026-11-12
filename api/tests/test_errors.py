@@ -2,7 +2,7 @@ import httpx
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from megooflags_api.errors import integrity_error_status_code, not_found
+from megooflags_api.errors import integrity_error_status_code, invalid_state, not_found
 from megooflags_api.main import create_app
 from megooflags_api.schemas.common import ApiModel, Key
 
@@ -68,3 +68,12 @@ def test_integrity_error_codes() -> None:
 async def test_session_dependency(app: FastAPI) -> None:
     async with app.state.sessionmaker() as session:
         assert (await session.execute(text("SELECT 1"))).scalar() == 1
+
+
+def test_invalid_state_is_409() -> None:
+    error = invalid_state("the change request is closed")
+    assert (error.status, error.code, error.message) == (
+        409,
+        "invalid_state",
+        "the change request is closed",
+    )

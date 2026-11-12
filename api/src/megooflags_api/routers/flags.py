@@ -15,11 +15,13 @@ from megooflags_api.schemas.flags import (
     FlagOut,
     FlagSummary,
     FlagUpdate,
+    LifecycleIn,
+    LifecycleState,
     VariationIn,
     VariationOut,
     VariationUpdate,
 )
-from megooflags_api.services import flags, variations
+from megooflags_api.services import flags, lifecycle, rollouts, schedules, variations
 from megooflags_api.services.audit import AuditDep, Auditor, snapshot
 from megooflags_api.services.changes import ChangesDep
 from megooflags_api.services.lookup import get_flag, get_variation
@@ -54,6 +56,13 @@ async def list_flags(
     owner: str | None = None,
     archived: bool = Query(False, description="List only archived flags instead of live ones."),
     type: FlagType | None = None,
+    lifecycle: Annotated[
+        LifecycleState | None,
+        Query(
+            description='Only flags in this state; wins over `archived` ("archived" lists '
+            "archived flags, the other states live ones)."
+        ),
+    ] = None,
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=500),
 ) -> Page[FlagSummary]:
@@ -68,6 +77,7 @@ async def list_flags(
         cursor=cursor,
         limit=limit,
         visible=_visible(authz),
+        lifecycle=lifecycle,
     )
     return Page[FlagSummary](items=items, next_cursor=next_cursor)
 
@@ -117,6 +127,27 @@ async def update_flag(
     return out
 
 
+@router.put("/projects/{project}/flags/{flag}/lifecycle")
+async def set_flag_lifecycle(
+    session: SessionDep,
+    authz: UpdateFlag,
+    audit: AuditDep,
+    bus: ChangesDep,
+    project: str,
+    flag: str,
+    body: LifecycleIn,
+) -> FlagOut:
+    """Mark the flag permanent (never stale), or clear the mark."""
+    row = await get_flag(session, _project(authz), flag)
+    before = await flags.flag_out(session, row, _visible(authz))
+    await lifecycle.set_permanent(session, row, body.permanent)
+    out = await flags.flag_out(session, row, _visible(authz))
+    await _record_flag(audit, "flag.lifecycle.update", row, before, out)
+    await session.commit()
+    await bus.publish(row.project_id)
+    return out
+
+
 @router.post("/projects/{project}/flags/{flag}/archive")
 async def archive_flag(
     session: SessionDep,
@@ -129,6 +160,8 @@ async def archive_flag(
     row = await get_flag(session, _project(authz), flag)
     before = await flags.flag_out(session, row, _visible(authz))
     await flags.archive_flag(session, row)
+    await schedules.cancel_pending_for_flag(session, audit, row, "flag archived")
+    await rollouts.cancel_live_for_flag(session, audit, row, "flag archived")
     out = await flags.flag_out(session, row, _visible(authz))
     await _record_flag(audit, "flag.archive", row, before, out)
     await session.commit()

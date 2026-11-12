@@ -17,6 +17,13 @@ from megooflags_api.models.identity import (
     WebauthnCredential,
 )
 from megooflags_api.models.project import Environment, Project
+from megooflags_api.models.release import (
+    ChangeRequest,
+    ChangeRequestComment,
+    ChangeRequestReview,
+    ProgressiveRollout,
+    ScheduledChange,
+)
 from megooflags_api.models.sdk import EvaluationCount, ExposureEvent, SdkKey
 from megooflags_api.models.segment import Segment, SegmentRule, SegmentTarget
 from megooflags_api.models.sso import SsoGroupMapping, SsoProvider, UserIdentity
@@ -33,6 +40,9 @@ from megooflags_api.models.targeting import (
 __all__ = [
     "ApiToken",
     "AuditEntry",
+    "ChangeRequest",
+    "ChangeRequestComment",
+    "ChangeRequestReview",
     "Clause",
     "ClauseSegment",
     "Environment",
@@ -45,11 +55,13 @@ __all__ = [
     "FlagTarget",
     "Invitation",
     "OrgSettings",
+    "ProgressiveRollout",
     "Project",
     "RecoveryCode",
     "Role",
     "RoleBinding",
     "RolloutWeight",
+    "ScheduledChange",
     "SdkKey",
     "Segment",
     "SegmentRule",

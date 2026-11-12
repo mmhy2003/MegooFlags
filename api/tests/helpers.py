@@ -4,6 +4,7 @@ import uuid
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -17,9 +18,11 @@ from sqlalchemy import event, func, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from valkey.exceptions import ValkeyError
 
-from megooflags_api.models import AuditEntry, Role, RoleBinding
+from megooflags_api.models import AuditEntry, Environment, Project, Role, RoleBinding
 from megooflags_api.models.enums import ScopeKind, SubjectKind
 from megooflags_api.services.api_tokens import create_service_token
+from megooflags_api.services.events import add_counts
+from megooflags_api.services.scheduler import Scheduler
 from megooflags_api.services.users import create_user
 
 # Empties every table the tests write to, keeping the built-in roles and the org_settings row.
@@ -41,6 +44,20 @@ async def reset_database(app: FastAPI) -> None:
             await app.state.valkey.delete(*keys)
     except (ValkeyError, OSError, TimeoutError):
         pass
+
+
+class FakeClock:
+    """A clock for services and the scheduler that moves only when told to."""
+
+    def __init__(self, now: datetime | None = None) -> None:
+        self.now = now if now is not None else datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+    def __call__(self) -> datetime:
+        return self.now
+
+    def advance(self, **delta: float) -> datetime:
+        self.now += timedelta(**delta)
+        return self.now
 
 
 PASSWORD = "correct horse battery staple"
@@ -319,3 +336,23 @@ async def next_events(lines: AsyncIterator[str], count: int, within: float) -> l
     if len(events) < count:
         pytest.fail(f"the stream ended after {events}, expected {count} events")
     return events
+
+
+def make_scheduler(app: FastAPI, clock: FakeClock) -> Scheduler:
+    """The app's jobs on a scheduler whose ticks the test drives with `clock`."""
+    return Scheduler(app.state.engine, app.state.sessionmaker, app.state.change_bus, clock=clock)
+
+
+async def seed_counts(
+    app: FastAPI, project_key: str, env_key: str, flag_key: str, hour: datetime, count: int = 1
+) -> None:
+    """A committed evaluation count for `flag_key` in that project's environment and hour."""
+    async with app.state.sessionmaker() as session:
+        env_id = await session.scalar(
+            select(Environment.id)
+            .join(Project, Project.id == Environment.project_id)
+            .where(Project.key == project_key, Environment.key == env_key)
+        )
+        assert env_id is not None, f"no environment {project_key}/{env_key}"
+        await add_counts(session, {(env_id, flag_key, "", hour): count})
+        await session.commit()

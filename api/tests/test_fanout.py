@@ -152,6 +152,7 @@ async def test_client_stream_other_instance() -> None:
 
 async def test_idle_loops_issue_no_statements(app: FastAPI) -> None:
     app.state.settings.stream_recheck_seconds = 0.1
+    app.state.settings.scheduler_enabled = False  # it queries on purpose (test_scheduler)
     async with running(app):
         with count_statements(app.state.engine) as statements:
             await asyncio.sleep(0.5)

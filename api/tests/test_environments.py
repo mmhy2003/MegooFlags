@@ -1,8 +1,9 @@
 import uuid
 
 import httpx
+import pytest
 from fastapi import FastAPI
-from helpers import assert_error, create_project
+from helpers import assert_error, audit_entries, create_project
 from sqlalchemy import text
 
 
@@ -168,3 +169,41 @@ async def test_backfill_existing_flags(app: FastAPI, api: httpx.AsyncClient) -> 
         assert enabled is False
         assert version == 1
         assert fallthrough == first_variations[flag_id]
+
+
+async def test_approvals_required_defaults_to_0(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+
+    listed = (await api.get("/api/projects/demo/environments")).json()
+
+    assert [e["approvals_required"] for e in listed] == [0, 0, 0]
+
+
+async def test_patch_approvals_required(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await create_project(api)
+
+    r = await api.patch(
+        "/api/projects/demo/environments/production", json={"approvals_required": 2}
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["approvals_required"] == 2
+    got = (await api.get("/api/projects/demo/environments/production")).json()
+    assert got["approvals_required"] == 2
+    listed = (await api.get("/api/projects/demo/environments")).json()
+    assert [e["approvals_required"] for e in listed] == [0, 0, 2]
+    [entry] = await audit_entries(app, "environment.update")
+    assert (entry["before"]["approvals_required"], entry["after"]["approvals_required"]) == (0, 2)
+
+
+@pytest.mark.parametrize("value", [11, -1])
+async def test_patch_approvals_required_out_of_range_is_422(
+    api: httpx.AsyncClient, value: int
+) -> None:
+    await create_project(api)
+
+    r = await api.patch(
+        "/api/projects/demo/environments/production", json={"approvals_required": value}
+    )
+
+    assert_error(r, 422, "validation_error")

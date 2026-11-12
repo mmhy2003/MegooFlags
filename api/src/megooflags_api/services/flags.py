@@ -14,16 +14,18 @@ from megooflags_api.errors import (
     validation_error,
 )
 from megooflags_api.models import Environment, Flag, FlagEnvironment, Project, Variation
-from megooflags_api.models.enums import FlagType
+from megooflags_api.models.enums import FlagLifecycle, FlagType
 from megooflags_api.schemas.common import FlagEnvironmentState
 from megooflags_api.schemas.flags import (
     FlagCreate,
     FlagOut,
     FlagSummary,
     FlagUpdate,
+    LifecycleState,
     VariationIn,
     VariationOut,
 )
+from megooflags_api.services.lifecycle import lifecycle_state
 from megooflags_api.services.pagination import decode_cursor, page_slice
 from megooflags_api.services.usage import flag_dependents
 from megooflags_api.services.values import check_value
@@ -135,10 +137,14 @@ async def list_flags(
     cursor: str | None,
     limit: int,
     visible: set[uuid.UUID] | None = None,
+    lifecycle: LifecycleState | None = None,
 ) -> tuple[list[FlagSummary], str | None]:
     """One query for the page of flags, one for their environment states; no variations.
 
-    `visible` limits the states to those environment ids (None means all)."""
+    `lifecycle` wins over `archived`: "archived" lists archived flags, other states live flags
+    in that state. `visible` limits the states to those environment ids (None means all)."""
+    if lifecycle is not None:
+        archived = lifecycle == "archived"
     query = (
         select(
             Flag.id,
@@ -149,6 +155,8 @@ async def list_flags(
             Flag.tags,
             Flag.owner,
             Flag.archived_at,
+            Flag.lifecycle,
+            Flag.last_evaluated_at,
             Flag.created_at,
             Flag.updated_at,
         )
@@ -170,6 +178,8 @@ async def list_flags(
         query = query.where(Flag.owner == owner)
     if type is not None:
         query = query.where(Flag.type == type)
+    if lifecycle is not None and lifecycle != "archived":
+        query = query.where(Flag.lifecycle == FlagLifecycle(lifecycle))
     if cursor is not None:
         query = query.where(Flag.key > decode_cursor(cursor))
 
@@ -185,6 +195,8 @@ async def list_flags(
             owner=row.owner,
             archived=row.archived_at is not None,
             archived_at=row.archived_at,
+            lifecycle=lifecycle_state(row.archived_at, row.lifecycle),
+            last_evaluated_at=row.last_evaluated_at,
             environments=states[row.id],
             created_at=row.created_at,
             updated_at=row.updated_at,
@@ -306,6 +318,8 @@ async def flag_out(
         owner=flag.owner,
         archived=flag.archived_at is not None,
         archived_at=flag.archived_at,
+        lifecycle=lifecycle_state(flag.archived_at, flag.lifecycle),
+        last_evaluated_at=flag.last_evaluated_at,
         environments=states[flag.id],
         created_at=flag.created_at,
         updated_at=flag.updated_at,

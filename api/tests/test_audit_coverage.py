@@ -8,6 +8,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from urllib.parse import parse_qs, urlsplit
 
@@ -118,6 +119,57 @@ async def archived_flag(client: httpx.AsyncClient, app: FastAPI) -> Params:
     r = await client.post("/api/projects/demo/flags/color/archive")
     assert r.status_code == 200, r.text
     return params
+
+
+async def schedule(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    params = await flag(client, app)
+    r = await client.post(
+        "/api/projects/demo/flags/color/environments/production/schedules",
+        json={"action": "enable", "run_at": RUN_AT},
+    )
+    assert r.status_code == 201, r.text
+    return params | {"id": r.json()["id"]}
+
+
+async def rollout(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    params = await flag(client, app)
+    r = await client.post(
+        "/api/projects/demo/flags/color/environments/production/rollout", json=ROLLOUT
+    )
+    assert r.status_code == 201, r.text
+    return params
+
+
+async def paused_rollout(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    params = await rollout(client, app)
+    r = await client.post("/api/projects/demo/flags/color/environments/production/rollout/pause")
+    assert r.status_code == 200, r.text
+    return params
+
+
+async def change_request(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """A toggle change request in a protected production."""
+    params = await flag(client, app)
+    r = await client.patch(
+        "/api/projects/demo/environments/production", json={"approvals_required": 1}
+    )
+    assert r.status_code == 200, r.text
+    r = await client.post("/api/projects/demo/change-requests", json=TOGGLE_CHANGE_REQUEST)
+    assert r.status_code == 201, r.text
+    return params | {"id": r.json()["id"]}
+
+
+async def others_change_request(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """`change_request`, written by another token, so `client` may review it."""
+    params = await flag(client, app)
+    r = await client.patch(
+        "/api/projects/demo/environments/production", json={"approvals_required": 1}
+    )
+    assert r.status_code == 200, r.text
+    async with client_from(app, bearer(await seed_service_token(app, name="author"))) as author:
+        r = await author.post("/api/projects/demo/change-requests", json=TOGGLE_CHANGE_REQUEST)
+    assert r.status_code == 201, r.text
+    return params | {"id": r.json()["id"]}
 
 
 async def segment(client: httpx.AsyncClient, app: FastAPI) -> Params:
@@ -390,6 +442,19 @@ F = f"{P}/flags/{{flag}}"
 FE = f"{F}/environments/{{env}}"
 S = f"{P}/segments/{{segment}}"
 CONFIG = {"version": 1, "enabled": True, "fallthrough": {"variation": "b"}}
+RUN_AT = (datetime.now(UTC) + timedelta(days=1)).isoformat()
+ROLLOUT = {
+    "from_variation": "a",
+    "to_variation": "b",
+    "steps": [{"percentage": 10000}, {"percentage": 100000}],
+}
+TOGGLE_CHANGE_REQUEST = {
+    "environment": "production",
+    "flag": "color",
+    "kind": "toggle",
+    "title": "Turn color on",
+    "payload": {"enabled": True},
+}
 PASSWORD = "a much longer passphrase 42"
 PERSONAL_TOKEN = {"name": "laptop", "permissions": ["project.read"]}
 
@@ -538,6 +603,7 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
             {"key": "new-ui", "name": "New UI", "type": "boolean"},
         ),
         sample("PATCH", F, "flag.update", flag, {"name": "Colour"}),
+        sample("PUT", f"{F}/lifecycle", "flag.lifecycle.update", flag, {"permanent": True}),
         sample("POST", f"{F}/archive", "flag.archive", flag),
         sample("POST", f"{F}/restore", "flag.restore", archived_flag),
         sample("DELETE", F, "flag.delete", archived_flag),
@@ -556,7 +622,46 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
         sample("PUT", FE, "flag.config.update", flag, CONFIG),
         sample("POST", f"{FE}/toggle", "flag.toggle", flag, {"enabled": True}),
         sample("POST", f"{FE}/kill", "flag.kill", flag),
+        sample(
+            "POST",
+            f"{FE}/schedules",
+            "flag.schedule.create",
+            flag,
+            {"action": "enable", "run_at": RUN_AT},
+        ),
+        sample("DELETE", f"{FE}/schedules/{{id}}", "flag.schedule.cancel", schedule),
+        sample("POST", f"{FE}/rollout", "flag.rollout.start", flag, ROLLOUT),
+        sample("POST", f"{FE}/rollout/pause", "flag.rollout.pause", rollout),
+        sample("POST", f"{FE}/rollout/resume", "flag.rollout.resume", paused_rollout),
+        sample("POST", f"{FE}/rollout/abort", "flag.rollout.abort", rollout),
         sample("POST", f"{F}/copy", "flag.copy", flag, {"from": "staging", "to": ["production"]}),
+        # Change requests
+        sample(
+            "POST", f"{P}/change-requests", "change_request.create", flag, TOGGLE_CHANGE_REQUEST
+        ),
+        sample(
+            "POST",
+            f"{P}/change-requests/{{id}}/comments",
+            "change_request.comment",
+            change_request,
+            {"body": "lgtm"},
+        ),
+        sample(
+            "POST", f"{P}/change-requests/{{id}}/cancel", "change_request.cancel", change_request
+        ),
+        sample(
+            "POST",
+            f"{P}/change-requests/{{id}}/approve",
+            "change_request.approve",
+            others_change_request,
+        ),
+        sample(
+            "POST",
+            f"{P}/change-requests/{{id}}/reject",
+            "change_request.reject",
+            others_change_request,
+            {"comment": "no"},
+        ),
         # Segments
         sample("POST", f"{P}/segments", "segment.create", project, {"key": "beta", "name": "B"}),
         sample("PUT", S, "segment.config.update", segment, {"included": ["alice"]}),

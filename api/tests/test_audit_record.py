@@ -10,8 +10,18 @@ from pydantic import BaseModel
 
 from megooflags_api.auth.principal import Principal, PrincipalDep, PrincipalKind
 from megooflags_api.db import SessionDep
+from megooflags_api.models import Environment, Flag
 from megooflags_api.services import audit
-from megooflags_api.services.audit import AuditDep, RequestMeta, record, redact, snapshot
+from megooflags_api.services.audit import (
+    AuditDep,
+    RequestMeta,
+    SystemAuditor,
+    record,
+    record_flag_change,
+    record_system,
+    redact,
+    snapshot,
+)
 
 META = RequestMeta(ip="198.51.100.7", user_agent="pytest-agent", request_id="req-123")
 
@@ -125,6 +135,69 @@ async def test_record_without_principal_is_anonymous(app: FastAPI) -> None:
     assert entry["actor_id"] is None
     assert entry["actor_label"] == "who@example.com"
     assert entry["auth_method"] is None
+
+
+async def test_record_system_writes_a_system_actor(app: FastAPI) -> None:
+    project_id, environment_id = uuid.uuid4(), uuid.uuid4()
+    async with app.state.sessionmaker() as session:
+        await record_system(
+            session,
+            "flag.schedule.run",
+            "flag",
+            "new-ui",
+            project_id=project_id,
+            environment_id=environment_id,
+            before={"enabled": False},
+            after={"enabled": True, "token": "s"},
+        )
+        await session.commit()
+    [entry] = await audit_entries(app, "flag.schedule.run")
+    assert (entry["actor_kind"], entry["actor_id"], entry["actor_label"]) == (
+        "system",
+        None,
+        "scheduler",
+    )
+    assert entry["auth_method"] is None
+    assert (entry["ip"], entry["user_agent"], entry["request_id"]) == (None, None, None)
+    assert (entry["project_id"], entry["environment_id"]) == (project_id, environment_id)
+    assert entry["before"] == {"enabled": False}
+    assert entry["after"] == {"enabled": True, "token": "***"}
+
+
+async def test_system_auditor_uses_its_label(app: FastAPI) -> None:
+    async with app.state.sessionmaker() as session:
+        await SystemAuditor(session, "x").record("flag.toggle", "flag", "f", after={"on": True})
+        await session.commit()
+    [entry] = await audit_entries(app, "flag.toggle")
+    assert (entry["actor_kind"], entry["actor_id"], entry["actor_label"]) == ("system", None, "x")
+    assert entry["after"] == {"on": True}
+
+
+async def test_record_flag_change_merges_the_context_into_after(app: FastAPI) -> None:
+    flag = Flag(key="new-ui")
+    env = Environment(id=uuid.uuid4(), project_id=uuid.uuid4(), key="prod")
+    schedule_id = uuid.uuid4()
+    async with app.state.sessionmaker() as session:
+        await record_flag_change(
+            SystemAuditor(session),
+            "flag.toggle",
+            flag,
+            env,
+            {"enabled": False},
+            {"enabled": True},
+            schedule_id=schedule_id,
+            created_by="u@example.com",
+        )
+        await session.commit()
+    [entry] = await audit_entries(app, "flag.toggle")
+    assert (entry["resource_type"], entry["resource_key"]) == ("flag", "new-ui")
+    assert (entry["project_id"], entry["environment_id"]) == (env.project_id, env.id)
+    assert entry["before"] == {"enabled": False}
+    assert entry["after"] == {
+        "enabled": True,
+        "schedule_id": str(schedule_id),
+        "created_by": "u@example.com",
+    }
 
 
 @pytest.fixture

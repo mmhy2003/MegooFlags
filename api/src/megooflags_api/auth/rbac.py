@@ -30,6 +30,7 @@ class Permission(StrEnum):
     SEGMENT_WRITE = "segment.write"
     FLAG_CONFIG_WRITE = "flag.config.write"
     FLAG_TOGGLE = "flag.toggle"
+    CHANGE_APPROVE = "change.approve"
     EVALUATE = "evaluate"
     SDK_KEY_READ = "sdk_key.read"
     SDK_KEY_MANAGE = "sdk_key.manage"
@@ -58,12 +59,19 @@ PERMISSION_LEVEL: dict[Permission, ScopeKind] = {
         ScopeKind.PROJECT,
     ),
     **dict.fromkeys(
-        [P.FLAG_CONFIG_WRITE, P.FLAG_TOGGLE, P.EVALUATE, P.SDK_KEY_READ, P.SDK_KEY_MANAGE],
+        [
+            P.FLAG_CONFIG_WRITE,
+            P.FLAG_TOGGLE,
+            P.CHANGE_APPROVE,
+            P.EVALUATE,
+            P.SDK_KEY_READ,
+            P.SDK_KEY_MANAGE,
+        ],
         ScopeKind.ENVIRONMENT,
     ),
 }
 
-# Seeded by migration 0004 (as literal lists); read-only.
+# Seeded by migration 0004 (as literal lists), and 0012 adds change.approve; read-only.
 BUILTIN_ROLES: dict[str, frozenset[Permission]] = {
     "admin": frozenset(Permission),
     "editor": frozenset(Permission)

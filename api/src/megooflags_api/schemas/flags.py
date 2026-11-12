@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, JsonValue, StringConstraints, field_validator
 
@@ -7,6 +7,9 @@ from megooflags_api.models.enums import FlagType
 from megooflags_api.schemas.common import ApiModel, Description, FlagEnvironmentState, Key, Name
 
 Tag = Annotated[str, StringConstraints(min_length=1, max_length=64)]
+
+# The stored states plus "archived", which comes from `archived_at`.
+LifecycleState = Literal["new", "active", "permanent", "stale", "archived"]
 
 
 def _dedupe(tags: list[str] | None) -> list[str] | None:
@@ -64,6 +67,12 @@ class FlagUpdate(ApiModel):
     _dedupe_tags = field_validator("tags")(_dedupe)
 
 
+class LifecycleIn(ApiModel):
+    permanent: bool = Field(
+        description="Permanent flags are never stale. Clearing the mark gives active or new."
+    )
+
+
 class FlagSummary(ApiModel):
     key: str
     name: str
@@ -73,6 +82,8 @@ class FlagSummary(ApiModel):
     owner: str | None
     archived: bool
     archived_at: datetime | None
+    lifecycle: LifecycleState
+    last_evaluated_at: datetime | None
     environments: list[FlagEnvironmentState]
     created_at: datetime
     updated_at: datetime

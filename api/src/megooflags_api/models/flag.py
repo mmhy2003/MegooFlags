@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from megooflags_api.db import Base
 from megooflags_api.models.base import TimestampMixin, pg_enum, uuid_pk
-from megooflags_api.models.enums import FlagType
+from megooflags_api.models.enums import FlagLifecycle, FlagType
 
 
 class Flag(TimestampMixin, Base):
@@ -33,6 +33,14 @@ class Flag(TimestampMixin, Base):
         ForeignKey("variation.id", use_alter=True)
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The stored state; an archived flag keeps its last one and reads as "archived".
+    lifecycle: Mapped[FlagLifecycle] = mapped_column(
+        pg_enum(FlagLifecycle, "flag_lifecycle"),
+        default=FlagLifecycle.NEW,
+        server_default=FlagLifecycle.NEW.value,
+    )
+    # The latest evaluation-count hour in any environment, set by the lifecycle sweep.
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Variation(Base):

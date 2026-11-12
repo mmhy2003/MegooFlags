@@ -56,6 +56,23 @@ def not_archived(key: str) -> ApiError:
     return ApiError(409, "not_archived", f"flag '{key}' must be archived before it is deleted")
 
 
+def invalid_state(message: str) -> ApiError:
+    return ApiError(409, "invalid_state", message)
+
+
+def self_approval() -> ApiError:
+    return ApiError(403, "self_approval", "you cannot review your own change request")
+
+
+def approval_required(env_key: str) -> ApiError:
+    return ApiError(
+        409,
+        "approval_required",
+        f"environment '{env_key}' requires approval; open a change request",
+        {"environment": env_key},
+    )
+
+
 def invalid_reference(message: str, path: str) -> ApiError:
     return ApiError(422, "invalid_reference", message, {"path": path})
 
