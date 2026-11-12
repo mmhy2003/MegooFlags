@@ -64,6 +64,7 @@ export function AppShell({
     shell.permissions,
     shell.permissionsProject,
   );
+  const items = navItems(project, permissions);
   const isDesktop = useMediaQuery("(min-width: 1024px)", true);
   const [userOpen, setUserOpen] = useState(shell.sidebarOpen);
 
@@ -96,7 +97,7 @@ export function AppShell({
           <ProjectSwitcher projects={shell.projects} current={project} />
         </SidebarHeader>
         <SidebarContent>
-          <Nav items={navItems(project, permissions)} />
+          <Nav items={items} />
         </SidebarContent>
         <SidebarFooter>
           <CollapseButton />
@@ -104,7 +105,7 @@ export function AppShell({
         <SidebarRail className="sm:hidden lg:flex" />
       </Sidebar>
       <SidebarInset className="min-w-0">
-        <SiteHeader me={shell.me} />
+        <SiteHeader me={shell.me} project={project} items={items} />
         <main
           id="main"
           className="min-w-0 flex-1 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:p-6"

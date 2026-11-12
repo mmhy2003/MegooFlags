@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/sidebar";
 import type { NavItem, NavKey } from "@/lib/nav";
 
-const ICONS: Record<NavKey, LucideIcon> = {
+export const NAV_ICONS: Record<NavKey, LucideIcon> = {
   flags: Flag,
   segments: Target,
   environments: Layers,
@@ -46,7 +46,7 @@ export function Nav({ items }: { items: NavItem[] }) {
     <nav aria-label="Main" className="p-2">
       <SidebarMenu>
         {items.map((item) => {
-          const Icon = ICONS[item.key];
+          const Icon = NAV_ICONS[item.key];
           const active = isCurrent(pathname, item.href);
           return (
             <SidebarMenuItem key={item.key}>

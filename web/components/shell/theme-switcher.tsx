@@ -14,13 +14,28 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { savePreferences } from "@/lib/preferences";
-import { parseTheme } from "@/lib/theme";
+import { parseTheme, type Theme } from "@/lib/theme";
 
 const noop = () => () => {};
 
-/** Light, dark or system. Applies at once, then stores the choice on the user. */
+/** Applies a theme at once, then stores the choice on the user. */
+export function useApplyTheme(): (theme: Theme) => void {
+  const { setTheme } = useTheme();
+  return (theme) => {
+    setTheme(theme);
+    void savePreferences({ theme }).then((saved) => {
+      if (!saved)
+        toast.error(
+          "Couldn't save this preference. It applies in this browser only.",
+        );
+    });
+  };
+}
+
+/** Light, dark or system. */
 export function ThemeSwitcher({ className }: { className?: string }) {
-  const { theme, setTheme } = useTheme();
+  const { theme } = useTheme();
+  const applyTheme = useApplyTheme();
   // The theme is only known in the browser; render the neutral icon on the server.
   const mounted = useSyncExternalStore(
     noop,
@@ -32,14 +47,7 @@ export function ThemeSwitcher({ className }: { className?: string }) {
 
   function choose(value: unknown) {
     const next = parseTheme(String(value));
-    if (!next) return;
-    setTheme(next);
-    void savePreferences({ theme: next }).then((saved) => {
-      if (!saved)
-        toast.error(
-          "Couldn't save this preference. It applies in this browser only.",
-        );
-    });
+    if (next) applyTheme(next);
   }
 
   return (
