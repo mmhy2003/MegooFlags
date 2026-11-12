@@ -47,10 +47,12 @@ def now_utc() -> datetime:
 def default_jobs() -> list[Job]:
     # The jobs import JobResult from here.
     from megooflags_api.services.lifecycle import run_lifecycle_sweep
+    from megooflags_api.services.rollouts import run_due_rollouts
     from megooflags_api.services.schedules import run_due_schedules
 
     return [
         Job("schedules", run_due_schedules),
+        Job("rollouts", run_due_rollouts),
         Job("lifecycle", run_lifecycle_sweep, every=timedelta(minutes=15)),
     ]
 

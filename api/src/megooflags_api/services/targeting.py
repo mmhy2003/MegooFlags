@@ -232,6 +232,33 @@ async def set_fallthrough_rollout(
     await session.refresh(fe)  # load the updated_at the database set
 
 
+async def set_fallthrough_variation(
+    session: AsyncSession, fe: FlagEnvironment, variation_id: uuid.UUID
+) -> None:
+    """Serve `variation_id` as the fallthrough of `fe`, which the caller has locked."""
+    await session.execute(delete(RolloutWeight).where(RolloutWeight.flag_environment_id == fe.id))
+    fe.fallthrough_variation_id = variation_id
+    fe.fallthrough_bucket_by = None
+    fe.version = fe.version + 1
+    fe.updated_at = func.now()
+    await session.flush()
+    await session.refresh(fe)  # load the updated_at the database set
+
+
+async def fallthrough_weights(session: AsyncSession, fe: FlagEnvironment) -> dict[str, int] | None:
+    """The fallthrough rollout of `fe` as weights by variation key; None for a fixed variation."""
+    if fe.fallthrough_variation_id is not None:
+        return None
+    return {
+        key: weight
+        for key, weight in await session.execute(
+            select(Variation.key, RolloutWeight.weight)
+            .join(Variation, Variation.id == RolloutWeight.variation_id)
+            .where(RolloutWeight.flag_environment_id == fe.id)
+        )
+    }
+
+
 def _serves(body: FlagConfigIn) -> list[tuple[str, Serve]]:
     """Every rule outcome and the fallthrough, with their paths."""
     return [(f"rules[{i}]", rule) for i, rule in enumerate(body.rules)] + [
