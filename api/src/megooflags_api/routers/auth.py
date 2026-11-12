@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
-from typing import NoReturn
+from typing import Annotated, NoReturn
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,8 @@ from megooflags_api.auth.mfa import (
 )
 from megooflags_api.auth.passwords import hash_password, needs_rehash, verify_password
 from megooflags_api.auth.principal import Principal, PrincipalKind, resolve_principal
+from megooflags_api.auth.rbac import Permission, held
+from megooflags_api.auth.require import Authz, authenticated
 from megooflags_api.auth.throttle import AuthThrottle
 from megooflags_api.crypto import SecretBoxDep
 from megooflags_api.db import SessionDep
@@ -23,21 +25,24 @@ from megooflags_api.errors import (
     forbidden,
     invalid_code,
     invalid_credentials,
+    not_found,
     rate_limited,
 )
 from megooflags_api.models import TotpCredential, User, UserSession, WebauthnCredential
-from megooflags_api.models.enums import SessionState, UserStatus
+from megooflags_api.models.enums import ScopeKind, SessionState, UserStatus
 from megooflags_api.schemas.auth import (
     CodeIn,
     MeOut,
+    MePermissions,
     PasskeyOptionsOut,
     Preferences,
     SignInIn,
     SignInOut,
     WebauthnVerifyIn,
 )
-from megooflags_api.services import org_settings
+from megooflags_api.services import environments, org_settings
 from megooflags_api.services.audit import record, request_meta
+from megooflags_api.services.lookup import get_project
 from megooflags_api.services.users import get_user_by_email
 
 router = APIRouter(
@@ -45,6 +50,8 @@ router = APIRouter(
     tags=["auth"],
     responses={401: {"model": ErrorBody}, 403: {"model": ErrorBody}, 422: {"model": ErrorBody}},
 )
+
+Caller = Annotated[Authz, Depends(authenticated())]
 
 
 def session_principal(user: User, row: UserSession) -> Principal:
@@ -423,4 +430,24 @@ async def me(session: SessionDep, request: Request) -> MeOut:
             if principal.kind == PrincipalKind.USER and user is not None
             else None
         ),
+    )
+
+
+@router.get("/me/permissions", responses={404: {"model": ErrorBody}})
+async def my_permissions(
+    session: SessionDep, authz: Caller, project: str | None = None
+) -> MePermissions:
+    """What you may do org-wide and, given `project`, there and in each environment you can see."""
+    a = authz.authorizer
+    org = held(a, ScopeKind)
+    if project is None:
+        return MePermissions(org=org, project=None, environments={})
+    row = await get_project(session, project)
+    if not a.can(Permission.PROJECT_READ, row.id):
+        raise not_found("project", project)
+    envs = await environments.list_environments(session, row, a.visible_environment_ids(row.id))
+    return MePermissions(
+        org=org,
+        project=held(a, [ScopeKind.PROJECT, ScopeKind.ENVIRONMENT], row.id),
+        environments={e.key: held(a, [ScopeKind.ENVIRONMENT], row.id, e.id) for e in envs},
     )

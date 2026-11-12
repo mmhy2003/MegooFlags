@@ -1953,6 +1953,50 @@
         "title": "MeOut",
         "type": "object"
       },
+      "MePermissions": {
+        "additionalProperties": false,
+        "description": "What the caller may do: org-wide, in `project` and in each of its visible environments.",
+        "properties": {
+          "environments": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/Permission"
+              },
+              "type": "array"
+            },
+            "title": "Environments",
+            "type": "object"
+          },
+          "org": {
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            },
+            "title": "Org",
+            "type": "array"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Permission"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          }
+        },
+        "required": [
+          "org",
+          "project",
+          "environments"
+        ],
+        "title": "MePermissions",
+        "type": "object"
+      },
       "MfaStatus": {
         "additionalProperties": false,
         "properties": {
@@ -7791,6 +7835,86 @@
           }
         },
         "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/me/permissions": {
+      "get": {
+        "description": "What you may do org-wide and, given `project`, there and in each environment you can see.",
+        "operationId": "my_permissions_api_auth_me_permissions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MePermissions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "My Permissions",
         "tags": [
           "auth"
         ]
