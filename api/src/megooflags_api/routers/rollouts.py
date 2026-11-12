@@ -9,7 +9,7 @@ from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES
 from megooflags_api.models import Environment, Project
 from megooflags_api.schemas.rollouts import ProgressiveRolloutIn, ProgressiveRolloutOut, RolloutView
-from megooflags_api.services import rollouts
+from megooflags_api.services import approvals, rollouts
 from megooflags_api.services.audit import Actor, AuditDep
 from megooflags_api.services.changes import ChangesDep
 from megooflags_api.services.lookup import get_flag, get_flag_environment
@@ -36,6 +36,7 @@ async def start_rollout(
     """Start a progressive rollout of the fallthrough and apply its first step at once."""
     project_row, env_row = _project(authz), _environment(authz)
     flag_row = await get_flag(session, project_row, flag)
+    approvals.ensure_direct_write(env_row)
     fe = await get_flag_environment(session, flag_row, env_row, lock=True)
     row = await rollouts.start(
         session, audit, flag_row, env_row, fe, body, Actor.of(authz.principal), datetime.now(UTC)

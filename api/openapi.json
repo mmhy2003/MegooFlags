@@ -538,6 +538,10 @@
       "EnvironmentOut": {
         "additionalProperties": false,
         "properties": {
+          "approvals_required": {
+            "title": "Approvals Required",
+            "type": "integer"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -570,6 +574,7 @@
           "name",
           "description",
           "sort_order",
+          "approvals_required",
           "created_at",
           "updated_at"
         ],
@@ -579,6 +584,20 @@
       "EnvironmentUpdate": {
         "additionalProperties": false,
         "properties": {
+          "approvals_required": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Approvals a change request needs here; 0 lets changes be made directly.",
+            "title": "Approvals Required"
+          },
           "description": {
             "anyOf": [
               {

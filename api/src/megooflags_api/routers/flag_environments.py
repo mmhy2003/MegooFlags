@@ -12,7 +12,7 @@ from megooflags_api.errors import ERROR_RESPONSES, not_found, version_conflict
 from megooflags_api.models import Environment, FlagEnvironment, Project
 from megooflags_api.schemas.common import FlagEnvironmentState
 from megooflags_api.schemas.targeting import CopyIn, FlagConfigIn, FlagConfigOut, ToggleIn
-from megooflags_api.services import rollouts, targeting
+from megooflags_api.services import approvals, rollouts, targeting
 from megooflags_api.services.audit import AuditDep, record_flag_change
 from megooflags_api.services.changes import ChangesDep
 from megooflags_api.services.flags import environment_states
@@ -60,6 +60,7 @@ async def replace_flag_config(
     """Replace the whole config; `version` must match the current one, or 409."""
     project_row, env_row = _project(authz), _environment(authz)
     flag_row = await get_flag(session, project_row, flag)
+    approvals.ensure_direct_write(env_row)
     fe = await get_flag_environment(session, flag_row, env_row, lock=True)
     before = await targeting.load_config(session, flag_row, fe, env_row.key)
     await targeting.replace_config(session, flag_row, fe, body)
@@ -84,6 +85,7 @@ async def toggle_flag(
     """Turn the flag on or off; when `version` is set it must match the current one, or 409."""
     project_row, env_row = _project(authz), _environment(authz)
     flag_row = await get_flag(session, project_row, flag)
+    approvals.ensure_direct_write(env_row)
     fe = await get_flag_environment(session, flag_row, env_row, lock=True)
     if body.version is not None and body.version != fe.version:
         raise version_conflict(fe.version)
@@ -149,6 +151,7 @@ async def copy_flag_config(
     targets = [await _visible_environment(session, authz, key) for key in body.to]
     for target in targets:
         authz.check(Permission.FLAG_CONFIG_WRITE, project_row.id, target.id)
+        approvals.ensure_direct_write(target)
     # Locked in id order before copy_config's prerequisite locks, like a PUT, for the snapshots.
     rows = await session.scalars(
         select(FlagEnvironment)

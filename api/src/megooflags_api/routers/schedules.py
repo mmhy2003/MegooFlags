@@ -11,7 +11,7 @@ from megooflags_api.errors import ERROR_RESPONSES
 from megooflags_api.models import Environment, Project
 from megooflags_api.models.enums import ScheduledAction
 from megooflags_api.schemas.schedules import ScheduleIn, ScheduleOut
-from megooflags_api.services import schedules
+from megooflags_api.services import approvals, schedules
 from megooflags_api.services.audit import Actor, AuditDep
 from megooflags_api.services.lookup import get_flag, get_flag_environment
 
@@ -48,6 +48,7 @@ async def create_schedule(
     flag_row = await get_flag(session, project_row, flag)
     fe = await get_flag_environment(session, flag_row, env_row, lock=True)
     authz.check(_permission(body.action), project_row.id, env_row.id)
+    approvals.ensure_direct_write(env_row)
     row = await schedules.create(
         session, audit, flag_row, env_row, fe, body, Actor.of(authz.principal), datetime.now(UTC)
     )

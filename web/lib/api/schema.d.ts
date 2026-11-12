@@ -1947,6 +1947,8 @@ export interface components {
         };
         /** EnvironmentOut */
         EnvironmentOut: {
+            /** Approvals Required */
+            approvals_required: number;
             /**
              * Created At
              * Format: date-time
@@ -1968,6 +1970,11 @@ export interface components {
         };
         /** EnvironmentUpdate */
         EnvironmentUpdate: {
+            /**
+             * Approvals Required
+             * @description Approvals a change request needs here; 0 lets changes be made directly.
+             */
+            approvals_required?: number | null;
             /** Description */
             description?: string | null;
             /** Name */

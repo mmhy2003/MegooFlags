@@ -76,6 +76,8 @@ async def update_environment(
         environment.description = body.description
     if body.sort_order is not None:
         environment.sort_order = body.sort_order
+    if body.approvals_required is not None:
+        environment.approvals_required = body.approvals_required
     await session.flush()
 
 

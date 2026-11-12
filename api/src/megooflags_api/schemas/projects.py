@@ -13,10 +13,17 @@ class EnvironmentCreate(ApiModel):
     sort_order: int | None = None
 
 
+ApprovalsRequired = Annotated[int, Field(ge=0, le=10)]
+
+
 class EnvironmentUpdate(ApiModel):
     name: Name | None = None
     description: Description | None = None
     sort_order: int | None = None
+    approvals_required: ApprovalsRequired | None = Field(
+        None,
+        description="Approvals a change request needs here; 0 lets changes be made directly.",
+    )
 
 
 class EnvironmentOut(ApiModel):
@@ -24,6 +31,7 @@ class EnvironmentOut(ApiModel):
     name: str
     description: str
     sort_order: int
+    approvals_required: int
     created_at: datetime
     updated_at: datetime
 
