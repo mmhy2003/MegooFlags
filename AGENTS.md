@@ -175,6 +175,18 @@ bash scripts/check_migrations.sh
 # web
 (cd web && pnpm install --frozen-lockfile && pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test)
 
+# web e2e (Playwright + axe against the real API, Postgres and Valkey from above).
+# The API must accept the browser's Origin, so set its public URL to the web app.
+# Global setup creates the users and the demo data; it is safe to run again.
+(cd api && uv run alembic upgrade head)
+(cd api && MEGOOFLAGS_PUBLIC_URL=http://localhost:3000 MEGOOFLAGS_API_WORKERS=1 \
+  uv run python -m megooflags_api.serve) &
+(cd web && pnpm exec playwright install chromium)  # once
+(cd web && pnpm build && pnpm e2e)
+# Visual baselines must come from the pinned Playwright image that CI uses, never from your
+# own browser. Refresh them only with:
+(cd web && pnpm e2e:docker --update-snapshots)
+
 # OpenAPI spec and client drift
 uv run --frozen --project api python -m megooflags_api.export_openapi api/openapi.json
 pnpm --dir web gen:api
