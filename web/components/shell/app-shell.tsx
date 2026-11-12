@@ -10,6 +10,7 @@ import { Brand } from "@/components/shell/brand";
 import { Nav } from "@/components/shell/nav";
 import { ProjectSwitcher } from "@/components/shell/project-switcher";
 import { SiteHeader } from "@/components/shell/site-header";
+import { ThemeSync } from "@/components/shell/theme-sync";
 import { useProjectPermissions } from "@/components/shell/use-project-permissions";
 import {
   Sidebar,
@@ -82,6 +83,7 @@ export function AppShell({
       open={isDesktop ? userOpen : false}
       onOpenChange={onOpenChange}
     >
+      <ThemeSync stored={shell.me?.preferences?.theme} />
       <Sidebar collapsible="icon">
         <SidebarHeader className="gap-2">
           <Link
@@ -102,7 +104,7 @@ export function AppShell({
         <SidebarRail className="sm:hidden lg:flex" />
       </Sidebar>
       <SidebarInset className="min-w-0">
-        <SiteHeader />
+        <SiteHeader me={shell.me} />
         <main
           id="main"
           className="min-w-0 flex-1 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:p-6"
