@@ -1,12 +1,23 @@
 import asyncio
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 import pytest
 from fastapi import FastAPI
-from helpers import FakeClock, audit_entries, create_flag, create_project, make_scheduler
+from helpers import (
+    FakeClock,
+    assert_error,
+    audit_entries,
+    bearer,
+    create_flag,
+    create_project,
+    make_scheduler,
+    seed_service_token,
+)
 from pydantic import ValidationError
 from sqlalchemy import text
 from test_changes import record_publishes
@@ -457,3 +468,168 @@ async def test_cancel_pending_for_flag_cancels_every_environment(
     entries = await audit_entries(app, "flag.schedule.cancel")
     assert len(entries) == 2
     assert {e["after"]["reason"] for e in entries} == {"flag archived"}
+
+
+# Routes
+
+SCHEDULES = f"{CONFIG}/schedules"
+
+
+def in_(**delta: float) -> str:
+    return (datetime.now(UTC) + timedelta(**delta)).isoformat()
+
+
+async def ids(app: FastAPI, env: str | None = None) -> tuple[uuid.UUID, uuid.UUID | None]:
+    async with app.state.sessionmaker() as session:
+        project = await get_project(session, "demo")
+        if env is None:
+            return project.id, None
+        return project.id, (await get_environment(session, project, env)).id
+
+
+@asynccontextmanager
+async def token_client(
+    app: FastAPI, role: str, scope: str, env: str | None = None
+) -> AsyncIterator[httpx.AsyncClient]:
+    project_id, env_id = await ids(app, env)
+    token = await seed_service_token(
+        app, role, scope=scope, project_id=project_id, environment_id=env_id, name="limited"
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=bearer(token)
+    ) as client:
+        yield client
+
+
+async def custom_role(api: httpx.AsyncClient, key: str, permissions: list[str]) -> str:
+    r = await api.post("/api/roles", json={"key": key, "name": key, "permissions": permissions})
+    assert r.status_code == 201, r.text
+    return key
+
+
+async def test_create_list_and_cancel_through_the_api(api: httpx.AsyncClient) -> None:
+    await color_flag(api)
+    run_at = in_(hours=1)
+
+    r = await api.post(SCHEDULES, json={"action": "enable", "run_at": run_at})
+
+    assert r.status_code == 201, r.text
+    created = r.json()
+    assert (created["status"], created["created_by"], created["action"]) == (
+        "pending",
+        "tests",
+        "enable",
+    )
+    assert created["environment"] == "production"
+    assert datetime.fromisoformat(created["run_at"]) == datetime.fromisoformat(run_at)
+
+    r = await api.get(SCHEDULES)
+    assert r.status_code == 200, r.text
+    assert [s["id"] for s in r.json()] == [created["id"]]
+
+    r = await api.delete(f"{SCHEDULES}/{created['id']}")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "cancelled"
+
+    assert_error(await api.delete(f"{SCHEDULES}/{created['id']}"), 409, "invalid_state")
+    assert_error(await api.delete(f"{SCHEDULES}/{uuid.uuid4()}"), 404, "not_found")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"action": "enable", "run_at": in_(hours=-1)},
+        {"action": "enable", "run_at": "2099-01-01T00:00:00"},
+        {"action": "set_rollout", "run_at": in_(hours=1)},
+    ],
+    ids=["past", "naive", "set_rollout without weights"],
+)
+async def test_create_refuses_bad_input(api: httpx.AsyncClient, body: dict[str, Any]) -> None:
+    await color_flag(api)
+
+    r = await api.post(SCHEDULES, json=body)
+
+    assert r.status_code == 422, r.text
+
+
+async def test_toggle_permission_creates_enable_but_not_set_rollout(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await color_flag(api)
+    role = await custom_role(api, "togglers", ["project.read", "flag.toggle"])
+    rollout = {
+        "action": "set_rollout",
+        "run_at": in_(hours=1),
+        "weights": [{"variation": "a", "weight": 100000}],
+    }
+
+    async with token_client(app, role, "project") as client:
+        r = await client.post(SCHEDULES, json={"action": "enable", "run_at": in_(hours=1)})
+        assert r.status_code == 201, r.text
+        assert_error(await client.post(SCHEDULES, json=rollout), 403, "forbidden")
+        r = await client.delete(f"{SCHEDULES}/{r.json()['id']}")
+        assert r.status_code == 200, r.text
+
+
+async def test_read_only_cannot_create_or_cancel(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await color_flag(api)
+    r = await api.post(SCHEDULES, json={"action": "enable", "run_at": in_(hours=1)})
+    assert r.status_code == 201, r.text
+    role = await custom_role(api, "readers", ["project.read"])
+
+    async with token_client(app, role, "project") as client:
+        r2 = await client.get(SCHEDULES)
+        assert r2.status_code == 200, r2.text
+        body = {"action": "enable", "run_at": in_(hours=1)}
+        assert_error(await client.post(SCHEDULES, json=body), 403, "forbidden")
+        assert_error(await client.delete(f"{SCHEDULES}/{r.json()['id']}"), 403, "forbidden")
+
+    assert (await schedule_row(app, uuid.UUID(r.json()["id"]))).status == "pending"
+
+
+async def test_a_token_bound_to_staging_cannot_see_production(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await color_flag(api)
+    r = await api.post(SCHEDULES, json={"action": "enable", "run_at": in_(hours=1)})
+    assert r.status_code == 201, r.text
+
+    async with token_client(app, "editor", "environment", "staging") as client:
+        assert_error(await client.get(SCHEDULES), 404, "not_found")
+        body = {"action": "enable", "run_at": in_(hours=1)}
+        assert_error(await client.post(SCHEDULES, json=body), 404, "not_found")
+        assert_error(await client.delete(f"{SCHEDULES}/{r.json()['id']}"), 404, "not_found")
+
+
+async def test_a_route_created_schedule_runs_on_a_tick(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await color_flag(api)
+    c = clock()
+    r = await api.post(SCHEDULES, json={"action": "enable", "run_at": in_(hours=1)})
+    assert r.status_code == 201, r.text
+
+    c.advance(hours=2)
+    await make_scheduler(app, c).tick()
+
+    assert (await config(api))["enabled"] is True
+    assert (await schedule_row(app, uuid.UUID(r.json()["id"]))).status == "done"
+
+
+async def test_archiving_cancels_pending_schedules(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await color_flag(api)
+    for env in ("production", "staging"):
+        r = await api.post(
+            f"/api/projects/demo/flags/color/environments/{env}/schedules",
+            json={"action": "enable", "run_at": in_(hours=1)},
+        )
+        assert r.status_code == 201, r.text
+
+    r = await api.post("/api/projects/demo/flags/color/archive")
+    assert r.status_code == 200, r.text
+
+    entries = await audit_entries(app, "flag.schedule.cancel")
+    assert len(entries) == 2
+    assert {e["after"]["reason"] for e in entries} == {"flag archived"}
+    assert {e["after"]["status"] for e in entries} == {"cancelled"}

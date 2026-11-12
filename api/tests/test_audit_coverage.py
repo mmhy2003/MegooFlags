@@ -8,6 +8,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from urllib.parse import parse_qs, urlsplit
 
@@ -118,6 +119,16 @@ async def archived_flag(client: httpx.AsyncClient, app: FastAPI) -> Params:
     r = await client.post("/api/projects/demo/flags/color/archive")
     assert r.status_code == 200, r.text
     return params
+
+
+async def schedule(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    params = await flag(client, app)
+    r = await client.post(
+        "/api/projects/demo/flags/color/environments/production/schedules",
+        json={"action": "enable", "run_at": RUN_AT},
+    )
+    assert r.status_code == 201, r.text
+    return params | {"id": r.json()["id"]}
 
 
 async def segment(client: httpx.AsyncClient, app: FastAPI) -> Params:
@@ -390,6 +401,7 @@ F = f"{P}/flags/{{flag}}"
 FE = f"{F}/environments/{{env}}"
 S = f"{P}/segments/{{segment}}"
 CONFIG = {"version": 1, "enabled": True, "fallthrough": {"variation": "b"}}
+RUN_AT = (datetime.now(UTC) + timedelta(days=1)).isoformat()
 PASSWORD = "a much longer passphrase 42"
 PERSONAL_TOKEN = {"name": "laptop", "permissions": ["project.read"]}
 
@@ -557,6 +569,14 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
         sample("PUT", FE, "flag.config.update", flag, CONFIG),
         sample("POST", f"{FE}/toggle", "flag.toggle", flag, {"enabled": True}),
         sample("POST", f"{FE}/kill", "flag.kill", flag),
+        sample(
+            "POST",
+            f"{FE}/schedules",
+            "flag.schedule.create",
+            flag,
+            {"action": "enable", "run_at": RUN_AT},
+        ),
+        sample("DELETE", f"{FE}/schedules/{{id}}", "flag.schedule.cancel", schedule),
         sample("POST", f"{F}/copy", "flag.copy", flag, {"from": "staging", "to": ["production"]}),
         # Segments
         sample("POST", f"{P}/segments", "segment.create", project, {"key": "beta", "name": "B"}),

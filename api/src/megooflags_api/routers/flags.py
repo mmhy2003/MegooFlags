@@ -21,7 +21,7 @@ from megooflags_api.schemas.flags import (
     VariationOut,
     VariationUpdate,
 )
-from megooflags_api.services import flags, lifecycle, variations
+from megooflags_api.services import flags, lifecycle, schedules, variations
 from megooflags_api.services.audit import AuditDep, Auditor, snapshot
 from megooflags_api.services.changes import ChangesDep
 from megooflags_api.services.lookup import get_flag, get_variation
@@ -160,6 +160,7 @@ async def archive_flag(
     row = await get_flag(session, _project(authz), flag)
     before = await flags.flag_out(session, row, _visible(authz))
     await flags.archive_flag(session, row)
+    await schedules.cancel_pending_for_flag(session, audit, row, "flag archived")
     out = await flags.flag_out(session, row, _visible(authz))
     await _record_flag(audit, "flag.archive", row, before, out)
     await session.commit()
