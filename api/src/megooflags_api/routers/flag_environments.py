@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -11,7 +12,7 @@ from megooflags_api.errors import ERROR_RESPONSES, not_found, version_conflict
 from megooflags_api.models import Environment, FlagEnvironment, Project
 from megooflags_api.schemas.common import FlagEnvironmentState
 from megooflags_api.schemas.targeting import CopyIn, FlagConfigIn, FlagConfigOut, ToggleIn
-from megooflags_api.services import targeting
+from megooflags_api.services import rollouts, targeting
 from megooflags_api.services.audit import AuditDep, record_flag_change
 from megooflags_api.services.changes import ChangesDep
 from megooflags_api.services.flags import environment_states
@@ -115,6 +116,9 @@ async def kill_flag(
     fe = await get_flag_environment(session, flag_row, env_row, lock=True)
     before = targeting.state_of(fe, env_row.key)
     await targeting.set_enabled(session, fe, False)
+    await rollouts.pause_live(
+        session, audit, flag_row, env_row, fe, datetime.now(UTC), reason="kill switch"
+    )
     await record_flag_change(
         audit, "flag.kill", flag_row, env_row, before, targeting.state_of(fe, env_row.key)
     )

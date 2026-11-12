@@ -6,10 +6,18 @@ from typing import Any
 import httpx
 import pytest
 from fastapi import FastAPI
-from helpers import FakeClock, audit_entries, create_flag, create_project, make_scheduler
+from helpers import (
+    FakeClock,
+    assert_error,
+    audit_entries,
+    create_flag,
+    create_project,
+    make_scheduler,
+)
 from pydantic import ValidationError
 from sqlalchemy import text
 from test_changes import record_publishes
+from test_schedules import custom_role, token_client
 
 from megooflags_api.errors import ApiError
 from megooflags_api.models.enums import RolloutStatus
@@ -551,3 +559,124 @@ async def test_view_shows_the_live_rollout_and_recent_ones(
         {"variation": "c", "weight": 10000},
     ]
     assert [r.id for r in view.recent] == [first]
+
+
+# Routes
+
+ROLLOUT = f"{CONFIG}/rollout"
+BODY = {
+    "from_variation": "a",
+    "to_variation": "b",
+    "steps": [{"percentage": 10000}, {"percentage": 100000}],
+}
+
+
+async def demo_id(app: FastAPI) -> uuid.UUID:
+    async with app.state.engine.connect() as conn:
+        return await conn.scalar(text("SELECT id FROM project WHERE key = 'demo'"))  # type: ignore[no-any-return]
+
+
+async def test_start_pause_resume_and_abort_through_the_api(api: httpx.AsyncClient) -> None:
+    await color_flag(api)
+
+    r = await api.post(ROLLOUT, json=BODY)
+
+    assert r.status_code == 201, r.text
+    started = r.json()
+    assert (started["status"], started["created_by"]) == ("active", "tests")
+    assert (started["from_variation"], started["to_variation"]) == ("a", "b")
+    r = await api.get(ROLLOUT)
+    assert r.status_code == 200, r.text
+    assert r.json()["current"]["id"] == started["id"]
+    assert r.json()["recent"] == []
+
+    for action, status in (("pause", "paused"), ("resume", "active"), ("abort", "aborted")):
+        r = await api.post(f"{ROLLOUT}/{action}")
+        assert r.status_code == 200, (action, r.text)
+        assert r.json()["status"] == status
+
+    r = await api.get(ROLLOUT)
+    assert r.json()["current"] is None
+    assert [(x["id"], x["status"]) for x in r.json()["recent"]] == [(started["id"], "aborted")]
+    assert_error(await api.post(f"{ROLLOUT}/pause"), 409, "invalid_state")
+
+
+async def test_start_and_abort_publish_but_pause_and_resume_do_not(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await color_flag(api)
+    project_id = await demo_id(app)
+    published = record_publishes(app)
+
+    for action, publishes in (("", True), ("/pause", False), ("/resume", False), ("/abort", True)):
+        count = len(published)
+        r = await api.post(f"{ROLLOUT}{action}", json=BODY if action == "" else None)
+        assert 200 <= r.status_code < 300, (action, r.text)
+        assert published[count:] == ([project_id] if publishes else []), action
+
+
+async def test_toggle_permission_can_read_but_not_drive_a_rollout(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await color_flag(api)
+    r = await api.post(ROLLOUT, json=BODY)
+    assert r.status_code == 201, r.text
+    role = await custom_role(api, "togglers", ["project.read", "flag.toggle"])
+
+    async with token_client(app, role, "project") as client:
+        r = await client.get(ROLLOUT)
+        assert r.status_code == 200, r.text
+        assert_error(await client.post(ROLLOUT, json=BODY), 403, "forbidden")
+        assert_error(await client.post(f"{ROLLOUT}/pause"), 403, "forbidden")
+        assert_error(await client.post(f"{ROLLOUT}/abort"), 403, "forbidden")
+
+    assert (await api.get(ROLLOUT)).json()["current"]["status"] == "active"
+
+
+async def test_the_kill_switch_pauses_an_active_rollout(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await color_flag(api)
+    r = await api.post(f"{CONFIG}/kill")
+    assert r.status_code == 200, r.text
+    r = await api.post(ROLLOUT, json=BODY)
+    assert r.status_code == 201, r.text
+
+    r = await api.post(f"{CONFIG}/kill")
+
+    assert r.status_code == 200, r.text
+    assert (await api.get(ROLLOUT)).json()["current"]["status"] == "paused"
+    [entry] = await audit_entries(app, "flag.rollout.pause")
+    assert (entry["after"]["status"], entry["after"]["reason"]) == ("paused", "kill switch")
+
+
+async def test_archiving_cancels_the_live_rollout(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await color_flag(api)
+    r = await api.post(ROLLOUT, json=BODY)
+    assert r.status_code == 201, r.text
+
+    r = await api.post("/api/projects/demo/flags/color/archive")
+
+    assert r.status_code == 200, r.text
+    [entry] = await audit_entries(app, "flag.rollout.cancel")
+    assert (entry["after"]["status"], entry["after"]["reason"]) == ("cancelled", "flag archived")
+    assert (await rollout_row(app, uuid.UUID(entry["after"]["id"]))).status == "cancelled"
+
+
+async def test_a_route_started_rollout_steps_on_a_tick(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await color_flag(api)
+    c = clock()
+    r = await api.post(
+        ROLLOUT,
+        json=BODY
+        | {"steps": [{"percentage": 10000}, {"percentage": 50000}, {"percentage": 100000}]},
+    )
+    assert r.status_code == 201, r.text
+
+    c.advance(minutes=61)
+    await make_scheduler(app, c).tick()
+
+    current = (await api.get(ROLLOUT)).json()["current"]
+    assert (current["id"], current["current_step"]) == (r.json()["id"], 1)

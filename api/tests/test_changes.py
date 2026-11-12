@@ -26,6 +26,8 @@ EXCLUDED = {
     ("POST", "/api/projects/{project}/environments/{env}/sdk-keys/{id}/rotate"),
     ("POST", "/api/projects/{project}/flags/{flag}/environments/{env}/schedules"),
     ("DELETE", "/api/projects/{project}/flags/{flag}/environments/{env}/schedules/{id}"),
+    ("POST", "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/pause"),
+    ("POST", "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/resume"),
 }
 P = "/api/projects/{project}"
 F = f"{P}/flags/{{flag}}"
@@ -67,6 +69,18 @@ WRITES: list[tuple[str, str, dict[str, str], Any, str]] = [
     ("POST", f"{FE}/toggle", {}, {"enabled": True}, "demo"),
     ("POST", f"{FE}/kill", {}, None, "demo"),
     ("POST", f"{F}/copy", {}, {"from": "production", "to": ["staging"]}, "demo"),
+    (
+        "POST",
+        f"{FE}/rollout",
+        {},
+        {
+            "from_variation": "a",
+            "to_variation": "b",
+            "steps": [{"percentage": 10000}, {"percentage": 100000}],
+        },
+        "demo",
+    ),
+    ("POST", f"{FE}/rollout/abort", {}, None, "demo"),
     ("POST", f"{F}/archive", {}, None, "demo"),
     ("POST", f"{F}/restore", {}, None, "demo"),
     ("POST", f"{P}/segments", {}, {"key": "beta", "name": "Beta"}, "demo"),

@@ -906,6 +906,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project}/flags/{flag}/environments/{env}/rollout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Rollout */
+        get: operations["read_rollout_api_projects__project__flags__flag__environments__env__rollout_get"];
+        put?: never;
+        /**
+         * Start Rollout
+         * @description Start a progressive rollout of the fallthrough and apply its first step at once.
+         */
+        post: operations["start_rollout_api_projects__project__flags__flag__environments__env__rollout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/abort": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abort Rollout
+         * @description Stop the rollout and serve the "from" variation to all of the fallthrough again.
+         */
+        post: operations["abort_rollout_api_projects__project__flags__flag__environments__env__rollout_abort_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Rollout
+         * @description Stop the clock of the active rollout; the traffic split stays as it is.
+         */
+        post: operations["pause_rollout_api_projects__project__flags__flag__environments__env__rollout_pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Rollout
+         * @description Restart the clock of a paused rollout with the wait it had left.
+         */
+        post: operations["resume_rollout_api_projects__project__flags__flag__environments__env__rollout_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project}/flags/{flag}/environments/{env}/schedules": {
         parameters: {
             query?: never;
@@ -2546,6 +2627,63 @@ export interface components {
          * @enum {string}
          */
         PrincipalKind: "user" | "service_token" | "personal_token";
+        /**
+         * ProgressiveRolloutIn
+         * @description Moves the fallthrough from `from_variation` to `to_variation` in steps whose percentages
+         *     strictly increase and end at 100000.
+         */
+        ProgressiveRolloutIn: {
+            /** From Variation */
+            from_variation: string;
+            /** Steps */
+            steps: components["schemas"]["RolloutStepIn"][];
+            /** To Variation */
+            to_variation: string;
+        };
+        /**
+         * ProgressiveRolloutOut
+         * @description `from_variation` or `to_variation` is null once that variation is deleted.
+         */
+        ProgressiveRolloutOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Current Step */
+            current_step: number;
+            /** Environment */
+            environment: string;
+            /** Error */
+            error: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** From Variation */
+            from_variation: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Applied Weights */
+            last_applied_weights: components["schemas"]["WeightIn"][] | null;
+            /** Next Step At */
+            next_step_at: string | null;
+            /** Remaining Seconds */
+            remaining_seconds: number | null;
+            status: components["schemas"]["RolloutStatus"];
+            /** Steps */
+            steps: components["schemas"]["RolloutStepIn"][];
+            /** To Variation */
+            to_variation: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** ProjectCreate */
         ProjectCreate: {
             /**
@@ -2692,6 +2830,34 @@ export interface components {
             bucket_by: string;
             /** Weights */
             weights: components["schemas"]["WeightIn"][];
+        };
+        /**
+         * RolloutStatus
+         * @enum {string}
+         */
+        RolloutStatus: "active" | "paused" | "completed" | "aborted" | "failed" | "cancelled";
+        /**
+         * RolloutStepIn
+         * @description The "to" variation's share in thousandths of a percent, then the wait in minutes before
+         *     the next step (ignored on the last step).
+         */
+        RolloutStepIn: {
+            /** Percentage */
+            percentage: number;
+            /**
+             * Wait Minutes
+             * @default 60
+             */
+            wait_minutes: number;
+        };
+        /**
+         * RolloutView
+         * @description The live (active or paused) rollout, if any, and the 10 most recent finished ones.
+         */
+        RolloutView: {
+            current: components["schemas"]["ProgressiveRolloutOut"] | null;
+            /** Recent */
+            recent: components["schemas"]["ProgressiveRolloutOut"][];
         };
         /**
          * RotateIn
@@ -7469,6 +7635,355 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FlagEnvironmentState"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_rollout_api_projects__project__flags__flag__environments__env__rollout_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolloutView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_rollout_api_projects__project__flags__flag__environments__env__rollout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgressiveRolloutIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressiveRolloutOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    abort_rollout_api_projects__project__flags__flag__environments__env__rollout_abort_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressiveRolloutOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pause_rollout_api_projects__project__flags__flag__environments__env__rollout_pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressiveRolloutOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    resume_rollout_api_projects__project__flags__flag__environments__env__rollout_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressiveRolloutOut"];
                 };
             };
             /** @description Unauthorized */

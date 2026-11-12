@@ -199,6 +199,7 @@ async def _pause(
     env: Environment,
     row: ProgressiveRollout,
     now: datetime,
+    reason: str | None = None,
 ) -> None:
     assert row.next_step_at is not None
     before = await to_out(session, row, env.key)
@@ -207,7 +208,9 @@ async def _pause(
     row.next_step_at = None
     await session.flush()
     after = await to_out(session, row, env.key)
-    await record_flag_change(audit, "flag.rollout.pause", flag, env, before, after, **_context(row))
+    await record_flag_change(
+        audit, "flag.rollout.pause", flag, env, before, after, **_context(row, reason=reason)
+    )
 
 
 async def pause(
@@ -233,12 +236,14 @@ async def pause_live(
     env: Environment,
     fe: FlagEnvironment,
     now: datetime,
+    *,
+    reason: str | None = None,
 ) -> ProgressiveRollout | None:
     """Pause the rollout of `fe` if one is active; returns it, or None."""
     row = await _live(session, fe, lock=True)
     if row is None or row.status != RolloutStatus.ACTIVE:
         return None
-    await _pause(session, audit, flag, env, row, now)
+    await _pause(session, audit, flag, env, row, now, reason)
     return row
 
 

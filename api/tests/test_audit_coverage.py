@@ -131,6 +131,22 @@ async def schedule(client: httpx.AsyncClient, app: FastAPI) -> Params:
     return params | {"id": r.json()["id"]}
 
 
+async def rollout(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    params = await flag(client, app)
+    r = await client.post(
+        "/api/projects/demo/flags/color/environments/production/rollout", json=ROLLOUT
+    )
+    assert r.status_code == 201, r.text
+    return params
+
+
+async def paused_rollout(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    params = await rollout(client, app)
+    r = await client.post("/api/projects/demo/flags/color/environments/production/rollout/pause")
+    assert r.status_code == 200, r.text
+    return params
+
+
 async def segment(client: httpx.AsyncClient, app: FastAPI) -> Params:
     params = await project(client, app)
     r = await client.post("/api/projects/demo/segments", json={"key": "beta", "name": "Beta"})
@@ -402,6 +418,11 @@ FE = f"{F}/environments/{{env}}"
 S = f"{P}/segments/{{segment}}"
 CONFIG = {"version": 1, "enabled": True, "fallthrough": {"variation": "b"}}
 RUN_AT = (datetime.now(UTC) + timedelta(days=1)).isoformat()
+ROLLOUT = {
+    "from_variation": "a",
+    "to_variation": "b",
+    "steps": [{"percentage": 10000}, {"percentage": 100000}],
+}
 PASSWORD = "a much longer passphrase 42"
 PERSONAL_TOKEN = {"name": "laptop", "permissions": ["project.read"]}
 
@@ -577,6 +598,10 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
             {"action": "enable", "run_at": RUN_AT},
         ),
         sample("DELETE", f"{FE}/schedules/{{id}}", "flag.schedule.cancel", schedule),
+        sample("POST", f"{FE}/rollout", "flag.rollout.start", flag, ROLLOUT),
+        sample("POST", f"{FE}/rollout/pause", "flag.rollout.pause", rollout),
+        sample("POST", f"{FE}/rollout/resume", "flag.rollout.resume", paused_rollout),
+        sample("POST", f"{FE}/rollout/abort", "flag.rollout.abort", rollout),
         sample("POST", f"{F}/copy", "flag.copy", flag, {"from": "staging", "to": ["production"]}),
         # Segments
         sample("POST", f"{P}/segments", "segment.create", project, {"key": "beta", "name": "B"}),
