@@ -2,10 +2,15 @@
 
 import { useState } from "react";
 
+import { ConfirmDialog } from "@/components/patterns/confirm-dialog";
 import { DataList, type Column } from "@/components/patterns/data-list";
+import { ResponsiveDialog } from "@/components/patterns/responsive-dialog";
 import { RolloutSlider } from "@/components/patterns/rollout-slider";
 import { StatusPill, type Status } from "@/components/patterns/status-pill";
 import { Toggle } from "@/components/patterns/toggle";
+import { Button } from "@/components/ui/button";
+import { DialogClose } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 type SampleFlag = {
   key: string;
@@ -110,5 +115,43 @@ export function RolloutSample() {
       onValueChange={setValue}
       label="new-checkout rollout"
     />
+  );
+}
+
+export function DialogSample() {
+  return (
+    <ResponsiveDialog
+      trigger={<Button variant="outline">Open sample dialog</Button>}
+      title="Sample dialog"
+      description="A full-screen sheet on narrow screens, a centred box from 768 px."
+      footer={<DialogClose render={<Button />}>Done</DialogClose>}
+    >
+      <Input aria-label="Note" placeholder="Type a note" />
+      <p className="text-muted-foreground">
+        Fold or unfold the device while this dialog is open: it changes shape
+        but stays open, and the note keeps what you typed. Long content scrolls
+        inside the dialog rather than the page behind it, and the bottom edge
+        keeps clear of the home indicator on phones that have one. This
+        paragraph is long on purpose, so that the sheet has something to scroll
+        on the smallest cover screens.
+      </p>
+    </ResponsiveDialog>
+  );
+}
+
+export function ConfirmSample() {
+  const [confirmed, setConfirmed] = useState(false);
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <ConfirmDialog
+        trigger={<Button variant="destructive">Kill new-checkout</Button>}
+        title="Kill new-checkout?"
+        description="Every environment serves the off variation until you turn it back on."
+        confirmLabel="Kill"
+        destructive
+        onConfirm={() => setConfirmed(true)}
+      />
+      {confirmed && <span>Confirmed</span>}
+    </div>
   );
 }

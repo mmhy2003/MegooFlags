@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { noHorizontalScroll } from "./support/checks";
+
 const FLAGS = ["new-checkout", "dark-mode", "pricing-copy"];
 
 test.describe("desktop", () => {
@@ -109,3 +111,105 @@ test.describe("phone", () => {
     await expect(extra).toBeVisible();
   });
 });
+
+test.describe("dialogs", () => {
+  test.use({ viewport: { width: 344, height: 740 } });
+
+  test("the dialog is a full-screen sheet when folded and keeps its input across a fold", async ({
+    page,
+  }) => {
+    await page.goto("/dev/kit");
+    await page.getByRole("button", { name: "Open sample dialog" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    const folded = async () => {
+      const box = await dialog.boundingBox();
+      expect(box).not.toBeNull();
+      expect(Math.round(box!.x)).toBe(0);
+      expect(Math.round(box!.y)).toBe(0);
+      expect(Math.round(box!.width)).toBe(344);
+      expect(Math.round(box!.height)).toBe(740);
+    };
+    await expect(folded).toPass();
+    const note = dialog.getByRole("textbox", { name: "Note" });
+    await note.fill("keep me");
+
+    await page.setViewportSize({ width: 880, height: 740 });
+    await expect(dialog).toBeVisible();
+    await expect(async () => {
+      const box = await dialog.boundingBox();
+      expect(box!.width).toBeLessThan(880);
+    }).toPass();
+    await expect(note).toHaveValue("keep me");
+
+    await page.setViewportSize({ width: 344, height: 740 });
+    await expect(folded).toPass();
+    await expect(note).toHaveValue("keep me");
+  });
+
+  test("the confirm dialog cancels or confirms", async ({ page }) => {
+    await page.goto("/dev/kit");
+    const trigger = page.getByRole("button", { name: "Kill new-checkout" });
+    await trigger.click();
+    const alert = page.getByRole("alertdialog");
+    await expect(alert).toBeVisible();
+    await alert.getByRole("button", { name: "Cancel" }).click();
+    await expect(alert).toBeHidden();
+    await expect(page.getByText("Confirmed", { exact: true })).toHaveCount(0);
+
+    await trigger.click();
+    await expect(alert).toBeVisible();
+    await alert.getByRole("button", { name: "Kill", exact: true }).click();
+    await expect(alert).toBeHidden();
+    await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
+  });
+});
+
+test.describe("narrowest", () => {
+  test.use({ viewport: { width: 280, height: 740 } });
+
+  test("long JSON scrolls inside its own box, not the page", async ({
+    page,
+  }) => {
+    await page.goto("/dev/kit");
+    const pre = page.locator("[data-testid=json-viewer] pre");
+    await expect(pre).toBeVisible();
+    expect(await noHorizontalScroll(page)).toBe(true);
+    expect(await pre.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(
+      true,
+    );
+    await expect(page.getByRole("button", { name: "Copy JSON" })).toBeVisible();
+  });
+});
+
+for (const { width, sideBySide } of [
+  { width: 1440, sideBySide: true },
+  { width: 390, sideBySide: false },
+]) {
+  test.describe(`diff at ${width}`, () => {
+    test.use({ viewport: { width, height: 900 } });
+
+    test(`the panes are ${sideBySide ? "side by side" : "stacked"}`, async ({
+      page,
+    }) => {
+      await page.goto("/dev/kit");
+      const before = page.getByRole("region", { name: "Before", exact: true });
+      const after = page.getByRole("region", { name: "After", exact: true });
+      await before.scrollIntoViewIfNeeded();
+      const b = (await before.boundingBox())!;
+      const a = (await after.boundingBox())!;
+      if (sideBySide) {
+        expect(Math.round(a.y)).toBe(Math.round(b.y));
+      } else {
+        expect(a.y).toBeGreaterThanOrEqual(b.y + b.height);
+      }
+
+      const removed = before.locator("[data-kind=remove]").first();
+      await expect(removed).toContainText("−");
+      await expect(removed.locator(".sr-only")).toHaveText("removed");
+      const added = after.locator("[data-kind=add]").first();
+      await expect(added).toContainText("+");
+      await expect(added.locator(".sr-only")).toHaveText("added");
+    });
+  });
+}
