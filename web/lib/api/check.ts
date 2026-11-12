@@ -22,6 +22,7 @@ export const meExample: components["schemas"]["MeOut"] = {
   session_state: "active",
   mfa: { totp: false, passkeys: 0, recovery_codes_left: 0 },
   require_mfa: false,
+  preferences: { theme: "system", sidebar_collapsed: false },
 };
 export const errorExample: components["schemas"]["ErrorBody"] = {
   code: "not_found",

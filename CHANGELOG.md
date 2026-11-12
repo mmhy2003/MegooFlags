@@ -17,6 +17,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - API logs are JSON lines on stdout, with one access-log line per request. Set `MEGOOFLAGS_LOG_LEVEL` to change the level.
 
 ### Added
+- Your theme and sidebar choices are saved on your account (`PATCH /api/account/preferences`) and returned by `/api/auth/me`, so they follow you to other devices.
 - Sign-in with a password, plus a second factor: TOTP, passkeys (WebAuthn) or single-use recovery codes. Admins can require MFA for everyone with `require_mfa` (`PUT /api/settings`). Web pages `/setup`, `/sign-in`, `/sign-in/mfa`, `/invite/<token>` and `/account/security`.
 - Single sign-on through OIDC and SAML 2.0 (tested with Keycloak), with just-in-time provisioning and mapping of identity-provider groups to teams and roles. Just-in-time provisioning over OIDC needs `email_verified: true` in the ID token or userinfo; an identity provider that does not send it by default, such as Microsoft Entra ID, needs a claim mapping that adds it, or SAML. Deleting a provider also removes the team memberships and role bindings its group sync granted.
 - Users, invitations, teams, custom roles and role bindings at org, project or environment scope, alongside the built-in Admin, Editor and Viewer roles.

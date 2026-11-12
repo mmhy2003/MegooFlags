@@ -1913,6 +1913,16 @@
             ],
             "title": "Name"
           },
+          "preferences": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Preferences"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "require_mfa": {
             "title": "Require Mfa",
             "type": "boolean"
@@ -1937,7 +1947,8 @@
           "auth_method",
           "session_state",
           "mfa",
-          "require_mfa"
+          "require_mfa",
+          "preferences"
         ],
         "title": "MeOut",
         "type": "object"
@@ -2912,6 +2923,53 @@
           "last_used_at"
         ],
         "title": "PersonalTokenOut",
+        "type": "object"
+      },
+      "Preferences": {
+        "additionalProperties": false,
+        "properties": {
+          "sidebar_collapsed": {
+            "title": "Sidebar Collapsed",
+            "type": "boolean"
+          },
+          "theme": {
+            "$ref": "#/components/schemas/UserTheme"
+          }
+        },
+        "required": [
+          "theme",
+          "sidebar_collapsed"
+        ],
+        "title": "Preferences",
+        "type": "object"
+      },
+      "PreferencesIn": {
+        "additionalProperties": false,
+        "description": "Only the fields given change.",
+        "properties": {
+          "sidebar_collapsed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sidebar Collapsed"
+          },
+          "theme": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserTheme"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "PreferencesIn",
         "type": "object"
       },
       "PrerequisiteIn": {
@@ -5745,6 +5803,15 @@
         "title": "UserStatus",
         "type": "string"
       },
+      "UserTheme": {
+        "enum": [
+          "light",
+          "dark",
+          "system"
+        ],
+        "title": "UserTheme",
+        "type": "string"
+      },
       "UserUpdate": {
         "additionalProperties": false,
         "properties": {
@@ -6416,6 +6483,88 @@
           }
         },
         "summary": "Change Password",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/preferences": {
+      "patch": {
+        "description": "Your UI preferences (theme, sidebar). Personal settings: not audited.",
+        "operationId": "update_preferences_api_account_preferences_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Update Preferences",
         "tags": [
           "account"
         ]

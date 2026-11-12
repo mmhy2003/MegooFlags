@@ -1,5 +1,5 @@
 """The signed-in user's own account (`/account/*`): password change, sessions, TOTP, passkeys,
-recovery codes and personal API tokens.
+recovery codes, personal API tokens and UI preferences.
 
 Every route needs a signed-in session; API tokens get 403. The TOTP and passkey routes also accept
 a session that must enrol a factor before it can do anything else (the org's `require_mfa`).
@@ -49,6 +49,8 @@ from megooflags_api.schemas.auth import (
     PasskeyRegistered,
     PasskeyRename,
     PasswordChange,
+    Preferences,
+    PreferencesIn,
     RecoveryCodes,
     SessionOut,
     TotpConfirmed,
@@ -521,3 +523,17 @@ async def revoke_personal_token(
         "account.token.revoke", "token", str(id), before=snapshot(before), after=snapshot(after)
     )
     await session.commit()
+
+
+@router.patch("/preferences")
+async def update_preferences(
+    session: SessionDep, authz: SignedIn, body: PreferencesIn
+) -> Preferences:
+    """Your UI preferences (theme, sidebar). Personal settings: not audited."""
+    user, _ = await _current(session, authz)
+    if body.theme is not None:
+        user.theme = body.theme
+    if body.sidebar_collapsed is not None:
+        user.sidebar_collapsed = body.sidebar_collapsed
+    await session.commit()
+    return Preferences(theme=user.theme, sidebar_collapsed=user.sidebar_collapsed)

@@ -31,6 +31,7 @@ from megooflags_api.schemas.auth import (
     CodeIn,
     MeOut,
     PasskeyOptionsOut,
+    Preferences,
     SignInIn,
     SignInOut,
     WebauthnVerifyIn,
@@ -417,4 +418,9 @@ async def me(session: SessionDep, request: Request) -> MeOut:
             else None
         ),
         require_mfa=await org_settings.require_mfa(session),
+        preferences=(
+            Preferences(theme=user.theme, sidebar_collapsed=user.sidebar_collapsed)
+            if principal.kind == PrincipalKind.USER and user is not None
+            else None
+        ),
     )

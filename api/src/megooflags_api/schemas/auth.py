@@ -5,7 +5,7 @@ from typing import Annotated, Any, Literal
 from pydantic import StringConstraints
 
 from megooflags_api.auth.principal import PrincipalKind
-from megooflags_api.models.enums import SessionState
+from megooflags_api.models.enums import SessionState, UserTheme
 from megooflags_api.schemas.common import ApiModel, Email, Name
 
 # Long enough for any policy-compliant password; the cap keeps hashing cheap for junk input.
@@ -38,6 +38,18 @@ class MfaStatus(ApiModel):
     recovery_codes_left: int
 
 
+class Preferences(ApiModel):
+    theme: UserTheme
+    sidebar_collapsed: bool
+
+
+class PreferencesIn(ApiModel):
+    """Only the fields given change."""
+
+    theme: UserTheme | None = None
+    sidebar_collapsed: bool | None = None
+
+
 class MeOut(ApiModel):
     kind: PrincipalKind
     id: uuid.UUID
@@ -48,6 +60,7 @@ class MeOut(ApiModel):
     session_state: SessionState | None
     mfa: MfaStatus | None
     require_mfa: bool
+    preferences: Preferences | None
 
 
 class TotpEnrolment(ApiModel):
