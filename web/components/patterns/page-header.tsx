@@ -25,7 +25,7 @@ export function PageHeader({
                 {i > 0 && <ChevronRight aria-hidden className="size-4" />}
                 <Link
                   href={crumb.href}
-                  className="inline-flex min-h-11 min-w-0 items-center break-all hover:text-foreground hover:underline"
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center break-all hover:text-foreground hover:underline"
                 >
                   {crumb.label}
                 </Link>

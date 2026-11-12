@@ -236,6 +236,7 @@ async def test_me(app: FastAPI, anon: httpx.AsyncClient) -> None:
         "session_state": "active",
         "mfa": {"totp": False, "passkeys": 0, "recovery_codes_left": 0},
         "require_mfa": False,
+        "preferences": {"theme": "system", "sidebar_collapsed": False},
     }
 
 

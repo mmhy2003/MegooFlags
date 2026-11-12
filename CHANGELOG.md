@@ -17,6 +17,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - API logs are JSON lines on stdout, with one access-log line per request. Set `MEGOOFLAGS_LOG_LEVEL` to change the level.
 
 ### Added
+- Web UI app shell: a sidebar with a project switcher and a menu that follows your permissions (it collapses to icons and becomes a drawer on phones), and a header with ⌘K/Ctrl+K search, a light/dark/system theme switcher and an account menu. It uses the cyberpunk neon palette, works from 280 px wide, and warns when MegooFlags is opened over plain HTTP. Flags, Segments, Environments, Change requests, Audit log, API & SDK keys, Integrations and Settings are placeholder pages for now.
 - Your theme and sidebar choices are saved on your account (`PATCH /api/account/preferences`) and returned by `/api/auth/me`, so they follow you to other devices.
 - `GET /api/auth/me/permissions?project=<key>` lists what you may do org-wide, in a project and in each of its environments.
 - Sign-in with a password, plus a second factor: TOTP, passkeys (WebAuthn) or single-use recovery codes. Admins can require MFA for everyone with `require_mfa` (`PUT /api/settings`). Web pages `/setup`, `/sign-in`, `/sign-in/mfa`, `/invite/<token>` and `/account/security`.

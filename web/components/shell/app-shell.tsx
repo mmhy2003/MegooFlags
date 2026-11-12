@@ -20,7 +20,6 @@ import {
   SidebarInset,
   SidebarMenuButton,
   SidebarProvider,
-  SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -102,7 +101,6 @@ export function AppShell({
         <SidebarFooter>
           <CollapseButton />
         </SidebarFooter>
-        <SidebarRail className="sm:hidden lg:flex" />
       </Sidebar>
       <SidebarInset className="min-w-0">
         <SiteHeader me={shell.me} project={project} items={items} />

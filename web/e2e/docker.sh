@@ -8,10 +8,12 @@ set -euo pipefail
 PW_VERSION="1.65.0"
 
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
+# The image's Node has no corepack, so install the pnpm that package.json pins.
+PNPM_VERSION="$(sed -n 's/.*"packageManager": "pnpm@\([^"]*\)".*/\1/p' "$repo/web/package.json")"
 
 docker run --rm --network host --ipc=host \
   -v "$repo:/repo" -w /repo/web \
   -e CI=1 -e MEGOOFLAGS_UI_KIT=1 \
   -e MEGOOFLAGS_API_URL="${MEGOOFLAGS_API_URL:-http://localhost:8000}" \
   "mcr.microsoft.com/playwright:v$PW_VERSION-noble" \
-  bash -c "corepack enable && pnpm install --frozen-lockfile && pnpm build && pnpm e2e $*"
+  bash -c "npm install -g --silent pnpm@$PNPM_VERSION && pnpm install --frozen-lockfile && pnpm build && pnpm e2e $*"
