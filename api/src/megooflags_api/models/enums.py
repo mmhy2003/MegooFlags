@@ -124,3 +124,9 @@ class ChangeRequestStatus(StrEnum):
 class ReviewDecision(StrEnum):
     APPROVE = "approve"
     REJECT = "reject"
+
+
+class UserTheme(StrEnum):
+    LIGHT = "light"
+    DARK = "dark"
+    SYSTEM = "system"
