@@ -215,7 +215,8 @@ jobs:
       - name: API
         working-directory: api
         run: |
-          nohup uv run python -m megooflags_api.serve > /tmp/api.log 2>&1 &
+          # Not `uv run`: a live uv process holds the cache lock and blocks setup-uv's post-job prune.
+          nohup .venv/bin/python -m megooflags_api.serve > /tmp/api.log 2>&1 &
           for _ in $(seq 60); do
             if curl -fsS http://localhost:8000/readyz > /dev/null; then exit 0; fi
             sleep 1
