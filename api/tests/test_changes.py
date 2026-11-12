@@ -28,6 +28,9 @@ EXCLUDED = {
     ("DELETE", "/api/projects/{project}/flags/{flag}/environments/{env}/schedules/{id}"),
     ("POST", "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/pause"),
     ("POST", "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/resume"),
+    ("POST", "/api/projects/{project}/change-requests"),
+    ("POST", "/api/projects/{project}/change-requests/{id}/comments"),
+    ("POST", "/api/projects/{project}/change-requests/{id}/cancel"),
 }
 P = "/api/projects/{project}"
 F = f"{P}/flags/{{flag}}"

@@ -147,6 +147,18 @@ async def paused_rollout(client: httpx.AsyncClient, app: FastAPI) -> Params:
     return params
 
 
+async def change_request(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """A toggle change request in a protected production."""
+    params = await flag(client, app)
+    r = await client.patch(
+        "/api/projects/demo/environments/production", json={"approvals_required": 1}
+    )
+    assert r.status_code == 200, r.text
+    r = await client.post("/api/projects/demo/change-requests", json=TOGGLE_CHANGE_REQUEST)
+    assert r.status_code == 201, r.text
+    return params | {"id": r.json()["id"]}
+
+
 async def segment(client: httpx.AsyncClient, app: FastAPI) -> Params:
     params = await project(client, app)
     r = await client.post("/api/projects/demo/segments", json={"key": "beta", "name": "Beta"})
@@ -423,6 +435,13 @@ ROLLOUT = {
     "to_variation": "b",
     "steps": [{"percentage": 10000}, {"percentage": 100000}],
 }
+TOGGLE_CHANGE_REQUEST = {
+    "environment": "production",
+    "flag": "color",
+    "kind": "toggle",
+    "title": "Turn color on",
+    "payload": {"enabled": True},
+}
 PASSWORD = "a much longer passphrase 42"
 PERSONAL_TOKEN = {"name": "laptop", "permissions": ["project.read"]}
 
@@ -603,6 +622,20 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
         sample("POST", f"{FE}/rollout/resume", "flag.rollout.resume", paused_rollout),
         sample("POST", f"{FE}/rollout/abort", "flag.rollout.abort", rollout),
         sample("POST", f"{F}/copy", "flag.copy", flag, {"from": "staging", "to": ["production"]}),
+        # Change requests
+        sample(
+            "POST", f"{P}/change-requests", "change_request.create", flag, TOGGLE_CHANGE_REQUEST
+        ),
+        sample(
+            "POST",
+            f"{P}/change-requests/{{id}}/comments",
+            "change_request.comment",
+            change_request,
+            {"body": "lgtm"},
+        ),
+        sample(
+            "POST", f"{P}/change-requests/{{id}}/cancel", "change_request.cancel", change_request
+        ),
         # Segments
         sample("POST", f"{P}/segments", "segment.create", project, {"key": "beta", "name": "B"}),
         sample("PUT", S, "segment.config.update", segment, {"included": ["alice"]}),
