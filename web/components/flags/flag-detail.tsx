@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { copyBlocked, CopyDialog } from "@/components/flags/copy-dialog";
 import { type EnvState, EnvStrip } from "@/components/flags/env-strip";
 import { HistoryList } from "@/components/flags/history-list";
+import { InsightsPanel } from "@/components/flags/insights-panel";
 import { ReviewDialog } from "@/components/flags/review-dialog";
 import { problemField, RulesEditor } from "@/components/flags/rules-editor";
 import { TestPanel } from "@/components/flags/test-panel";
@@ -467,11 +468,20 @@ export function FlagDetail({
             canRead={perms === null ? null : can(perms, "audit.read")}
           />
         </TabsContent>
+        <TabsContent value="insights" className="pt-4">
+          <InsightsPanel
+            key={env}
+            project={project}
+            flag={flagData.data}
+            env={env}
+          />
+        </TabsContent>
         {TABS.filter(
           (t) =>
             t.value !== "targeting" &&
             t.value !== "test" &&
-            t.value !== "history",
+            t.value !== "history" &&
+            t.value !== "insights",
         ).map((t) => (
           <TabsContent key={t.value} value={t.value} className="pt-4">
             <ComingSoon />

@@ -851,3 +851,70 @@ test.describe("history", () => {
     expect(await noHorizontalScroll(page)).toBe(true);
   });
 });
+
+test.describe("insights", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  /** Waits for global setup's 20 OFREP evaluations, which the counter flushes every 10 s. */
+  async function openInsights(page: Page) {
+    await page.goto(detail("checkout-v2", "?env=development&tab=insights"));
+    await expect
+      .poll(
+        async () => {
+          const shown = await page
+            .getByText("20 evaluations", { exact: true })
+            .isVisible();
+          if (!shown) await page.reload();
+          return shown;
+        },
+        { timeout: 30_000, intervals: [2_000] },
+      )
+      .toBe(true);
+  }
+
+  test("charts the seeded evaluations", async ({ page }) => {
+    await openInsights(page);
+    await expect(
+      page.getByRole("figure", { name: "Evaluations by variation" }),
+    ).toBeVisible();
+    // Set by the periodic lifecycle job, so it may not have run since global setup.
+    await expect(
+      page.getByText(/^(Last evaluated .+|Never evaluated)$/),
+    ).toBeVisible();
+  });
+
+  test("Show as table lists every hour", async ({ page }) => {
+    await openInsights(page);
+    await page.getByRole("button", { name: "Show as table" }).click();
+    await expect(
+      page.getByRole("button", { name: "Show as chart" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    const table = page.getByRole("table", { name: "Evaluations" });
+    const rows = table.locator("tbody tr");
+    await expect(rows).toHaveCount(24);
+    const headers = await table.locator("thead th").allInnerTexts();
+    const columns = ["true", "false"].map((v) => headers.indexOf(v));
+    expect(columns).not.toContain(-1);
+    let sum = 0;
+    for (const row of await rows.all()) {
+      const cells = await row.locator("th, td").allInnerTexts();
+      for (const c of columns) sum += Number(cells[c]);
+    }
+    expect(sum).toBe(20);
+  });
+
+  test("the last 7 days still count them", async ({ page }) => {
+    await openInsights(page);
+    await page
+      .getByRole("combobox", { name: "Range" })
+      .selectOption({ label: "Last 7 days" });
+    await expect(
+      page.getByText("20 evaluations", { exact: true }),
+    ).toBeVisible();
+  });
+
+  test("Staging has none", async ({ page }) => {
+    await page.goto(detail("checkout-v2", "?env=staging&tab=insights"));
+    await expect(page.getByText("No evaluations in this range")).toBeVisible();
+  });
+});
