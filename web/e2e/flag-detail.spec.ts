@@ -918,3 +918,153 @@ test.describe("insights", () => {
     await expect(page.getByText("No evaluations in this range")).toBeVisible();
   });
 });
+
+test.describe("settings", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  async function flagOut(flag: string) {
+    const response = await ok(
+      await api.get(`/api/projects/${SHOP}/flags/${flag}`),
+      `read ${flag}`,
+    );
+    return (await response.json()) as {
+      name: string;
+      tags: string[];
+      off_variation: string;
+      lifecycle: string;
+      variations: { key: string; name: string; value: unknown }[];
+    };
+  }
+
+  function openSettings(page: Page, flag: string) {
+    return page.goto(detail(flag, "?tab=settings"));
+  }
+
+  test("details are saved", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await openSettings(page, flag);
+    await page
+      .getByRole("textbox", { name: "Name", exact: true })
+      .fill("Renamed flag");
+    await page.getByRole("textbox", { name: "Tags" }).fill("web, beta");
+    await page.getByRole("button", { name: "Save details" }).click();
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Renamed flag" }),
+    ).toBeVisible();
+    const saved = await flagOut(flag);
+    expect(saved.name).toBe("Renamed flag");
+    expect(saved.tags).toEqual(["web", "beta"]);
+  });
+
+  test("variations are added, renamed and deleted", async ({ page }) => {
+    const flag = await createTestFlag(api, { type: "string" });
+    await openSettings(page, flag);
+    await page.getByRole("textbox", { name: "New variation key" }).fill("c");
+    await page
+      .getByRole("textbox", { name: "New variation value" })
+      .fill("See");
+    await page.getByRole("button", { name: "Add variation" }).click();
+    await expect(
+      page.getByRole("textbox", { name: "Variation c value" }),
+    ).toHaveValue("See");
+
+    await page.getByRole("textbox", { name: "Variation b name" }).fill("Bee");
+    await page.getByRole("button", { name: "Save variation b" }).click();
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    let saved = await flagOut(flag);
+    expect(saved.variations.find((v) => v.key === "b")?.name).toBe("Bee");
+    expect(saved.variations.find((v) => v.key === "c")?.value).toBe("See");
+
+    await putConfig(api, flag, "development", (c) => {
+      c.fallthrough = { variation: "c", rollout: null };
+    });
+    await page.getByRole("button", { name: "Delete variation c" }).click();
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
+    await expect(page.getByText(/variation 'c' is in use/)).toBeVisible();
+
+    await putConfig(api, flag, "development", (c) => {
+      c.fallthrough = { variation: "a", rollout: null };
+    });
+    await page.getByRole("button", { name: "Delete variation c" }).click();
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
+    await expect(
+      page.getByRole("textbox", { name: "Variation c value" }),
+    ).toHaveCount(0);
+    saved = await flagOut(flag);
+    expect(saved.variations.map((v) => v.key)).toEqual(["a", "b"]);
+  });
+
+  test("the off variation is saved", async ({ page }) => {
+    const flag = await createTestFlag(api, { type: "string" });
+    await openSettings(page, flag);
+    await page
+      .getByRole("combobox", { name: "Off variation" })
+      .selectOption("b");
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    expect((await flagOut(flag)).off_variation).toBe("b");
+  });
+
+  test("a flag is marked permanent", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await openSettings(page, flag);
+    await page.getByRole("switch", { name: "Permanent flag" }).click();
+    await expect(page.getByText("permanent", { exact: true })).toBeVisible();
+    expect((await flagOut(flag)).lifecycle).toBe("permanent");
+  });
+
+  async function archive(page: Page) {
+    await page.getByRole("button", { name: "Archive flag" }).click();
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Archive", exact: true })
+      .click();
+    await expect(page.getByText("This flag is archived")).toBeVisible();
+  }
+
+  test("archive, then restore", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await openSettings(page, flag);
+    await archive(page);
+    await expect(
+      page.getByRole("switch", { name: `${flag} in Staging` }),
+    ).toBeDisabled();
+
+    await page.getByRole("button", { name: "Restore flag" }).click();
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Restore", exact: true })
+      .click();
+    await expect(page.getByText("This flag is archived")).toBeHidden();
+    await expect(
+      page.getByRole("switch", { name: `${flag} in Staging` }),
+    ).toBeEnabled();
+  });
+
+  test("delete asks for the key", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await openSettings(page, flag);
+    await archive(page);
+    await page.getByRole("button", { name: "Delete flag" }).click();
+    const dialog = page.getByRole("alertdialog");
+    const remove = dialog.getByRole("button", { name: "Delete", exact: true });
+    await expect(remove).toBeDisabled();
+    const confirm = dialog.getByRole("textbox", {
+      name: `Type ${flag} to confirm`,
+    });
+    await confirm.fill(flag.slice(0, -1));
+    await expect(remove).toBeDisabled();
+    await confirm.fill(flag);
+    await remove.click();
+    await expect(page.getByText("Flag deleted")).toBeVisible();
+    await expect(page).toHaveURL(/\/projects\/shop\/flags$/);
+    const gone = await api.get(`/api/projects/${SHOP}/flags/${flag}`);
+    expect(gone.status()).toBe(404);
+  });
+});

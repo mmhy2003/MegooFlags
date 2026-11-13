@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { copyBlocked, CopyDialog } from "@/components/flags/copy-dialog";
 import { type EnvState, EnvStrip } from "@/components/flags/env-strip";
+import { FlagSettings } from "@/components/flags/flag-settings";
 import { HistoryList } from "@/components/flags/history-list";
 import { InsightsPanel } from "@/components/flags/insights-panel";
 import { ReviewDialog } from "@/components/flags/review-dialog";
@@ -38,6 +39,7 @@ import {
 import { can } from "@/lib/flags/permissions";
 
 type FlagConfigOut = components["schemas"]["FlagConfigOut"];
+type FlagOut = components["schemas"]["FlagOut"];
 
 const TABS = [
   { value: "targeting", label: "Targeting" },
@@ -103,10 +105,6 @@ function stateOf(config: FlagConfigOut): EnvState {
   };
 }
 
-function ComingSoon() {
-  return <p className="text-muted-foreground">Coming in this release.</p>;
-}
-
 /**
  * The flag detail page below its header: the environment strip, then the tabs. The selected
  * environment and tab live in the URL (`?env=&tab=`); the selected environment's config is
@@ -131,6 +129,10 @@ export function FlagDetail({
       }),
     ),
   );
+  // The last loaded flag, kept while a reload after a settings change is in flight.
+  const [lastFlag, setLastFlag] = useState<FlagOut | null>(null);
+  if (flagData.data && flagData.data !== lastFlag) setLastFlag(flagData.data);
+  const flagOut = flagData.data ?? lastFlag;
   const environments = useApiData(`environments:${project}`, () =>
     must(
       api.GET("/api/projects/{project}/environments", {
@@ -178,13 +180,15 @@ export function FlagDetail({
   const [changed, setChanged] = useState<Record<string, EnvState>>({});
   const states = useMemo(() => {
     const byEnv: Record<string, EnvState> = {};
-    for (const s of flagData.data?.environments ?? []) byEnv[s.environment] = s;
+    for (const s of flagOut?.environments ?? []) byEnv[s.environment] = s;
     return { ...byEnv, ...changed };
-  }, [flagData.data, changed]);
+  }, [flagOut, changed]);
 
+  // By value, so reloading the flag keeps the draft unless its variations changed.
+  const keysText = (flagOut?.variations ?? []).map((v) => v.key).join("\n");
   const variationKeys = useMemo(
-    () => (flagData.data?.variations ?? []).map((v) => v.key),
-    [flagData.data],
+    () => (keysText ? keysText.split("\n") : []),
+    [keysText],
   );
   const loaded = useMemo(
     () => (config.data ? toDraft(config.data, variationKeys) : null),
@@ -312,9 +316,9 @@ export function FlagDetail({
         onRetry={environments.reload}
       />
     );
-  if (!flagData.data || !environments.data) return <Loading what="flag" />;
+  if (!flagOut || !environments.data) return <Loading what="flag" />;
 
-  const archived = flagData.data.archived;
+  const archived = flagOut.archived;
   const readOnly = archived || !can(perms, "flag.config.write", env);
   const canCopy =
     !archived &&
@@ -347,7 +351,7 @@ export function FlagDetail({
         )}
         <RulesEditor
           project={project}
-          flag={flagData.data}
+          flag={flagOut}
           draft={draft}
           onChange={setDraft}
           readOnly={readOnly}
@@ -469,24 +473,20 @@ export function FlagDetail({
           />
         </TabsContent>
         <TabsContent value="insights" className="pt-4">
-          <InsightsPanel
-            key={env}
+          <InsightsPanel key={env} project={project} flag={flagOut} env={env} />
+        </TabsContent>
+        <TabsContent value="settings" className="pt-4">
+          <FlagSettings
             project={project}
-            flag={flagData.data}
-            env={env}
+            flag={flagOut}
+            perms={perms}
+            onChanged={() => {
+              flagData.reload();
+              // The page header is rendered on the server.
+              router.refresh();
+            }}
           />
         </TabsContent>
-        {TABS.filter(
-          (t) =>
-            t.value !== "targeting" &&
-            t.value !== "test" &&
-            t.value !== "history" &&
-            t.value !== "insights",
-        ).map((t) => (
-          <TabsContent key={t.value} value={t.value} className="pt-4">
-            <ComingSoon />
-          </TabsContent>
-        ))}
       </Tabs>
     </div>
   );
