@@ -129,6 +129,18 @@ export function FlagDetail({
     ),
   );
 
+  const segmentList = useApiData(`segments:${project}:all`, () =>
+    must(
+      api.GET("/api/projects/{project}/segments", {
+        params: { path: { project }, query: { limit: 500 } },
+      }),
+    ),
+  );
+  const segments = useMemo(
+    () => (segmentList.data?.items ?? []).map((s) => s.key),
+    [segmentList.data],
+  );
+
   const envs = environments.data ?? [];
   const wanted = params.get("env");
   const env = envs.some((e) => e.key === wanted)
@@ -283,6 +295,7 @@ export function FlagDetail({
           onChange={setDraft}
           readOnly={readOnly}
           problems={byField(problems)}
+          segments={segments}
         />
         <UnsavedBar
           isDirty={dirty}

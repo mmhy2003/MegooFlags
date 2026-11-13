@@ -110,10 +110,11 @@ async function inBatches<T>(
 }
 
 /**
- * Removes every prerequisite in shop. The database refuses to delete a project whose flags are
- * prerequisites of each other (the FK has no ON DELETE), and the bulk archive spec leaves one.
+ * Removes every prerequisite and segment rule in shop. The database refuses to delete a project
+ * whose flags are prerequisites of each other or whose rules use its segments (those FKs have no
+ * ON DELETE), and the bulk archive and rules specs leave some.
  */
-async function clearShopPrerequisites(admin: APIRequestContext): Promise<void> {
+async function clearShopReferences(admin: APIRequestContext): Promise<void> {
   const keys: string[] = [];
   for (const lifecycle of [undefined, "archived"]) {
     const page = await ok(
@@ -130,12 +131,16 @@ async function clearShopPrerequisites(admin: APIRequestContext): Promise<void> {
     for (const env of envs) {
       const path = `/api/projects/${SHOP}/flags/${key}/environments/${env}`;
       const current = await ok(await admin.get(path), `GET ${path}`);
-      const { prerequisites } = (await current.json()) as {
+      const { prerequisites, rules } = (await current.json()) as {
         prerequisites: unknown[];
+        rules: { clauses: { operator: string }[] }[];
       };
-      if (prerequisites.length > 0)
+      const usesSegment = (rule: (typeof rules)[number]) =>
+        rule.clauses.some((c) => c.operator === "in_segment");
+      if (prerequisites.length > 0 || rules.some(usesSegment))
         await putConfig(admin, key, env, (config) => {
           config.prerequisites = [];
+          config.rules = rules.filter((r) => !usesSegment(r));
         });
     }
   });
@@ -146,7 +151,7 @@ async function seedShop(admin: APIRequestContext): Promise<void> {
   const project = `/api/projects/${SHOP}`;
   let gone = await admin.delete(project);
   if (gone.status() === 409) {
-    await clearShopPrerequisites(admin);
+    await clearShopReferences(admin);
     gone = await admin.delete(project);
   }
   if (gone.status() !== 404) await ok(gone, `DELETE ${project}`);

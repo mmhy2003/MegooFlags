@@ -13,6 +13,7 @@ import {
   putConfig,
   SHOP,
 } from "./support/api";
+import { noHorizontalScroll, smallTargets } from "./support/checks";
 
 let api: APIRequestContext;
 
@@ -437,5 +438,203 @@ test.describe("editor", () => {
     expect((await configIn(flag, "development")).prerequisites).toEqual([
       { flag: "checkout-v2", variation: "true" },
     ]);
+  });
+});
+
+test.describe("rules", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  function rule(page: Page, n: number) {
+    return page.getByRole("group", { name: `Rule ${n}`, exact: true });
+  }
+
+  async function save(page: Page) {
+    await page
+      .getByRole("status", { name: "Unsaved changes" })
+      .getByRole("button", { name: "Review" })
+      .click();
+    const dialog = page.getByRole("dialog", { name: "Review changes" });
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(dialog).toBeHidden();
+  }
+
+  async function setValues(page: Page, n: number, text: string) {
+    const values = rule(page, n).getByRole("textbox", { name: "Values" });
+    await values.fill(text);
+    await values.blur();
+  }
+
+  const countryRule = {
+    description: "",
+    clauses: [
+      { attribute: "country", operator: "in", values: ["NL"], negate: false },
+    ],
+    variation: "true",
+    rollout: null,
+  };
+  const betaRule = {
+    description: "",
+    clauses: [
+      {
+        attribute: "key",
+        operator: "in_segment",
+        values: ["beta-testers"],
+        negate: false,
+      },
+    ],
+    variation: null,
+    rollout: {
+      bucket_by: "key",
+      weights: [
+        { variation: "true", weight: 50000 },
+        { variation: "false", weight: 50000 },
+      ],
+    },
+  };
+
+  test("a list rule and a segment rule are saved, then reordered", async ({
+    page,
+  }) => {
+    const flag = await createTestFlag(api);
+    await page.goto(detail(flag));
+    const rules = page.getByRole("region", { name: "Rules" });
+    await expect(rules).toContainText(
+      "No rules. Everyone who is not targeted gets the default rule.",
+    );
+
+    await rules.getByRole("button", { name: "Add rule" }).click();
+    await rule(page, 1)
+      .getByRole("textbox", { name: "Attribute" })
+      .fill("country");
+    await setValues(page, 1, "NL\nBE");
+    await rule(page, 1)
+      .getByRole("combobox", { name: "Variation" })
+      .selectOption("true");
+
+    await rules.getByRole("button", { name: "Add rule" }).click();
+    const second = rule(page, 2);
+    await second
+      .getByRole("combobox", { name: "Operator" })
+      .selectOption({ label: "is in segment" });
+    await second
+      .getByRole("checkbox", { name: "Segment beta-testers" })
+      .check();
+    await second.getByRole("radio", { name: "Serve a rollout" }).check();
+    await expect(
+      second.getByRole("spinbutton", { name: "Rollout percentage" }),
+    ).toHaveValue("50");
+    await save(page);
+
+    // Values keep the typed order; only segment keys come back sorted.
+    const saved = await configIn(flag, "development");
+    expect(saved.rules).toEqual([
+      {
+        ...countryRule,
+        clauses: [{ ...countryRule.clauses[0], values: ["NL", "BE"] }],
+      },
+      betaRule,
+    ]);
+
+    await expect(
+      rule(page, 1).getByRole("button", { name: "Move rule 1 up" }),
+    ).toBeDisabled();
+    await expect(
+      rule(page, 2).getByRole("button", { name: "Move rule 2 down" }),
+    ).toBeDisabled();
+    await rule(page, 2).getByRole("button", { name: "Move rule 2 up" }).click();
+    await expect(
+      rule(page, 1).getByRole("button", { name: "Move rule 1 down" }),
+    ).toBeFocused();
+    await expect(
+      rule(page, 1).getByRole("checkbox", { name: "Segment beta-testers" }),
+    ).toBeChecked();
+    await save(page);
+    const swapped = await configIn(flag, "development");
+    expect(swapped.rules).toEqual([saved.rules[1], saved.rules[0]]);
+  });
+
+  test("a bad version shows inline and blocks review", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await page.goto(detail(flag));
+    await page.getByRole("button", { name: "Add rule" }).click();
+    await setValues(page, 1, "NL");
+    await rule(page, 1)
+      .getByRole("combobox", { name: "Operator" })
+      .selectOption({ label: "version >" });
+    await expect(
+      rule(page, 1).getByRole("textbox", { name: "Values" }),
+    ).toHaveValue("");
+    await expect(rule(page, 1)).toContainText("Versions like 1.2.3");
+    await setValues(page, 1, "1.2");
+    const values = rule(page, 1).getByRole("textbox", { name: "Values" });
+    await expect(values).toHaveAttribute("aria-invalid", "true");
+    await expect(rule(page, 1)).toContainText("Enter versions like 1.2.3");
+
+    await page
+      .getByRole("status", { name: "Unsaved changes" })
+      .getByRole("button", { name: "Review" })
+      .click();
+    await expect(
+      page
+        .getByRole("alert")
+        .filter({ hasText: "Fix these before review" })
+        .getByText("Add at least one value"),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("dialog", { name: "Review changes" }),
+    ).toHaveCount(0);
+  });
+
+  test("Not round-trips through Save", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await page.goto(detail(flag));
+    await page.getByRole("button", { name: "Add rule" }).click();
+    await rule(page, 1)
+      .getByRole("textbox", { name: "Attribute" })
+      .fill("plan");
+    await setValues(page, 1, "free");
+    await rule(page, 1).getByRole("checkbox", { name: "Not" }).check();
+    await save(page);
+    const saved = await configIn(flag, "development");
+    expect(saved.rules).toEqual([
+      expect.objectContaining({
+        clauses: [
+          { attribute: "plan", operator: "in", values: ["free"], negate: true },
+        ],
+      }),
+    ]);
+    await page.reload();
+    await expect(
+      rule(page, 1).getByRole("checkbox", { name: "Not" }),
+    ).toBeChecked();
+  });
+
+  test("removing rule 1 leaves rule 2", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await putConfig(api, flag, "development", (c) => {
+      c.rules = [countryRule, betaRule];
+    });
+    await page.goto(detail(flag));
+    await expect(
+      rule(page, 1).getByRole("button", { name: "Remove clause" }),
+    ).toBeDisabled();
+    await rule(page, 1).getByRole("button", { name: "Remove rule 1" }).click();
+    await expect(rule(page, 2)).toHaveCount(0);
+    await save(page);
+    expect((await configIn(flag, "development")).rules).toEqual([betaRule]);
+  });
+
+  test("rules fit at 344 px", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await putConfig(api, flag, "development", (c) => {
+      c.rules = [countryRule, betaRule];
+    });
+    await page.setViewportSize({ width: 344, height: 800 });
+    await page.goto(detail(flag));
+    await expect(
+      rule(page, 2).getByRole("checkbox", { name: "Segment beta-testers" }),
+    ).toBeChecked();
+    expect(await noHorizontalScroll(page)).toBe(true);
+    expect(await smallTargets(page)).toEqual([]);
   });
 });
