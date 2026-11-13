@@ -709,3 +709,76 @@ test.describe("copy", () => {
     await expect(card(page, "Staging")).toContainText("Off");
   });
 });
+
+test.describe("test panel", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  async function evaluate(page: Page, context: string) {
+    await page.getByRole("textbox", { name: "Context (JSON)" }).fill(context);
+    await page.getByRole("button", { name: "Evaluate" }).click();
+    return page.getByRole("region", { name: "Result", exact: true });
+  }
+
+  test("explains a target, a rule and the default rule", async ({ page }) => {
+    await page.goto(detail("checkout-v2", "?env=development&tab=test"));
+    await expect(
+      page.getByRole("heading", { name: "Test in Development" }),
+    ).toBeVisible();
+
+    let result = await evaluate(page, '{"key":"user-1"}');
+    await expect(result).toContainText("true");
+    await expect(result).toContainText("Individual target");
+
+    result = await evaluate(page, '{"key":"u2","country":"NL"}');
+    await expect(result).toContainText("Rule 1");
+
+    result = await evaluate(page, '{"key":"u3","country":"DE"}');
+    await expect(result).toContainText("false");
+    await expect(result).toContainText("Default rule");
+  });
+
+  test("Show rule opens the rule in Targeting", async ({ page }) => {
+    await page.goto(detail("checkout-v2", "?env=development&tab=test"));
+    const result = await evaluate(page, '{"key":"u2","country":"NL"}');
+    await result.getByRole("button", { name: "Show rule 1" }).click();
+    await expect(page).toHaveURL(/tab=targeting/);
+    await expect(page.locator("#rule-1")).toBeInViewport();
+  });
+
+  test("a flag that is off says so", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await page.goto(detail(flag, "?tab=test"));
+    const result = await evaluate(page, '{"key":"user-1"}');
+    await expect(result).toContainText("Flag is off");
+  });
+
+  test("invalid JSON asks for an object", async ({ page }) => {
+    await page.goto(detail("checkout-v2", "?env=development&tab=test"));
+    await evaluate(page, "{");
+    await expect(page.getByText("Enter a JSON object")).toBeVisible();
+  });
+
+  test("the context survives a reload", async ({ page }) => {
+    await page.goto(detail("checkout-v2", "?env=development&tab=test"));
+    const context = page.getByRole("textbox", { name: "Context (JSON)" });
+    await context.fill('{"key":"kept"}');
+    await page.reload();
+    await expect(context).toHaveValue('{"key":"kept"}');
+  });
+
+  test("a dirty draft notes that the saved config is used", async ({
+    page,
+  }) => {
+    const flag = await createTestFlag(api);
+    await page.goto(detail(flag));
+    const targets = page.getByRole("textbox", {
+      name: "Context keys served true",
+    });
+    await targets.fill("user-9");
+    await targets.blur();
+    await page.getByRole("tab", { name: "Test" }).click();
+    await expect(
+      page.getByText("Results use the saved config", { exact: false }),
+    ).toBeVisible();
+  });
+});

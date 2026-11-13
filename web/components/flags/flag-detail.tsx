@@ -1,13 +1,14 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { copyBlocked, CopyDialog } from "@/components/flags/copy-dialog";
 import { type EnvState, EnvStrip } from "@/components/flags/env-strip";
 import { ReviewDialog } from "@/components/flags/review-dialog";
 import { problemField, RulesEditor } from "@/components/flags/rules-editor";
+import { TestPanel } from "@/components/flags/test-panel";
 import { UnsavedBar } from "@/components/flags/unsaved-bar";
 import { useUnsavedGuard } from "@/components/flags/use-unsaved-guard";
 import { useProjectPermissions } from "@/components/shell/use-project-permissions";
@@ -204,6 +205,15 @@ export function FlagDetail({
   const [invalid, setInvalid] = useState<DraftProblem | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [copying, setCopying] = useState(false);
+  // A rule "Show rule" asked for; scrolled to once Targeting shows it.
+  const shownRule = useRef<number | null>(null);
+  useEffect(() => {
+    if (shownRule.current === null || tab !== "targeting") return;
+    document
+      .getElementById(`rule-${shownRule.current}`)
+      ?.scrollIntoView({ block: "start" });
+    shownRule.current = null;
+  }, [tab]);
   const problems = [
     ...(checked && draft ? validateDraft(draft) : []),
     ...(invalid ? [invalid] : []),
@@ -433,11 +443,28 @@ export function FlagDetail({
         <TabsContent value="targeting" className="pt-4">
           {targeting}
         </TabsContent>
-        {TABS.filter((t) => t.value !== "targeting").map((t) => (
-          <TabsContent key={t.value} value={t.value} className="pt-4">
-            <ComingSoon />
-          </TabsContent>
-        ))}
+        <TabsContent value="test" className="pt-4">
+          <TestPanel
+            key={env}
+            project={project}
+            flag={flag}
+            env={env}
+            envName={envName}
+            dirty={dirty}
+            canEvaluate={can(perms, "evaluate", env)}
+            onShowRule={(n) => {
+              shownRule.current = n;
+              setParam("tab", "targeting");
+            }}
+          />
+        </TabsContent>
+        {TABS.filter((t) => t.value !== "targeting" && t.value !== "test").map(
+          (t) => (
+            <TabsContent key={t.value} value={t.value} className="pt-4">
+              <ComingSoon />
+            </TabsContent>
+          ),
+        )}
       </Tabs>
     </div>
   );
