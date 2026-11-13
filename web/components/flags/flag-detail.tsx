@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { copyBlocked, CopyDialog } from "@/components/flags/copy-dialog";
 import { type EnvState, EnvStrip } from "@/components/flags/env-strip";
+import { HistoryList } from "@/components/flags/history-list";
 import { ReviewDialog } from "@/components/flags/review-dialog";
 import { problemField, RulesEditor } from "@/components/flags/rules-editor";
 import { TestPanel } from "@/components/flags/test-panel";
@@ -458,13 +459,24 @@ export function FlagDetail({
             }}
           />
         </TabsContent>
-        {TABS.filter((t) => t.value !== "targeting" && t.value !== "test").map(
-          (t) => (
-            <TabsContent key={t.value} value={t.value} className="pt-4">
-              <ComingSoon />
-            </TabsContent>
-          ),
-        )}
+        <TabsContent value="history" className="pt-4">
+          <HistoryList
+            project={project}
+            flag={flag}
+            env={env}
+            canRead={perms === null ? null : can(perms, "audit.read")}
+          />
+        </TabsContent>
+        {TABS.filter(
+          (t) =>
+            t.value !== "targeting" &&
+            t.value !== "test" &&
+            t.value !== "history",
+        ).map((t) => (
+          <TabsContent key={t.value} value={t.value} className="pt-4">
+            <ComingSoon />
+          </TabsContent>
+        ))}
       </Tabs>
     </div>
   );

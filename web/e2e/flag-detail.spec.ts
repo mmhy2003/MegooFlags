@@ -782,3 +782,72 @@ test.describe("test panel", () => {
     ).toBeVisible();
   });
 });
+
+test.describe("history", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  /** A test flag turned on in staging, then given a target in development. */
+  async function changedFlag(): Promise<string> {
+    const flag = await createTestFlag(api);
+    await toggleViaApi(flag, "staging", true);
+    await putConfig(api, flag, "development", (c) => {
+      c.targets = [{ variation: "true", values: ["user-7"] }];
+    });
+    return flag;
+  }
+
+  function entries(page: Page) {
+    return page
+      .getByRole("list", { name: "Change history" })
+      .getByRole("listitem");
+  }
+
+  test("lists the changes newest first", async ({ page }) => {
+    const flag = await changedFlag();
+    await page.goto(detail(flag, "?env=development&tab=history"));
+    const items = entries(page);
+    await expect(items).toHaveCount(3);
+    await expect(items.nth(0)).toContainText("Targeting changed");
+    await expect(items.nth(1)).toContainText("Turned on");
+    await expect(items.nth(1)).toContainText("staging");
+    await expect(items.nth(2)).toContainText("Created");
+  });
+
+  test("Show diff shows what a change added", async ({ page }) => {
+    const flag = await changedFlag();
+    await page.goto(detail(flag, "?env=development&tab=history"));
+    const entry = entries(page).nth(0);
+    await entry.getByText("Show diff").click();
+    await expect(
+      entry.getByRole("region", { name: "After", exact: true }),
+    ).toContainText("user-7");
+  });
+
+  test("This environment only hides other environments", async ({ page }) => {
+    const flag = await changedFlag();
+    await page.goto(detail(flag, "?env=development&tab=history"));
+    await expect(entries(page)).toHaveCount(3);
+    await page.getByRole("checkbox", { name: "This environment only" }).check();
+    await expect(entries(page)).toHaveCount(1);
+    await expect(entries(page).nth(0)).toContainText("Targeting changed");
+    await expect(
+      page.getByRole("list", { name: "Change history" }),
+    ).not.toContainText("Turned on");
+  });
+
+  test("the diff stacks at 344 px with no page scroll", async ({ page }) => {
+    const flag = await changedFlag();
+    await page.setViewportSize({ width: 344, height: 800 });
+    await page.goto(detail(flag, "?env=development&tab=history"));
+    const entry = entries(page).nth(0);
+    await entry.getByText("Show diff").click();
+    const before = await entry
+      .getByRole("region", { name: "Before", exact: true })
+      .boundingBox();
+    const after = await entry
+      .getByRole("region", { name: "After", exact: true })
+      .boundingBox();
+    expect(after!.y).toBeGreaterThan(before!.y + before!.height - 1);
+    expect(await noHorizontalScroll(page)).toBe(true);
+  });
+});
