@@ -4,7 +4,7 @@ import {
   request,
 } from "@playwright/test";
 
-import { API, APP, ok, SHOP } from "./support/api";
+import { API, APP, ok, putConfig, SHOP } from "./support/api";
 import {
   ADMIN,
   type E2EUser,
@@ -109,10 +109,46 @@ async function inBatches<T>(
     await Promise.all(items.slice(i, i + limit).map(task));
 }
 
+/**
+ * Removes every prerequisite in shop. The database refuses to delete a project whose flags are
+ * prerequisites of each other (the FK has no ON DELETE), and the bulk archive spec leaves one.
+ */
+async function clearShopPrerequisites(admin: APIRequestContext): Promise<void> {
+  const keys: string[] = [];
+  for (const lifecycle of [undefined, "archived"]) {
+    const page = await ok(
+      await admin.get(`/api/projects/${SHOP}/flags`, {
+        params: { limit: 500, ...(lifecycle && { lifecycle }) },
+      }),
+      "list shop flags",
+    );
+    const { items } = (await page.json()) as { items: { key: string }[] };
+    keys.push(...items.map((f) => f.key));
+  }
+  const envs = ["development", "staging", "production"];
+  await inBatches(keys, 4, async (key) => {
+    for (const env of envs) {
+      const path = `/api/projects/${SHOP}/flags/${key}/environments/${env}`;
+      const current = await ok(await admin.get(path), `GET ${path}`);
+      const { prerequisites } = (await current.json()) as {
+        prerequisites: unknown[];
+      };
+      if (prerequisites.length > 0)
+        await putConfig(admin, key, env, (config) => {
+          config.prerequisites = [];
+        });
+    }
+  });
+}
+
 /** Recreates the shop project the flag specs use, so every run starts from the same data. */
 async function seedShop(admin: APIRequestContext): Promise<void> {
   const project = `/api/projects/${SHOP}`;
-  const gone = await admin.delete(project);
+  let gone = await admin.delete(project);
+  if (gone.status() === 409) {
+    await clearShopPrerequisites(admin);
+    gone = await admin.delete(project);
+  }
   if (gone.status() !== 404) await ok(gone, `DELETE ${project}`);
   await ok(
     await admin.post("/api/projects", {

@@ -5,7 +5,7 @@ import {
   test,
 } from "@playwright/test";
 
-import { adminApi, ok, SHOP } from "./support/api";
+import { adminApi, createTestFlag, ok, putConfig, SHOP } from "./support/api";
 
 let api: APIRequestContext;
 
@@ -40,7 +40,7 @@ const LIST = `/projects/${SHOP}/flags`;
 function listedKeys(page: Page): Promise<string[]> {
   return page
     .getByRole("table", { name: "Flags" })
-    .locator("tbody tr td:first-child a")
+    .locator("tbody tr td a")
     .allTextContents();
 }
 
@@ -197,5 +197,187 @@ test.describe("flag filters on a phone", () => {
       cards.getByRole("link", { name: "legacy-header" }),
     ).toBeVisible();
     await expect(cards.getByRole("listitem")).toHaveCount(1);
+  });
+});
+
+type FlagRead = {
+  tags: string[];
+  archived: boolean;
+  environments: { environment: string; enabled: boolean }[];
+};
+
+async function readFlag(key: string): Promise<FlagRead> {
+  const response = await ok(
+    await api.get(`/api/projects/${SHOP}/flags/${key}`),
+    `read ${key}`,
+  );
+  return (await response.json()) as FlagRead;
+}
+
+async function enabledIn(key: string, env: string): Promise<boolean> {
+  const flag = await readFlag(key);
+  return !!flag.environments.find((e) => e.environment === env)?.enabled;
+}
+
+/** A unique key prefix, so the list shows only this test's flags. */
+function uniquePrefix(): string {
+  return `bulk${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Waits for `count` rows, then selects every row on the page. */
+async function selectAll(page: Page, count: number) {
+  await expect.poll(async () => (await listedKeys(page)).length).toBe(count);
+  await page.getByRole("checkbox", { name: "Select all on this page" }).check();
+  await expect(
+    page
+      .getByRole("region", { name: "Bulk actions" })
+      .getByText(`${count} selected`),
+  ).toBeVisible();
+}
+
+async function bulkResults(page: Page, expected: string[]) {
+  const dialog = page.getByRole("dialog", { name: "Bulk results" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("listitem")).toHaveText(expected);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+}
+
+test.describe("bulk", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  async function twoFlags(page: Page) {
+    const prefix = uniquePrefix();
+    const a = await createTestFlag(api, { prefix, tags: ["bulk"] });
+    const b = await createTestFlag(api, { prefix, tags: ["bulk"] });
+    const keys = [a, b].sort();
+    await page.goto(`${LIST}?q=${prefix}&tag=bulk`);
+    return keys;
+  }
+
+  test("turns flags on in an environment, one result per flag", async ({
+    page,
+  }) => {
+    const keys = await twoFlags(page);
+    await selectAll(page, 2);
+    await page.getByRole("button", { name: "Turn on" }).click();
+    const dialog = page.getByRole("dialog", { name: "Turn on" });
+    await dialog
+      .getByRole("combobox", { name: "Environment" })
+      .selectOption("staging");
+    await dialog.getByRole("button", { name: "Apply" }).click();
+    await bulkResults(
+      page,
+      keys.map((k) => `${k}: Done`),
+    );
+    for (const key of keys) expect(await enabledIn(key, "staging")).toBe(true);
+    await expect(
+      page.getByRole("region", { name: "Bulk actions" }),
+    ).toBeHidden();
+  });
+
+  test("reports approval environments as failed per flag", async ({ page }) => {
+    const keys = await twoFlags(page);
+    await selectAll(page, 2);
+    await page.getByRole("button", { name: "Turn on" }).click();
+    const dialog = page.getByRole("dialog", { name: "Turn on" });
+    const env = dialog.getByRole("combobox", { name: "Environment" });
+    await expect(
+      env.getByRole("option", { name: "Production (needs approval)" }),
+    ).toBeAttached();
+    await env.selectOption("production");
+    await dialog.getByRole("button", { name: "Apply" }).click();
+    await bulkResults(
+      page,
+      keys.map((k) => `${k}: Failed, Needs approval`),
+    );
+    for (const key of keys)
+      expect(await enabledIn(key, "production")).toBe(false);
+  });
+
+  test("adds and removes a tag", async ({ page }) => {
+    const keys = await twoFlags(page);
+    for (const [button, has] of [
+      ["Add tag", true],
+      ["Remove tag", false],
+    ] as const) {
+      await selectAll(page, 2);
+      await page.getByRole("button", { name: button }).click();
+      const dialog = page.getByRole("dialog", { name: button });
+      await dialog.getByRole("textbox", { name: "Tag" }).fill("promo");
+      await dialog.getByRole("button", { name: "Apply" }).click();
+      await bulkResults(
+        page,
+        keys.map((k) => `${k}: Done`),
+      );
+      for (const key of keys)
+        expect((await readFlag(key)).tags.includes("promo")).toBe(has);
+    }
+  });
+
+  test("archives what it can and reports flags still in use", async ({
+    page,
+  }) => {
+    const prefix = uniquePrefix();
+    const a = await createTestFlag(api, {
+      prefix: `${prefix}a`,
+      tags: ["bulk"],
+    });
+    const b = await createTestFlag(api, {
+      prefix: `${prefix}b`,
+      tags: ["bulk"],
+    });
+    const c = await createTestFlag(api, { prefix: `${prefix}c` });
+    await putConfig(api, c, "development", (config) => {
+      config.prerequisites = [{ flag: b, variation: "true" }];
+    });
+    await page.goto(`${LIST}?q=${prefix}&tag=bulk`);
+    await selectAll(page, 2);
+    await page
+      .getByRole("region", { name: "Bulk actions" })
+      .getByRole("button", { name: "Archive" })
+      .click();
+    const confirm = page.getByRole("alertdialog", { name: "Archive 2 flags?" });
+    await confirm.getByRole("button", { name: "Archive" }).click();
+    await bulkResults(page, [
+      `${a}: Done`,
+      `${b}: Failed, flag '${b}' is a prerequisite of other flags`,
+    ]);
+    expect((await readFlag(a)).archived).toBe(true);
+    expect((await readFlag(b)).archived).toBe(false);
+    await expect.poll(() => listedKeys(page)).toEqual([b]);
+
+    await page.goto(`${LIST}?q=${prefix}&lifecycle=archived`);
+    await expect.poll(() => listedKeys(page)).toEqual([a]);
+  });
+
+  test("restores archived flags", async ({ page }) => {
+    const prefix = uniquePrefix();
+    const a = await createTestFlag(api, { prefix, tags: ["bulk"] });
+    await ok(
+      await api.post(`/api/projects/${SHOP}/flags/${a}/archive`),
+      `archive ${a}`,
+    );
+    await page.goto(`${LIST}?q=${prefix}&lifecycle=archived`);
+    await selectAll(page, 1);
+    await page.getByRole("button", { name: "Restore" }).click();
+    await bulkResults(page, [`${a}: Done`]);
+    expect((await readFlag(a)).archived).toBe(false);
+  });
+});
+
+test.describe("bulk on a phone", () => {
+  test.use({ viewport: { width: 344, height: 800 } });
+
+  test("selects cards and shows the bulk bar", async ({ page }) => {
+    const prefix = uniquePrefix();
+    const a = await createTestFlag(api, { prefix, tags: ["bulk"] });
+    await page.goto(`${LIST}?q=${prefix}`);
+    const cards = page.getByRole("list", { name: "Flags" });
+    await cards.getByRole("checkbox", { name: `Select ${a}` }).check();
+    const bar = page.getByRole("region", { name: "Bulk actions" });
+    await expect(bar.getByText("1 selected")).toBeVisible();
+    await bar.getByRole("button", { name: "Clear selection" }).click();
+    await expect(bar).toBeHidden();
   });
 });
