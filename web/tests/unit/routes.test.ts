@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   flagPath,
   homeTarget,
+  newFlagPath,
   projectFromPath,
   projectPath,
   projectTrail,
@@ -21,6 +22,12 @@ describe("flagPath", () => {
     expect(flagPath("demo", "new-checkout")).toBe(
       "/projects/demo/flags/new-checkout",
     );
+  });
+});
+
+describe("newFlagPath", () => {
+  it("points at the New flag page and encodes the key", () => {
+    expect(newFlagPath("a b")).toBe("/projects/a%20b/flags/new");
   });
 });
 
