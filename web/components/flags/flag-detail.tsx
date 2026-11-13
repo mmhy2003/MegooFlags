@@ -4,6 +4,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { type EnvState, EnvStrip } from "@/components/flags/env-strip";
+import { ReviewDialog } from "@/components/flags/review-dialog";
+import { problemField, RulesEditor } from "@/components/flags/rules-editor";
+import { UnsavedBar } from "@/components/flags/unsaved-bar";
+import { useUnsavedGuard } from "@/components/flags/use-unsaved-guard";
 import { useProjectPermissions } from "@/components/shell/use-project-permissions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -11,8 +15,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApiData } from "@/hooks/use-api-data";
 import { api } from "@/lib/api/client";
-import { type ConfigDraft, toDraft, withState } from "@/lib/flags/config-draft";
+import type { components } from "@/lib/api/schema";
+import {
+  type ConfigDraft,
+  type DraftProblem,
+  isDirty,
+  toDraft,
+  validateDraft,
+  withState,
+} from "@/lib/flags/config-draft";
 import { type ApiFailure, failureText, must } from "@/lib/flags/errors";
+import { can } from "@/lib/flags/permissions";
+
+type FlagConfigOut = components["schemas"]["FlagConfigOut"];
 
 const TABS = [
   { value: "targeting", label: "Targeting" },
@@ -57,6 +72,25 @@ function Loading({ what }: { what: string }) {
       <Skeleton className="h-40 w-full" />
     </div>
   );
+}
+
+/** Problems by the editor field that shows them; the first one wins. */
+function byField(problems: DraftProblem[]): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const p of problems) {
+    const field = problemField(p.path);
+    if (field && !(field in fields)) fields[field] = p.message;
+  }
+  return fields;
+}
+
+function stateOf(config: FlagConfigOut): EnvState {
+  return {
+    environment: config.environment,
+    enabled: config.enabled,
+    version: config.version,
+    updated_at: config.updated_at,
+  };
 }
 
 function ComingSoon() {
@@ -134,18 +168,66 @@ export function FlagDetail({
     () => (config.data ? toDraft(config.data, variationKeys) : null),
     [config.data, variationKeys],
   );
-  // The draft of the selected environment; edits replace it, a new config load resets it.
-  const [edited, setEdited] = useState<{
-    base: ConfigDraft;
-    draft: ConfigDraft;
-  } | null>(null);
-  const draft =
-    loaded && edited?.base === loaded ? edited.draft : (loaded ?? null);
+  // The selected environment's saved config (base) and the draft edited from it. A new config
+  // load resets both; a save, a conflict or a toggle moves the base on.
+  const [edit, setEdit] = useState<{
+    loaded: ConfigDraft | null;
+    base: ConfigDraft | null;
+    draft: ConfigDraft | null;
+  }>({ loaded: null, base: null, draft: null });
+  if (edit.loaded !== loaded) setEdit({ loaded, base: loaded, draft: loaded });
+  const { base, draft } = edit;
+  const dirty = !!base && !!draft && isDirty(base, draft);
+  useUnsavedGuard(dirty);
+
+  // Client checks show once Review was pressed; an API 422 shows until the next edit.
+  const [checked, setChecked] = useState(false);
+  const [invalid, setInvalid] = useState<DraftProblem | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const problems = [
+    ...(checked && draft ? validateDraft(draft) : []),
+    ...(invalid ? [invalid] : []),
+  ];
+
+  const setDraft = (next: ConfigDraft) => {
+    setEdit((e) => ({ ...e, draft: next }));
+    setInvalid(null);
+  };
+  const reset = (next: ConfigDraft | null) => {
+    setEdit((e) => ({ ...e, base: next, draft: next }));
+    setChecked(false);
+    setInvalid(null);
+  };
 
   const onState = (state: EnvState) => {
     setChanged((c) => ({ ...c, [state.environment]: state }));
-    if (state.environment === env && loaded && draft)
-      setEdited({ base: loaded, draft: withState(draft, state) });
+    if (state.environment === env)
+      setEdit((e) => ({
+        ...e,
+        base: e.base && withState(e.base, state),
+        draft: e.draft && withState(e.draft, state),
+      }));
+  };
+
+  const envRow = envs.find((e) => e.key === env);
+  const envName = envRow?.name ?? env;
+  const needsApproval = (envRow?.approvals_required ?? 0) > 0;
+
+  const select = (key: string) => {
+    if (
+      key !== env &&
+      dirty &&
+      !window.confirm(`Discard unsaved changes in ${envName}?`)
+    )
+      return;
+    setParam("env", key);
+  };
+
+  const review = () => {
+    if (!draft) return;
+    setChecked(true);
+    setInvalid(null);
+    if (validateDraft(draft).length === 0) setReviewing(true);
   };
 
   if (flagData.failure)
@@ -167,6 +249,7 @@ export function FlagDetail({
   if (!flagData.data || !environments.data) return <Loading what="flag" />;
 
   const archived = flagData.data.archived;
+  const readOnly = archived || !can(perms, "flag.config.write", env);
 
   let targeting: React.ReactNode;
   if (config.failure)
@@ -177,8 +260,68 @@ export function FlagDetail({
         onRetry={config.reload}
       />
     );
-  else if (!draft) targeting = <Loading what="targeting" />;
-  else targeting = <ComingSoon />;
+  else if (!base || !draft) targeting = <Loading what="targeting" />;
+  else
+    targeting = (
+      <div className="flex min-w-0 flex-col gap-4">
+        {problems.length > 0 && (
+          <Alert variant="destructive">
+            <AlertTitle>Fix these before review</AlertTitle>
+            <AlertDescription>
+              <ul className="list-disc pl-5">
+                {problems.map((p) => (
+                  <li key={`${p.path}:${p.message}`}>{p.message}</li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
+        <RulesEditor
+          project={project}
+          flag={flagData.data}
+          draft={draft}
+          onChange={setDraft}
+          readOnly={readOnly}
+          problems={byField(problems)}
+        />
+        <UnsavedBar
+          isDirty={dirty}
+          needsApproval={needsApproval}
+          onDiscard={() => reset(base)}
+          onReview={review}
+        />
+        <ReviewDialog
+          open={reviewing}
+          onOpenChange={setReviewing}
+          project={project}
+          flag={flag}
+          env={env}
+          envName={envName}
+          needsApproval={needsApproval}
+          base={base}
+          draft={draft}
+          onSaved={(saved) => {
+            reset(toDraft(saved, variationKeys));
+            setChanged((c) => ({ ...c, [env]: stateOf(saved) }));
+            setReviewing(false);
+          }}
+          onConflict={(latest) => {
+            setEdit((e) => ({ ...e, base: toDraft(latest, variationKeys) }));
+            setChanged((c) => ({ ...c, [env]: stateOf(latest) }));
+          }}
+          onRequested={() => {
+            reset(base);
+            setReviewing(false);
+          }}
+          onInvalid={(failure) => {
+            if (!problemField(failure.path)) return false;
+            setInvalid({ path: failure.path ?? "", message: failure.message });
+            setReviewing(false);
+            return true;
+          }}
+        />
+      </div>
+    );
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -198,7 +341,7 @@ export function FlagDetail({
         perms={perms}
         readOnly={archived}
         selected={env}
-        onSelect={(key) => setParam("env", key)}
+        onSelect={select}
         onState={onState}
       />
       <Tabs
