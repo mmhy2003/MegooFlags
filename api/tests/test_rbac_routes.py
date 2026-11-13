@@ -26,6 +26,7 @@ DEMO_ENVS = [
 ]
 TOGGLE = "/api/projects/demo/flags/new-ui/environments/{env}/toggle"
 COPY = "/api/projects/demo/flags/new-ui/copy"
+EVALUATIONS = "/api/projects/demo/flags/new-ui/environments/{env}/evaluations"
 
 # (role, project, env) per binding; a missing project means org scope.
 Binding = tuple[str, str | None, str | None]
@@ -157,6 +158,18 @@ async def test_list_flags_by_hidden_environment_is_404(client_as: ClientAs) -> N
     async with client_as(("editor", "demo", "production")) as editor:
         r = await editor.get("/api/projects/demo/flags?env=staging&enabled=true")
         assert_error(r, 404, "not_found")
+
+
+async def test_evaluations_of_hidden_environment_is_404(client_as: ClientAs) -> None:
+    async with client_as(("editor", "demo", "production")) as editor:
+        r = await editor.get(EVALUATIONS.format(env="staging"))
+        assert_error(r, 404, "not_found")
+
+
+async def test_viewer_reads_evaluations(client_as: ClientAs) -> None:
+    async with client_as(("viewer", "demo", None)) as viewer:
+        r = await viewer.get(EVALUATIONS.format(env="production"))
+        assert r.status_code == 200, r.text
 
 
 async def test_token_on_another_project_gets_404_on_demo(client_as: ClientAs) -> None:

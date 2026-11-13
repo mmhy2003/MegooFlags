@@ -11,10 +11,12 @@ from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES, not_found, version_conflict
 from megooflags_api.models import Environment, FlagEnvironment, Project
 from megooflags_api.schemas.common import FlagEnvironmentState
+from megooflags_api.schemas.evaluation import EvaluationSeries
 from megooflags_api.schemas.targeting import CopyIn, FlagConfigIn, FlagConfigOut, ToggleIn
 from megooflags_api.services import approvals, rollouts, targeting
 from megooflags_api.services.audit import AuditDep, record_flag_change
 from megooflags_api.services.changes import ChangesDep
+from megooflags_api.services.evaluation_counts import EvaluationRange, evaluation_series
 from megooflags_api.services.flags import environment_states
 from megooflags_api.services.lookup import get_environment, get_flag, get_flag_environment
 
@@ -44,6 +46,22 @@ async def read_flag_config(
     flag_row = await get_flag(session, project_row, flag)
     fe = await get_flag_environment(session, flag_row, env_row)
     return await targeting.load_config(session, flag_row, fe, env_row.key)
+
+
+@router.get("/projects/{project}/flags/{flag}/environments/{env}/evaluations")
+async def read_flag_evaluations(
+    session: SessionDep,
+    authz: ReadProject,
+    project: str,
+    flag: str,
+    env: str,
+    range: EvaluationRange = "24h",  # noqa: A002
+) -> EvaluationSeries:
+    """The flag's evaluation counts per variant: hourly for 24h, daily (UTC) for 7d and 30d."""
+    flag_row = await get_flag(session, _project(authz), flag)
+    return await evaluation_series(
+        session, _environment(authz).id, flag_row.key, range, datetime.now(UTC)
+    )
 
 
 @router.put("/projects/{project}/flags/{flag}/environments/{env}")

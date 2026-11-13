@@ -39,6 +39,7 @@ def test_spec_documents_management_api() -> None:
         f"{flag}/environments/{{env}}",
         f"{flag}/environments/{{env}}/toggle",
         f"{flag}/environments/{{env}}/kill",
+        f"{flag}/environments/{{env}}/evaluations",
         "/api/projects/{project}/segments",
         "/api/projects/{project}/segments/{segment}",
     } <= spec["paths"].keys()

@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Literal
+
 from pydantic import Field, JsonValue
 
 from megooflags_api.schemas.common import ApiModel
@@ -24,3 +27,17 @@ class EvaluationResult(ApiModel):
 
 class EvaluateOut(ApiModel):
     results: list[EvaluationResult]
+
+
+class EvaluationPoint(ApiModel):
+    start: datetime = Field(description="The UTC start of the hour or day.")
+    counts: dict[str, int] = Field(description="Evaluations per variant; 0 for every variant.")
+
+
+class EvaluationSeries(ApiModel):
+    """A flag's evaluations in one environment. Variant "" counts evaluations with no variant."""
+
+    interval: Literal["hour", "day"]
+    variants: list[str] = Field(description="Every variant counted in the range, sorted.")
+    points: list[EvaluationPoint] = Field(description="Oldest first, empty buckets included.")
+    total: int

@@ -1056,6 +1056,31 @@
         "title": "EvaluateOut",
         "type": "object"
       },
+      "EvaluationPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Evaluations per variant; 0 for every variant.",
+            "title": "Counts",
+            "type": "object"
+          },
+          "start": {
+            "description": "The UTC start of the hour or day.",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "counts"
+        ],
+        "title": "EvaluationPoint",
+        "type": "object"
+      },
       "EvaluationResult": {
         "additionalProperties": false,
         "description": "An OpenFeature resolution detail. `value` is null when the flag is not found.",
@@ -1122,6 +1147,48 @@
           "metadata"
         ],
         "title": "EvaluationResult",
+        "type": "object"
+      },
+      "EvaluationSeries": {
+        "additionalProperties": false,
+        "description": "A flag's evaluations in one environment. Variant \"\" counts evaluations with no variant.",
+        "properties": {
+          "interval": {
+            "enum": [
+              "hour",
+              "day"
+            ],
+            "title": "Interval",
+            "type": "string"
+          },
+          "points": {
+            "description": "Oldest first, empty buckets included.",
+            "items": {
+              "$ref": "#/components/schemas/EvaluationPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "variants": {
+            "description": "Every variant counted in the range, sorted.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Variants",
+            "type": "array"
+          }
+        },
+        "required": [
+          "interval",
+          "variants",
+          "points",
+          "total"
+        ],
+        "title": "EvaluationSeries",
         "type": "object"
       },
       "EventsIn": {
@@ -12442,6 +12509,122 @@
           }
         },
         "summary": "Replace Flag Config",
+        "tags": [
+          "flag-environments"
+        ]
+      }
+    },
+    "/api/projects/{project}/flags/{flag}/environments/{env}/evaluations": {
+      "get": {
+        "description": "The flag's evaluation counts per variant: hourly for 24h, daily (UTC) for 7d and 30d.",
+        "operationId": "read_flag_evaluations_api_projects__project__flags__flag__environments__env__evaluations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "flag",
+            "required": true,
+            "schema": {
+              "title": "Flag",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "env",
+            "required": true,
+            "schema": {
+              "title": "Env",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "enum": [
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "title": "Range",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationSeries"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Read Flag Evaluations",
         "tags": [
           "flag-environments"
         ]
