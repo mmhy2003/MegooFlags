@@ -1,16 +1,10 @@
 import { Suspense } from "react";
 
-import { PlaceholderPage } from "@/components/patterns/placeholder-page";
-import { projectTrail } from "@/lib/routes";
+import { FlagList } from "@/components/flags/flag-list";
 
 async function Content({ params }: { params: Promise<{ project: string }> }) {
   const { project } = await params;
-  return (
-    <PlaceholderPage
-      title="Flags"
-      trail={projectTrail(decodeURIComponent(project))}
-    />
-  );
+  return <FlagList project={decodeURIComponent(project)} />;
 }
 
 export default function FlagsPage({
