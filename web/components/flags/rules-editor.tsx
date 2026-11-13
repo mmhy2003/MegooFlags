@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { ClauseRow } from "@/components/flags/clause-row";
@@ -377,6 +377,7 @@ export function RulesEditor({
   readOnly,
   problems,
   segments,
+  onCopy,
 }: {
   project: string;
   flag: FlagOut;
@@ -387,6 +388,8 @@ export function RulesEditor({
   problems: Record<string, string>;
   /** The project's segment keys. */
   segments: string[];
+  /** Opens the copy dialog; the "Copy to…" button is hidden without it. */
+  onCopy?: () => void;
 }) {
   const moveButtons = useRef<MoveButtons>(new Map());
   // The move button to focus once a moved rule has re-rendered in its new place.
@@ -421,6 +424,14 @@ export function RulesEditor({
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
+      {onCopy && (
+        <div className="flex justify-end">
+          <Button variant="outline" className="min-h-11" onClick={onCopy}>
+            <Copy aria-hidden />
+            Copy to…
+          </Button>
+        </div>
+      )}
       <Section title="Prerequisites">
         {draft.prerequisites.length === 0 ? (
           <p className="text-muted-foreground">No prerequisites.</p>

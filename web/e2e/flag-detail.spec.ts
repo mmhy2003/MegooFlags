@@ -638,3 +638,74 @@ test.describe("rules", () => {
     expect(await smallTargets(page)).toEqual([]);
   });
 });
+
+test.describe("copy", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  async function devWithTarget(): Promise<string> {
+    const flag = await createTestFlag(api);
+    await putConfig(api, flag, "development", (c) => {
+      c.enabled = true;
+      c.targets = [{ variation: "true", values: ["user-5"] }];
+    });
+    return flag;
+  }
+
+  async function openCopy(page: Page, flag: string) {
+    await page.goto(detail(flag));
+    await page.getByRole("button", { name: "Copy to…" }).click();
+    return page.getByRole("dialog", { name: "Copy configuration" });
+  }
+
+  test("copies targeting and the on/off state to Staging", async ({ page }) => {
+    const flag = await devWithTarget();
+    const dialog = await openCopy(page, flag);
+    await expect(dialog.getByRole("combobox", { name: "From" })).toHaveValue(
+      "development",
+    );
+    const copy = dialog.getByRole("button", { name: "Copy", exact: true });
+    await expect(copy).toBeDisabled();
+    await dialog.getByRole("checkbox", { name: "To Staging" }).check();
+    await dialog
+      .getByRole("checkbox", { name: "Include on/off state" })
+      .check();
+    await copy.click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByText("Copied to Staging")).toBeVisible();
+
+    const staging = await configIn(flag, "staging");
+    expect(staging.targets).toEqual([
+      { variation: "true", values: ["user-5"] },
+    ]);
+    expect(staging.enabled).toBe(true);
+    await expect(card(page, "Staging")).toContainText("On");
+  });
+
+  test("Production needs approval, so it can't be a target", async ({
+    page,
+  }) => {
+    const flag = await devWithTarget();
+    const dialog = await openCopy(page, flag);
+    await expect(
+      dialog.getByRole("checkbox", { name: "To Production" }),
+    ).toBeDisabled();
+    await expect(dialog).toContainText(
+      "Needs approval: copy is not allowed here",
+    );
+  });
+
+  test("without the on/off state, Staging stays off", async ({ page }) => {
+    const flag = await devWithTarget();
+    const dialog = await openCopy(page, flag);
+    await dialog.getByRole("checkbox", { name: "To Staging" }).check();
+    await dialog.getByRole("button", { name: "Copy", exact: true }).click();
+    await expect(dialog).toBeHidden();
+
+    const staging = await configIn(flag, "staging");
+    expect(staging.targets).toEqual([
+      { variation: "true", values: ["user-5"] },
+    ]);
+    expect(staging.enabled).toBe(false);
+    await expect(card(page, "Staging")).toContainText("Off");
+  });
+});

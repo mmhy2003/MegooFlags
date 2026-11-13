@@ -2,7 +2,9 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
+import { copyBlocked, CopyDialog } from "@/components/flags/copy-dialog";
 import { type EnvState, EnvStrip } from "@/components/flags/env-strip";
 import { ReviewDialog } from "@/components/flags/review-dialog";
 import { problemField, RulesEditor } from "@/components/flags/rules-editor";
@@ -24,7 +26,12 @@ import {
   validateDraft,
   withState,
 } from "@/lib/flags/config-draft";
-import { type ApiFailure, failureText, must } from "@/lib/flags/errors";
+import {
+  ApiError,
+  type ApiFailure,
+  failureText,
+  must,
+} from "@/lib/flags/errors";
 import { can } from "@/lib/flags/permissions";
 
 type FlagConfigOut = components["schemas"]["FlagConfigOut"];
@@ -196,6 +203,7 @@ export function FlagDetail({
   const [checked, setChecked] = useState(false);
   const [invalid, setInvalid] = useState<DraftProblem | null>(null);
   const [reviewing, setReviewing] = useState(false);
+  const [copying, setCopying] = useState(false);
   const problems = [
     ...(checked && draft ? validateDraft(draft) : []),
     ...(invalid ? [invalid] : []),
@@ -219,6 +227,40 @@ export function FlagDetail({
         base: e.base && withState(e.base, state),
         draft: e.draft && withState(e.draft, state),
       }));
+  };
+
+  // After a copy into the selected environment, its saved config is the new base. A dirty
+  // draft is kept on top of it, so Review shows what the draft changes from the copy.
+  const onCopied = async (copied: EnvState[]) => {
+    setCopying(false);
+    setChanged((c) => {
+      const next = { ...c };
+      for (const s of copied) next[s.environment] = s;
+      return next;
+    });
+    if (!copied.some((s) => s.environment === env)) return;
+    try {
+      const latest = await must(
+        api.GET("/api/projects/{project}/flags/{flag}/environments/{env}", {
+          params: { path: { project, flag, env } },
+        }),
+      );
+      const next = toDraft(latest, variationKeys);
+      if (dirty)
+        setEdit((e) => ({
+          ...e,
+          base: next,
+          draft: e.draft && withState(e.draft, latest),
+        }));
+      else reset(next);
+    } catch (error) {
+      if (!(error instanceof ApiError)) console.error("reload failed", error);
+      toast.error(
+        error instanceof ApiError
+          ? failureText(error.failure)
+          : "Couldn't reach the server",
+      );
+    }
   };
 
   const envRow = envs.find((e) => e.key === env);
@@ -262,6 +304,9 @@ export function FlagDetail({
 
   const archived = flagData.data.archived;
   const readOnly = archived || !can(perms, "flag.config.write", env);
+  const canCopy =
+    !archived &&
+    envs.some((e) => e.key !== env && copyBlocked(perms, e) === null);
 
   let targeting: React.ReactNode;
   if (config.failure)
@@ -296,6 +341,17 @@ export function FlagDetail({
           readOnly={readOnly}
           problems={byField(problems)}
           segments={segments}
+          onCopy={canCopy ? () => setCopying(true) : undefined}
+        />
+        <CopyDialog
+          open={copying}
+          onOpenChange={setCopying}
+          project={project}
+          flag={flag}
+          environments={envs}
+          selected={env}
+          perms={perms}
+          onCopied={onCopied}
         />
         <UnsavedBar
           isDirty={dirty}
