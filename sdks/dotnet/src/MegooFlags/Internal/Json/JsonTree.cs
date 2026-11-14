@@ -19,7 +19,8 @@ internal static class JsonTree
 
     private static readonly JsonDocumentOptions _parseOptions = new() { MaxDepth = MaxDepth };
 
-    private static readonly JsonWriterOptions _writeOptions = new()
+    /// <summary>The writer settings of <see cref="Write"/>, for callers that write a larger document.</summary>
+    public static readonly JsonWriterOptions WriterOptions = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         MaxDepth = MaxDepth,
@@ -42,7 +43,7 @@ internal static class JsonTree
         using var stream = new MemoryStream();
         try
         {
-            using (var writer = new Utf8JsonWriter(stream, _writeOptions))
+            using (var writer = new Utf8JsonWriter(stream, WriterOptions))
             {
                 WriteValue(writer, value);
             }
@@ -124,7 +125,11 @@ internal static class JsonTree
         }
     }
 
-    private static void WriteValue(Utf8JsonWriter w, object? v)
+    /// <summary>
+    /// Writes a tree built of the types <see cref="Parse"/> returns. Throws <see cref="JsonException"/> for any
+    /// other type and a non-finite number, and the writer's InvalidOperationException past <see cref="MaxDepth"/>.
+    /// </summary>
+    public static void WriteValue(Utf8JsonWriter w, object? v)
     {
         switch (v)
         {
