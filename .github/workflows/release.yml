@@ -5,6 +5,8 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdks/go/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdks/go/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
 
 permissions:
   contents: read
@@ -14,6 +16,8 @@ env:
 
 jobs:
   meta:
+    # Platform tags only. ci, build, merge and release need meta, so they skip on SDK tags.
+    if: startsWith(github.ref_name, 'v')
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.meta.outputs.version }}
@@ -165,3 +169,35 @@ jobs:
             --notes-file release-notes.md \
             "${flags[@]}" \
             deploy/docker-compose.yml deploy/Caddyfile deploy/.env.example
+
+  sdk-go-release:
+    if: startsWith(github.ref_name, 'sdks/go/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sdks/go/go.mod
+          cache-dependency-path: sdks/go/go.sum
+      - name: Tag matches version.go
+        run: |
+          v="${GITHUB_REF_NAME#sdks/go/v}"
+          grep -q "const Version = \"${v%%-rc.*}\"" version.go || { echo "::error::tag does not match version.go"; exit 1; }
+      - run: go vet ./...
+      - run: go test -race -count=1 ./...
+      - run: go test -count=1 -run TestConformance ./...
+      - name: Warm the Go module proxy
+        run: |
+          v="${GITHUB_REF_NAME#sdks/go/v}"
+          for i in 1 2 3 4 5; do
+            if GOPROXY=https://proxy.golang.org GOFLAGS=-mod=mod go list -m "github.com/mmhy2003/MegooFlags/sdks/go@v${v}"; then exit 0; fi
+            echo "proxy attempt $i failed; retrying in 10 s"
+            sleep 10
+          done
+          echo "::error::proxy.golang.org did not resolve github.com/mmhy2003/MegooFlags/sdks/go@v${v}"
+          exit 1
