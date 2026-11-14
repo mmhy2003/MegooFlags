@@ -1,5 +1,6 @@
 """Ruleset builders for the engine tests and the p99 guard (the Go SDK's genRuleset)."""
 
+import json
 from typing import Any
 
 Json = dict[str, Any]
@@ -128,3 +129,89 @@ def bench_contexts() -> list[Json]:
         }
         for j in range(100)
     ]
+
+
+_BOOL_VARIATIONS = [{"key": "on", "value": True}, {"key": "off", "value": False}]
+
+
+def _provider_flags() -> list[Json]:
+    """The provider tests' flags: one of each type, a target, a rule and a failing prerequisite
+    (the Go SDK's testdata/ruleset.json, plus an integral number flag)."""
+    return [
+        flag_json(
+            "bool-flag",
+            type="boolean",
+            variations=_BOOL_VARIATIONS,
+            rules=[
+                {
+                    "description": "pro plan",
+                    "clauses": [cl("plan", "in", False, "pro")],
+                    "serve": {"variation": "on"},
+                }
+            ],
+            fallthrough={"variation": "off"},
+        ),
+        flag_json(
+            "targeted",
+            variations=[
+                {"key": "alice", "value": "hello alice"},
+                {"key": "other", "value": "hello"},
+            ],
+            off_variation="other",
+            targets=[{"variation": "alice", "values": ["alice"]}],
+            fallthrough={"variation": "other"},
+        ),
+        flag_json(
+            "string-flag",
+            variations=[{"key": "blue", "value": "blue"}, {"key": "red", "value": "red"}],
+            off_variation="red",
+            fallthrough={"variation": "blue"},
+        ),
+        flag_json(
+            "number-flag",
+            type="number",
+            variations=[{"key": "half", "value": 2.5}, {"key": "zero", "value": 0}],
+            off_variation="zero",
+            fallthrough={"variation": "half"},
+        ),
+        flag_json(
+            "int-flag",
+            type="number",
+            variations=[{"key": "seven", "value": 7}, {"key": "zero", "value": 0}],
+            off_variation="zero",
+            fallthrough={"variation": "seven"},
+        ),
+        flag_json(
+            "json-flag",
+            type="json",
+            variations=[
+                {"key": "cfg", "value": {"limit": 10, "tags": ["a", "b"]}},
+                {"key": "empty", "value": {}},
+            ],
+            off_variation="empty",
+            fallthrough={"variation": "cfg"},
+        ),
+        flag_json("prereq-off", type="boolean", enabled=False, variations=_BOOL_VARIATIONS),
+        flag_json(
+            "needs-prereq",
+            type="boolean",
+            variations=_BOOL_VARIATIONS,
+            prerequisites=[{"flag": "prereq-off", "variation": "on"}],
+        ),
+    ]
+
+
+def provider_ruleset() -> str:
+    """The provider tests' ruleset as JSON text."""
+    return json.dumps(ruleset_json(_provider_flags()))
+
+
+def changed_provider_ruleset() -> str:
+    """Serves red for string-flag (version 2), removes targeted and adds new-flag."""
+    flags = [f for f in _provider_flags() if f["key"] != "targeted"]
+    for f in flags:
+        if f["key"] == "string-flag":
+            f.update(version=2, fallthrough={"variation": "red"})
+            flags.append({**f, "key": "new-flag"})
+            break
+    return json.dumps(ruleset_json(flags))
