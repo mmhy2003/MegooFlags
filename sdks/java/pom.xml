@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.github.mmhy2003</groupId>
+  <artifactId>megooflags</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <name>MegooFlags Java SDK</name>
+  <description>MegooFlags server SDK for Java: an OpenFeature provider that evaluates flags in-process.</description>
+  <url>https://github.com/mmhy2003/MegooFlags/tree/main/sdks/java</url>
+
+  <licenses>
+    <license>
+      <name>Apache-2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>mmhy2003</id>
+      <name>Mohamed H. Youssef</name>
+      <url>https://github.com/mmhy2003</url>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/mmhy2003/MegooFlags.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/mmhy2003/MegooFlags.git</developerConnection>
+    <url>https://github.com/mmhy2003/MegooFlags/tree/main/sdks/java</url>
+  </scm>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <maven.compiler.release>11</maven.compiler.release>
+    <junit.version>5.14.4</junit.version>
+    <surefire.groups></surefire.groups>
+    <surefire.excludedGroups>p99,e2e</surefire.excludedGroups>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-clean-plugin</artifactId>
+          <version>3.5.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>3.5.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>3.5.1</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-install-plugin</artifactId>
+          <version>3.2.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-deploy-plugin</artifactId>
+          <version>3.2.0</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.16.0</version>
+        <configuration>
+          <release>${maven.compiler.release}</release>
+          <compilerArgs>
+            <arg>-Xlint:all</arg>
+            <arg>-Werror</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.6.1</version>
+        <configuration>
+          <groups>${surefire.groups}</groups>
+          <excludedGroups>${surefire.excludedGroups}</excludedGroups>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <profile>
+      <id>p99</id>
+      <properties>
+        <surefire.groups>p99</surefire.groups>
+        <surefire.excludedGroups></surefire.excludedGroups>
+      </properties>
+    </profile>
+    <profile>
+      <id>e2e</id>
+      <properties>
+        <surefire.groups>e2e</surefire.groups>
+        <surefire.excludedGroups></surefire.excludedGroups>
+      </properties>
+    </profile>
+    <profile>
+      <!-- Spotless 3 needs JDK 17, so the format check runs there only. -->
+      <id>format</id>
+      <activation>
+        <jdk>[17,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>com.diffplug.spotless</groupId>
+            <artifactId>spotless-maven-plugin</artifactId>
+            <version>3.11.0</version>
+            <configuration>
+              <java>
+                <palantirJavaFormat>
+                  <version>2.103.0</version>
+                </palantirJavaFormat>
+              </java>
+            </configuration>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>check</goal>
+                </goals>
+                <phase>verify</phase>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>
