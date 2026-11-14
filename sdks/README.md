@@ -29,7 +29,7 @@ Each SDK is an [OpenFeature](https://openfeature.dev) provider and must pass the
 |---|---|---|---|---|---|
 | Go | [`sdks/go`](go/README.md) | 0.1.0 (Alpha) | OpenFeature provider | 100 % | `sdk-go`, `sdk-go-e2e` |
 | Node.js | [`sdks/node`](node/README.md) | 0.1.0 (Alpha) | OpenFeature provider | 100 % | `sdk-node`, `sdk-node-e2e` |
-| Python | `sdks/python` | planned | | | |
+| Python | [`sdks/python`](python/README.md) | 0.1.0 (Alpha) | OpenFeature provider | 100 % | `sdk-python`, `sdk-python-e2e` |
 | Java | `sdks/java` | planned | | | |
 | .NET | `sdks/dotnet` | planned | | | |
 | Ruby | `sdks/ruby` | planned | | | |

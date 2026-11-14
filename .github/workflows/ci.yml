@@ -383,3 +383,49 @@ jobs:
         run: docker compose -p megooflags-sdk-node -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
       - if: always()
         run: docker compose -p megooflags-sdk-node -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
+
+  sdk-python:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
+    defaults:
+      run:
+        working-directory: sdks/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: sdks/python/uv.lock
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest
+      - name: p99 guard
+        run: uv run pytest perf -s
+      - run: uv build
+
+  sdk-python-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-sdk-python
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          enable-cache: true
+          cache-dependency-glob: sdks/python/uv.lock
+      - name: E2E
+        working-directory: sdks/python
+        run: uv sync --frozen && uv run pytest e2e -v
+      - if: failure()
+        run: docker compose -p megooflags-sdk-python -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: always()
+        run: docker compose -p megooflags-sdk-python -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
