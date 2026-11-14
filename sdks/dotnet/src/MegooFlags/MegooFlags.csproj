@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>MegooFlags</RootNamespace>
+    <AssemblyName>MegooFlags</AssemblyName>
+    <PackageId>MegooFlags</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Mohamed H. Youssef</Authors>
+    <Description>MegooFlags server SDK for .NET: an OpenFeature provider that evaluates flags in-process.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/mmhy2003/MegooFlags</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mmhy2003/MegooFlags</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>feature-flags;openfeature;megooflags</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- The README is written with the docs; until then the package is built without it. -->
+  <PropertyGroup Condition="Exists('../../README.md')">
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('../../README.md')">
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MegooFlags.Tests" />
+  </ItemGroup>
+
+</Project>
