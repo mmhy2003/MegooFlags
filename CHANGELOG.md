@@ -17,6 +17,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - API logs are JSON lines on stdout, with one access-log line per request. Set `MEGOOFLAGS_LOG_LEVEL` to change the level.
 
 ### Added
+- Go server SDK (`github.com/mmhy2003/MegooFlags/sdks/go`, 0.1.0 Alpha): an OpenFeature provider that evaluates flags locally, follows changes over SSE with a polling fallback, works offline from a bootstrap file or its last-known cache, and sends evaluation counts and exposures in the background. Released with `sdks/go/vX.Y.Z` tags.
 - `GET /api/projects/{project}/flags` accepts `env` and `enabled` to list only flags that are on or off in an environment.
 - `GET /api/audit` and `/api/audit/export` accept `resource_key` to show the history of one flag or other resource.
 - `GET /api/projects/{project}/flags/{flag}/environments/{env}/evaluations?range=24h|7d|30d` returns a flag's evaluation counts per variation, hourly or daily.

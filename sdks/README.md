@@ -23,4 +23,11 @@ maintainer pushes SDK tags.
 Each SDK is an [OpenFeature](https://openfeature.dev) provider and must pass the conformance suite in
 [`spec/`](../spec/README.md) before it can be released.
 
-No SDK code or SDK workflows exist yet.
+## Status
+
+| SDK | Directory | Version | Kind | Conformance | CI jobs |
+|---|---|---|---|---|---|
+| Go | [`sdks/go`](go/README.md) | 0.1.0 (Alpha) | OpenFeature provider | 100 % | `sdk-go`, `sdk-go-e2e` |
+| Node.js | `sdks/node` | planned | | | |
+| Python | `sdks/python` | planned | | | |
+| Java | `sdks/java` | planned | | | |
