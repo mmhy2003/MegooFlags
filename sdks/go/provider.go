@@ -2,8 +2,11 @@ package megooflags
 
 import (
 	"context"
+	"errors"
 	"os"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/open-feature/go-sdk/openfeature"
 
@@ -24,19 +27,43 @@ type Provider struct {
 	batcher *events.Batcher
 	events  chan openfeature.Event
 	fatal   atomic.Bool
+
+	done         chan struct{} // closed by Shutdown
+	shutdownOnce sync.Once
+	startOnce    sync.Once
+	firstReady   chan struct{} // closed by the first Apply
+	readyOnce    sync.Once
+	fatalCh      chan struct{} // closed by onFatal
+	fatalOnce    sync.Once
+	fatalErr     error // written before fatalCh is closed
+
+	mu           sync.Mutex
+	initTimedOut bool // Init returned the timeout error
+	stale        bool // ProviderStale was emitted and not yet followed by ProviderReady
 }
 
-var _ openfeature.FeatureProvider = (*Provider)(nil)
+var (
+	_ openfeature.FeatureProvider = (*Provider)(nil)
+	_ openfeature.StateHandler    = (*Provider)(nil)
+	_ openfeature.EventHandler    = (*Provider)(nil)
+)
 
-// NewProvider validates cfg and loads cfg.BootstrapFile. It never touches the
-// network. An invalid config is logged, and every evaluation then returns the
-// default with PROVIDER_FATAL.
+// tuneSync lets the tests shorten Sync's timings; nil in production.
+var tuneSync func(*delivery.SyncConfig)
+
+// NewProvider validates cfg and loads the bootstrap file, then (when that
+// gave no ruleset) the cache. It never touches the network. An invalid config
+// is logged, and every evaluation then returns the default with
+// PROVIDER_FATAL.
 func NewProvider(cfg Config) *Provider {
 	cfg = cfg.withDefaults()
 	p := &Provider{
-		cfg:    cfg,
-		store:  &delivery.Store{},
-		events: make(chan openfeature.Event, 16),
+		cfg:        cfg,
+		store:      &delivery.Store{},
+		events:     make(chan openfeature.Event, 64),
+		done:       make(chan struct{}),
+		firstReady: make(chan struct{}),
+		fatalCh:    make(chan struct{}),
 	}
 	if err := cfg.validate(); err != nil {
 		p.cfgErr = err
@@ -44,7 +71,10 @@ func NewProvider(cfg Config) *Provider {
 		cfg.Logger.Error("megooflags: invalid config", "error", err)
 		return p
 	}
-	p.sync = delivery.NewSync(delivery.SyncConfig{
+	cache := delivery.NewCache(cfg.CacheDir, cfg.SDKKey)
+	// Offline uses Sync only to Apply the bootstrap file and the cache; Init
+	// never starts it.
+	syncCfg := delivery.SyncConfig{
 		BaseURL:       cfg.BaseURL,
 		Key:           cfg.SDKKey,
 		UserAgent:     userAgent,
@@ -53,14 +83,41 @@ func NewProvider(cfg Config) *Provider {
 		DisableStream: cfg.DisableStream,
 		PollInterval:  cfg.PollInterval,
 		Store:         p.store,
-		Cache:         delivery.NewCache(cfg.CacheDir, cfg.SDKKey),
-	})
+		Cache:         cache,
+		OnChange:      p.onChange,
+		OnStatus:      p.onStatus,
+	}
+	if tuneSync != nil {
+		tuneSync(&syncCfg)
+	}
+	p.sync = delivery.NewSync(syncCfg)
+	if !cfg.Offline {
+		p.batcher = events.New(events.Config{
+			URL:           cfg.BaseURL + "/sdk/v1/events",
+			Key:           cfg.SDKKey,
+			UserAgent:     userAgent,
+			Client:        cfg.HTTPClient,
+			Logger:        cfg.Logger,
+			FlushInterval: cfg.FlushInterval,
+			SendContext:   cfg.SendContext,
+			OnFatal:       p.onFatal,
+		})
+	}
 	if cfg.BootstrapFile != "" {
 		raw, err := os.ReadFile(cfg.BootstrapFile)
 		if err != nil {
 			cfg.Logger.Warn("megooflags: could not read the bootstrap file", "error", err)
 		} else {
 			_ = p.sync.Apply(raw, "", "bootstrap") // Apply logs an invalid ruleset
+		}
+	}
+	if p.store.Load() == nil {
+		raw, etag, err := cache.Load()
+		switch {
+		case err == nil:
+			_ = p.sync.Apply(raw, etag, "cache")
+		case !errors.Is(err, os.ErrNotExist):
+			cfg.Logger.Warn("megooflags: could not read the ruleset cache", "error", err)
 		}
 	}
 	return p
@@ -168,9 +225,27 @@ func (p *Provider) evaluate(flag string, def any, flatCtx openfeature.FlattenedC
 	return res, true
 }
 
-// record enqueues the evaluation for the batcher. It is wired in with the
-// lifecycle.
-func (p *Provider) record(string, engine.Result, map[string]any) {}
+// record enqueues the evaluation for the batcher without blocking. ctx is
+// already the provider's own copy.
+func (p *Provider) record(flag string, res engine.Result, ctx map[string]any) {
+	if p.batcher == nil {
+		return
+	}
+	ev := events.Evaluation{
+		FlagKey: flag,
+		Variant: res.Variant,
+		Served:  res.Served,
+		Reason:  string(res.Reason),
+		At:      time.Now(),
+	}
+	if key, ok := ctx["key"].(string); ok {
+		ev.ContextKey = key
+	}
+	if p.cfg.SendContext {
+		ev.Context = ctx
+	}
+	p.batcher.Record(ev)
+}
 
 // notReady is the detail returned while there is no ruleset, or after a fatal
 // error.
