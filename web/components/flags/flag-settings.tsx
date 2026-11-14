@@ -3,7 +3,10 @@
 import { useId, useState } from "react";
 import { toast } from "sonner";
 
-import { DeleteFlagDialog } from "@/components/flags/delete-flag-dialog";
+import {
+  DANGER_TRIGGER,
+  DeleteFlagDialog,
+} from "@/components/flags/delete-flag-dialog";
 import { ConfirmDialog } from "@/components/patterns/confirm-dialog";
 import { StatusPill } from "@/components/patterns/status-pill";
 import { Toggle } from "@/components/patterns/toggle";
@@ -658,7 +661,7 @@ function DangerCard({
         ) : (
           <ConfirmDialog
             trigger={
-              <Button variant="destructive" className="min-h-11">
+              <Button variant="destructive" className={DANGER_TRIGGER}>
                 Archive flag
               </Button>
             }

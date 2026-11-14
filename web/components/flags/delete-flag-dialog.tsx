@@ -13,6 +13,13 @@ import { api } from "@/lib/api/client";
 import { ApiError, failureText, must } from "@/lib/flags/errors";
 import { projectPath } from "@/lib/routes";
 
+/**
+ * The danger zone's triggers are solid: the tinted destructive variant falls below 4.5:1 on a
+ * dark card.
+ */
+export const DANGER_TRIGGER =
+  "min-h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90 dark:bg-destructive dark:hover:bg-destructive/90";
+
 /** Deletes an archived flag once its key is typed, then goes back to the flag list. */
 export function DeleteFlagDialog({
   project,
@@ -57,7 +64,11 @@ export function DeleteFlagDialog({
         setOpen(next);
         if (!next) setTyped("");
       }}
-      trigger={<Button variant="destructive">Delete flag</Button>}
+      trigger={
+        <Button variant="destructive" className={DANGER_TRIGGER}>
+          Delete flag
+        </Button>
+      }
       title={`Delete ${flag}?`}
       description="This removes the flag and its targeting in every environment. It can't be undone."
       footer={
