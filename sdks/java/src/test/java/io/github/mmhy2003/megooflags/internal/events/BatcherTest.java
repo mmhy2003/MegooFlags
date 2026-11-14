@@ -2,6 +2,7 @@ package io.github.mmhy2003.megooflags.internal.events;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.mmhy2003.megooflags.Await;
@@ -153,6 +154,19 @@ class BatcherTest {
         Map<String, Object> body = body(r);
         assertEquals(List.of("exposures", "counts"), new ArrayList<>(body.keySet()));
         assertEquals(2, items(body));
+    }
+
+    @Test
+    void theDefaultClientSpeaksHttp11WithoutAnUpgrade() throws Exception {
+        // An h2c upgrade on a POST with a body is refused (400) by servers such as uvicorn.
+        respondStatus(202);
+        Batcher b = batcher(null);
+        b.start();
+        b.record(eval("f", "u1"));
+        Await.until(() -> requests().size() == 1);
+        shutdown(b);
+
+        assertNull(requests().get(0).header("Upgrade"));
     }
 
     @Test

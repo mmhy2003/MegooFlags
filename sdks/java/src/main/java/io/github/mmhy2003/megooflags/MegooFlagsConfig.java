@@ -119,8 +119,9 @@ public final class MegooFlagsConfig {
     }
 
     /**
-     * The client for every request, or null for a default client. It must not set a request
-     * timeout: the stream is long-lived.
+     * The client for every request, or null for a default HTTP/1.1 client. It must not set a
+     * request timeout: the stream is long-lived. Over plain http, give it HTTP/1.1: the JDK's
+     * default h2c upgrade is refused by servers such as uvicorn.
      */
     public HttpClient httpClient() {
         return httpClient;

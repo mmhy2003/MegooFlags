@@ -3,6 +3,7 @@ package io.github.mmhy2003.megooflags.internal.transport;
 import io.github.mmhy2003.megooflags.internal.BuildInfo;
 import java.io.IOException;
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.time.DateTimeException;
@@ -64,6 +65,14 @@ public final class Transport {
                     .withZone(ZoneOffset.UTC));
 
     private Transport() {}
+
+    /**
+     * The client used when the config gives none. HTTP/1.1 only: the JDK's default asks for an h2c
+     * upgrade on plain http, which servers such as uvicorn refuse (400) on a request with a body.
+     */
+    public static HttpClient defaultClient() {
+        return HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+    }
 
     /** Joins the base URL, without its trailing slashes, and an endpoint (ruleset, stream, events). */
     public static URI url(String baseUrl, String endpoint) {

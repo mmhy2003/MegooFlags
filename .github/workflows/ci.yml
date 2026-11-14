@@ -429,3 +429,46 @@ jobs:
         run: docker compose -p megooflags-sdk-python -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
       - if: always()
         run: docker compose -p megooflags-sdk-python -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
+
+  sdk-java:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ["11", "17", "21", "25"]
+    defaults:
+      run:
+        working-directory: sdks/java
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+          cache-dependency-path: sdks/java/pom.xml
+      - run: mvn -B -ntp verify
+      - name: p99 guard
+        run: mvn -B -ntp test -Pp99
+
+  sdk-java-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-sdk-java
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "11"
+          cache: maven
+          cache-dependency-path: sdks/java/pom.xml
+      - name: E2E
+        working-directory: sdks/java
+        run: mvn -B -ntp test -Pe2e
+      - if: failure()
+        run: docker compose -p megooflags-sdk-java -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: always()
+        run: docker compose -p megooflags-sdk-java -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v

@@ -191,7 +191,7 @@ public final class Batcher {
     public Batcher(Options o) {
         url = o.url;
         sdkKey = o.sdkKey;
-        client = o.httpClient != null ? o.httpClient : HttpClient.newHttpClient();
+        client = o.httpClient != null ? o.httpClient : Transport.defaultClient();
         logger = o.logger;
         flushInterval = o.flushInterval;
         onFatal = o.onFatal;

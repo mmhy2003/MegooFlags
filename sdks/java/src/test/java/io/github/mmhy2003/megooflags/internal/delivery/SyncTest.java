@@ -226,6 +226,18 @@ class SyncTest {
     }
 
     @Test
+    void theDefaultClientSpeaksHttp11WithoutAnUpgrade() throws Exception {
+        server.reply(STREAM, Reply.status(500), Reply.status(500), Reply.stream());
+        server.reply(RULESET, Reply.of(200, raw("polled")));
+        newSync().start();
+        server.nextStream(WAIT);
+        Await.until(() -> !server.received(RULESET).isEmpty());
+
+        assertNull(server.received(STREAM).get(0).header("Upgrade"));
+        assertNull(server.received(RULESET).get(0).header("Upgrade"));
+    }
+
+    @Test
     void doesNotPollAfterASingleStreamFailure() throws Exception {
         server.reply(STREAM, Reply.status(500), Reply.stream());
         server.reply(RULESET, Reply.of(200, raw("polled")));

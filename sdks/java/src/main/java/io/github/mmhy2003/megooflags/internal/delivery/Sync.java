@@ -182,7 +182,7 @@ public final class Sync {
         store = o.store;
         cache = o.cache;
         listener = o.listener;
-        HttpClient client = o.httpClient != null ? o.httpClient : HttpClient.newHttpClient();
+        HttpClient client = o.httpClient != null ? o.httpClient : Transport.defaultClient();
         scheduler = new ScheduledThreadPoolExecutor(1, r -> daemon("megooflags-watchdog", r));
         scheduler.setRemoveOnCancelPolicy(true);
         poller = new Poller(
