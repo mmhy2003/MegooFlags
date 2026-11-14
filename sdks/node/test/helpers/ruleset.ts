@@ -154,3 +154,94 @@ export function benchContexts(): Json[] {
     org: `org-${j % 100}`,
   }));
 }
+
+const boolVariations = [
+  { key: "on", value: true },
+  { key: "off", value: false },
+];
+
+/**
+ * providerFlags are the provider tests' flags: one of each type, a target,
+ * a rule and a failing prerequisite (the Go SDK's testdata/ruleset.json).
+ */
+function providerFlags(): Json[] {
+  return [
+    flagJson("bool-flag", {
+      type: "boolean",
+      variations: boolVariations,
+      rules: [
+        {
+          description: "pro plan",
+          clauses: [cl("plan", "in", false, "pro")],
+          serve: { variation: "on" },
+        },
+      ],
+      fallthrough: { variation: "off" },
+    }),
+    flagJson("targeted", {
+      variations: [
+        { key: "alice", value: "hello alice" },
+        { key: "other", value: "hello" },
+      ],
+      off_variation: "other",
+      targets: [{ variation: "alice", values: ["alice"] }],
+      fallthrough: { variation: "other" },
+    }),
+    flagJson("string-flag", {
+      variations: [
+        { key: "blue", value: "blue" },
+        { key: "red", value: "red" },
+      ],
+      off_variation: "red",
+      fallthrough: { variation: "blue" },
+    }),
+    flagJson("number-flag", {
+      type: "number",
+      variations: [
+        { key: "half", value: 2.5 },
+        { key: "zero", value: 0 },
+      ],
+      off_variation: "zero",
+      fallthrough: { variation: "half" },
+    }),
+    flagJson("json-flag", {
+      type: "json",
+      variations: [
+        { key: "cfg", value: { limit: 10, tags: ["a", "b"] } },
+        { key: "empty", value: {} },
+      ],
+      off_variation: "empty",
+      fallthrough: { variation: "cfg" },
+    }),
+    flagJson("prereq-off", {
+      type: "boolean",
+      enabled: false,
+      variations: boolVariations,
+    }),
+    flagJson("needs-prereq", {
+      type: "boolean",
+      variations: boolVariations,
+      prerequisites: [{ flag: "prereq-off", variation: "on" }],
+    }),
+  ];
+}
+
+/** providerRuleset is the provider tests' ruleset as JSON text. */
+export function providerRuleset(): string {
+  return JSON.stringify(rulesetJson(providerFlags()));
+}
+
+/**
+ * changedProviderRuleset serves red for string-flag (version 2), removes
+ * targeted and adds new-flag.
+ */
+export function changedProviderRuleset(): string {
+  const flags = providerFlags().filter((f) => f["key"] !== "targeted");
+  const changed = flags.map((f) =>
+    f["key"] === "string-flag"
+      ? { ...f, version: 2, fallthrough: { variation: "red" } }
+      : f,
+  );
+  const sf = changed.find((f) => f["key"] === "string-flag") as Json;
+  return JSON.stringify(rulesetJson([...changed, { ...sf, key: "new-flag" }]));
+}
