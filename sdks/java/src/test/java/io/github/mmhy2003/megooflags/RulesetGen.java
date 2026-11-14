@@ -1,5 +1,6 @@
 package io.github.mmhy2003.megooflags;
 
+import io.github.mmhy2003.megooflags.internal.json.Json;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -188,6 +189,130 @@ public final class RulesetGen {
                     "org", "org-" + j % 100));
         }
         return ctxs;
+    }
+
+    private static List<Object> boolVariations() {
+        return list(obj("key", "on", "value", true), obj("key", "off", "value", false));
+    }
+
+    /**
+     * providerFlags are the provider tests' flags: one of each type, a target, a rule and a failing
+     * prerequisite (the Go SDK's testdata/ruleset.json), plus int-flag for the integer evaluation.
+     */
+    private static List<Map<String, Object>> providerFlags() {
+        return new ArrayList<>(List.of(
+                flagJson(
+                        "bool-flag",
+                        "type",
+                        "boolean",
+                        "variations",
+                        boolVariations(),
+                        "rules",
+                        list(obj(
+                                "description",
+                                "pro plan",
+                                "clauses",
+                                list(cl("plan", "in", false, "pro")),
+                                "serve",
+                                obj("variation", "on"))),
+                        "fallthrough",
+                        obj("variation", "off")),
+                flagJson(
+                        "targeted",
+                        "variations",
+                        list(obj("key", "alice", "value", "hello alice"), obj("key", "other", "value", "hello")),
+                        "off_variation",
+                        "other",
+                        "targets",
+                        list(obj("variation", "alice", "values", list("alice"))),
+                        "fallthrough",
+                        obj("variation", "other")),
+                flagJson(
+                        "string-flag",
+                        "variations",
+                        list(obj("key", "blue", "value", "blue"), obj("key", "red", "value", "red")),
+                        "off_variation",
+                        "red",
+                        "fallthrough",
+                        obj("variation", "blue")),
+                flagJson(
+                        "number-flag",
+                        "type",
+                        "number",
+                        "variations",
+                        list(obj("key", "half", "value", 2.5), obj("key", "zero", "value", 0L)),
+                        "off_variation",
+                        "zero",
+                        "fallthrough",
+                        obj("variation", "half")),
+                flagJson(
+                        "int-flag",
+                        "type",
+                        "number",
+                        "variations",
+                        list(
+                                obj("key", "three", "value", 3L),
+                                obj("key", "two", "value", 2.0),
+                                obj("key", "half", "value", 2.5),
+                                obj("key", "big", "value", 3_000_000_000L)),
+                        "off_variation",
+                        "three",
+                        "targets",
+                        list(
+                                obj("variation", "two", "values", list("two")),
+                                obj("variation", "half", "values", list("half")),
+                                obj("variation", "big", "values", list("big"))),
+                        "fallthrough",
+                        obj("variation", "three")),
+                flagJson(
+                        "json-flag",
+                        "type",
+                        "json",
+                        "variations",
+                        list(
+                                obj(
+                                        "key",
+                                        "cfg",
+                                        "value",
+                                        obj("limit", 10L, "big", 3_000_000_000L, "ratio", 0.5, "tags", list("a", "b"))),
+                                obj("key", "empty", "value", obj())),
+                        "off_variation",
+                        "empty",
+                        "fallthrough",
+                        obj("variation", "cfg")),
+                flagJson("prereq-off", "type", "boolean", "enabled", false, "variations", boolVariations()),
+                flagJson(
+                        "needs-prereq",
+                        "type",
+                        "boolean",
+                        "variations",
+                        boolVariations(),
+                        "prerequisites",
+                        list(obj("flag", "prereq-off", "variation", "on")))));
+    }
+
+    /** providerRuleset is the provider tests' ruleset as JSON text. */
+    public static String providerRuleset() {
+        return Json.write(rulesetJson(providerFlags(), obj()));
+    }
+
+    /** changedProviderRuleset serves red for string-flag (version 2), removes targeted and adds new-flag. */
+    public static String changedProviderRuleset() {
+        List<Map<String, Object>> flags = new ArrayList<>();
+        for (Map<String, Object> f : providerFlags()) {
+            if (f.get("key").equals("targeted")) {
+                continue;
+            }
+            if (f.get("key").equals("string-flag")) {
+                f.put("version", 2L);
+                f.put("fallthrough", obj("variation", "red"));
+                Map<String, Object> added = new LinkedHashMap<>(f);
+                added.put("key", "new-flag");
+                flags.add(added);
+            }
+            flags.add(f);
+        }
+        return Json.write(rulesetJson(flags, obj()));
     }
 
     private static Map<String, Object> benchRule(String variation, Map<String, Object> clause) {
