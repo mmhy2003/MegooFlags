@@ -8,4 +8,11 @@ Rake::TestTask.new(:test) do |t|
   t.warning = true
 end
 
+# The p99 guard runs alone so the unit tests don't compete with it for the CPU.
+Rake::TestTask.new(:p99) do |t|
+  t.libs << "lib" << "test"
+  t.pattern = "perf/p99_test.rb"
+  t.warning = true
+end
+
 task default: :test
