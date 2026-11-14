@@ -14,10 +14,12 @@ export function RolloutSlider({
   value,
   onValueChange,
   label,
+  disabled = false,
 }: {
   value: number;
   onValueChange: (value: number) => void;
   label: string;
+  disabled?: boolean;
 }) {
   const [draft, setDraft] = useState(String(value));
   const [shown, setShown] = useState(value);
@@ -47,6 +49,7 @@ export function RolloutSlider({
         max={100}
         step={0.1}
         value={[value]}
+        disabled={disabled}
         onValueChange={(v) =>
           onValueChange(clampRollout(Array.isArray(v) ? v[0] : v))
         }
@@ -62,6 +65,7 @@ export function RolloutSlider({
           aria-label="Rollout percentage"
           className="w-24 text-base"
           value={draft}
+          disabled={disabled}
           onChange={(e) => setDraft(e.currentTarget.value)}
           onBlur={commit}
           onKeyDown={(e) => {

@@ -1051,6 +1051,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project}/flags/{flag}/environments/{env}/evaluations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Flag Evaluations
+         * @description The flag's evaluation counts per variant: hourly for 24h, daily (UTC) for 7d and 30d.
+         */
+        get: operations["read_flag_evaluations_api_projects__project__flags__flag__environments__env__evaluations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project}/flags/{flag}/environments/{env}/kill": {
         parameters: {
             query?: never;
@@ -2318,6 +2338,22 @@ export interface components {
             /** Results */
             results: components["schemas"]["EvaluationResult"][];
         };
+        /** EvaluationPoint */
+        EvaluationPoint: {
+            /**
+             * Counts
+             * @description Evaluations per variant; 0 for every variant.
+             */
+            counts: {
+                [key: string]: number;
+            };
+            /**
+             * Start
+             * Format: date-time
+             * @description The UTC start of the hour or day.
+             */
+            start: string;
+        };
         /**
          * EvaluationResult
          * @description An OpenFeature resolution detail. `value` is null when the flag is not found.
@@ -2338,6 +2374,29 @@ export interface components {
             value: components["schemas"]["JsonValue"];
             /** Variant */
             variant: string | null;
+        };
+        /**
+         * EvaluationSeries
+         * @description A flag's evaluations in one environment. Variant "" counts evaluations with no variant.
+         */
+        EvaluationSeries: {
+            /**
+             * Interval
+             * @enum {string}
+             */
+            interval: "hour" | "day";
+            /**
+             * Points
+             * @description Oldest first, empty buckets included.
+             */
+            points: components["schemas"]["EvaluationPoint"][];
+            /** Total */
+            total: number;
+            /**
+             * Variants
+             * @description Every variant counted in the range, sorted.
+             */
+            variants: string[];
         };
         /** EventsIn */
         EventsIn: {
@@ -5202,6 +5261,8 @@ export interface operations {
                 actor?: string | null;
                 action?: string | null;
                 resource_type?: string | null;
+                /** @description An exact resource key, such as a flag key. */
+                resource_key?: string | null;
                 /** @description A project key. */
                 project?: string | null;
                 /** @description An environment key; needs `project`. */
@@ -5281,6 +5342,8 @@ export interface operations {
                 actor?: string | null;
                 action?: string | null;
                 resource_type?: string | null;
+                /** @description An exact resource key, such as a flag key. */
+                resource_key?: string | null;
                 /** @description A project key. */
                 project?: string | null;
                 /** @description An environment key; needs `project`. */
@@ -7929,6 +7992,10 @@ export interface operations {
                 type?: components["schemas"]["FlagType"] | null;
                 /** @description Only flags in this state; wins over `archived` ("archived" lists archived flags, the other states live ones). */
                 lifecycle?: ("new" | "active" | "permanent" | "stale" | "archived") | null;
+                /** @description An environment key; with `enabled`, only flags in that state there. */
+                env?: string | null;
+                /** @description Needs `env`. */
+                enabled?: boolean | null;
                 cursor?: string | null;
                 limit?: number;
             };
@@ -8574,6 +8641,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FlagConfigOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_flag_evaluations_api_projects__project__flags__flag__environments__env__evaluations_get: {
+        parameters: {
+            query?: {
+                range?: "24h" | "7d" | "30d";
+            };
+            header?: never;
+            path: {
+                project: string;
+                flag: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationSeries"];
                 };
             };
             /** @description Unauthorized */

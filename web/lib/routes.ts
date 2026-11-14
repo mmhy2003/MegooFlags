@@ -23,6 +23,11 @@ export function flagPath(project: string, flag: string): string {
   return `${projectPath(project, "flags")}/${encodeURIComponent(flag)}`;
 }
 
+/** The New flag page of a project. */
+export function newFlagPath(project: string): string {
+  return `${projectPath(project, "flags")}/new`;
+}
+
 function projectSegments(pathname: string): string[] | null {
   const [, root, project, ...rest] = pathname.split("/");
   return root === "projects" && project ? [project, ...rest] : null;

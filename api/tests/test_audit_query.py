@@ -150,6 +150,36 @@ async def test_filter_by_resource_type(api: httpx.AsyncClient, history: dict[str
     assert await actions(api, resource_type="team") == ["team.create"]
 
 
+@pytest.fixture
+async def flags_a_and_ab(api: httpx.AsyncClient) -> None:
+    """demo with flags `a` and `ab`, each patched once."""
+    await create_project(api)
+    for key in ("a", "ab"):
+        await create_flag(api, key=key)
+        r = await api.patch(f"/api/projects/demo/flags/{key}", json={"name": f"{key} renamed"})
+        assert r.status_code == 200, r.text
+
+
+async def test_filter_by_resource_key(api: httpx.AsyncClient, flags_a_and_ab: None) -> None:
+    items = await list_all(api, project="demo", resource_type="flag", resource_key="a")
+    assert [(i["action"], i["resource_key"]) for i in items] == [
+        ("flag.update", "a"),
+        ("flag.create", "a"),
+    ]
+
+
+async def test_filter_by_resource_key_and_env(api: httpx.AsyncClient, flags_a_and_ab: None) -> None:
+    for key, env in (("a", "development"), ("a", "staging"), ("ab", "staging")):
+        r = await api.post(
+            f"/api/projects/demo/flags/{key}/environments/{env}/toggle", json={"enabled": True}
+        )
+        assert r.status_code == 200, r.text
+    items = await list_all(api, project="demo", env="staging", resource_key="a")
+    assert [(i["action"], i["resource_key"], i["environment"]) for i in items] == [
+        ("flag.toggle", "a", "staging")
+    ]
+
+
 async def test_filter_by_project(api: httpx.AsyncClient, history: dict[str, Any]) -> None:
     items = await list_all(api, project="demo")
     assert [i["action"] for i in items] == [
@@ -332,6 +362,16 @@ async def test_export_applies_filters_and_scoping(
         "/api/audit/export", params={"format": "ndjson", "project": "demo", "env": "staging"}
     )
     assert [json.loads(line)["action"] for line in r.text.splitlines()] == ["flag.toggle"]
+
+
+async def test_export_filters_by_resource_key(api: httpx.AsyncClient, flags_a_and_ab: None) -> None:
+    r = await api.get(
+        "/api/audit/export", params={"format": "ndjson", "project": "demo", "resource_key": "a"}
+    )
+    assert r.status_code == 200, r.text
+    lines = r.text.splitlines()
+    assert lines
+    assert {json.loads(line)["resource_key"] for line in lines} == {"a"}
 
 
 async def test_export_spans_several_batches(app: FastAPI, api: httpx.AsyncClient) -> None:

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from megooflags_api.auth.rbac import Permission
 from megooflags_api.auth.require import Authz, require
 from megooflags_api.db import SessionDep
-from megooflags_api.errors import ERROR_RESPONSES
+from megooflags_api.errors import ERROR_RESPONSES, not_found, validation_error
 from megooflags_api.models import Flag, Project
 from megooflags_api.models.enums import FlagType
 from megooflags_api.schemas.common import Page
@@ -24,7 +24,7 @@ from megooflags_api.schemas.flags import (
 from megooflags_api.services import flags, lifecycle, rollouts, schedules, variations
 from megooflags_api.services.audit import AuditDep, Auditor, snapshot
 from megooflags_api.services.changes import ChangesDep
-from megooflags_api.services.lookup import get_flag, get_variation
+from megooflags_api.services.lookup import get_environment, get_flag, get_variation
 
 router = APIRouter(tags=["flags"], responses=ERROR_RESPONSES)
 
@@ -63,9 +63,22 @@ async def list_flags(
             "archived flags, the other states live ones)."
         ),
     ] = None,
+    env: str | None = Query(
+        None, description="An environment key; with `enabled`, only flags in that state there."
+    ),
+    enabled: bool | None = Query(None, description="Needs `env`."),
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=500),
 ) -> Page[FlagSummary]:
+    if enabled is not None and env is None:
+        raise validation_error("enabled needs env", "enabled")
+    env_state: tuple[uuid.UUID, bool] | None = None
+    if env is not None:
+        environment = await get_environment(session, _project(authz), env)
+        if not authz.authorizer.can_see_environment(_project(authz).id, environment.id):
+            raise not_found("environment", env)
+        if enabled is not None:
+            env_state = (environment.id, enabled)
     items, next_cursor = await flags.list_flags(
         session,
         _project(authz),
@@ -78,6 +91,7 @@ async def list_flags(
         limit=limit,
         visible=_visible(authz),
         lifecycle=lifecycle,
+        env_state=env_state,
     )
     return Page[FlagSummary](items=items, next_cursor=next_cursor)
 

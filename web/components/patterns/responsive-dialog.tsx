@@ -26,7 +26,8 @@ export function ResponsiveDialog({
 }: {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  trigger: React.ReactElement;
+  /** Omitted for a dialog that only opens through `open`. */
+  trigger?: React.ReactElement;
   title: string;
   description?: React.ReactNode;
   children?: React.ReactNode;
@@ -40,7 +41,7 @@ export function ResponsiveDialog({
       onOpenChange={onOpenChange}
       disablePointerDismissal={alert}
     >
-      <DialogTrigger render={trigger} />
+      {trigger && <DialogTrigger render={trigger} />}
       <DialogContent
         // Only when set: an explicit undefined would drop Base UI's role="dialog".
         {...(alert && { role: "alertdialog" })}
