@@ -33,7 +33,7 @@ type Config struct {
 	MaxPending          int           // 10000
 	MaxItems            int           // 1000
 	SendContext         bool
-	OnFatal             func(error)
+	OnFatal             func(error) // called once, on its own goroutine, after sending stopped
 	Now                 func() time.Time
 	RetryBase, RetryMax time.Duration // 2s, 60s
 }
@@ -306,8 +306,10 @@ func (b *Batcher) send(ctx context.Context, batch Batch) (unsent Batch, retry bo
 		return Batch{}, false
 	case errors.As(err, &fatal):
 		b.stopped = true
-		b.fatalOnce.Do(func() { b.cfg.OnFatal(err) })
 		b.signalStop()
+		// OnFatal runs on its own goroutine so it may call Stop or Shutdown,
+		// which wait for this loop to return.
+		b.fatalOnce.Do(func() { go b.cfg.OnFatal(err) })
 		return Batch{}, false
 	case errors.As(err, &limited):
 		b.retryIn(max(limited.After, b.backoff.Next()))
@@ -335,7 +337,11 @@ func (b *Batcher) split(ctx context.Context, batch Batch, why string) (unsent Ba
 		return Batch{}, false
 	}
 	first, second := halve(batch)
-	if unsent, retry := b.send(ctx, first); retry {
+	unsent, retry = b.send(ctx, first)
+	if b.stopped {
+		return Batch{}, false
+	}
+	if retry {
 		return Batch{
 			Exposures: append(unsent.Exposures, second.Exposures...),
 			Counts:    append(unsent.Counts, second.Counts...),

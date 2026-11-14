@@ -430,3 +430,64 @@ func TestBatcherSendsBearerAndUserAgent(t *testing.T) {
 		t.Errorf("Content-Type = %q", ct)
 	}
 }
+
+func TestBatcherOnFatalCanStopAndShutdown(t *testing.T) {
+	srv := newEventServer(t, func(int, Batch, http.ResponseWriter) int { return http.StatusForbidden })
+	returned := make(chan struct{})
+	var b *Batcher
+	b = newTestBatcher(t, srv.URL, func(c *Config) {
+		c.OnFatal = func(error) {
+			b.Stop()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := b.Shutdown(ctx); err != nil {
+				t.Errorf("Shutdown from OnFatal = %v, want nil", err)
+			}
+			close(returned)
+		}
+	})
+	b.Start()
+	b.Record(eval("f", "u1"))
+
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop and Shutdown called from OnFatal did not return")
+	}
+}
+
+func TestBatcherSplitStopsAfterFatal(t *testing.T) {
+	srv := newEventServer(t, func(_ int, b Batch, _ http.ResponseWriter) int {
+		if len(b.Exposures)+len(b.Counts) > 10 {
+			return http.StatusRequestEntityTooLarge
+		}
+		return http.StatusUnauthorized
+	})
+	var attempts atomic.Int32
+	b := newTestBatcher(t, srv.URL, func(c *Config) {
+		c.FlushInterval = time.Hour
+		c.Client = &http.Client{Transport: countingTransport{&attempts, http.DefaultTransport}}
+	})
+	b.Start()
+	for i := range 25 {
+		b.Record(eval("f", "u"+strconv.Itoa(i)))
+	}
+	shutdown(t, b)
+
+	// 26 items → 413; 13 → 413; 6 → 401, and no attempt after it.
+	if n := attempts.Load(); n != 3 {
+		t.Errorf("made %d attempts, want 3 (none after the 401)", n)
+	}
+}
+
+// countingTransport counts every request the client attempts, including
+// those whose context is already cancelled.
+type countingTransport struct {
+	n    *atomic.Int32
+	next http.RoundTripper
+}
+
+func (c countingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	c.n.Add(1)
+	return c.next.RoundTrip(r)
+}
