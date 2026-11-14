@@ -1,14 +1,16 @@
 """HTTP helpers shared by the ruleset download, the stream and the event sender: request
 headers, status mapping, Retry-After parsing, jittered backoff and a small http.client
-request helper."""
+request helper, with a Cancel that ends a worker's request in flight."""
 
 from __future__ import annotations
 
+import contextlib
 import http.client
 import random
 import re
+import socket
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC
 from email.utils import parsedate_to_datetime
@@ -178,7 +180,8 @@ def open_request(
     timeout: float | None,
 ) -> tuple[http.client.HTTPConnection, http.client.HTTPResponse]:
     """Send a request and return the connection with the response whose body is not read yet.
-    The caller closes the connection (closing it also unblocks a read on another thread)."""
+    The caller closes the connection. Closing it does not end a read blocked on another thread:
+    use Cancel.open for that."""
     conn, path = connection(url, timeout=timeout)
     try:
         conn.request(method, path, body=body, headers=headers)
@@ -202,3 +205,72 @@ def request(
         return Response(resp.status, resp.headers, resp.read())
     finally:
         conn.close()
+
+
+class Cancelled(Exception):
+    """A request refused because its Cancel was already set."""
+
+    def __init__(self) -> None:
+        super().__init__("megooflags: cancelled")
+
+
+class Cancel:
+    """The stop signal of one worker thread. cancel() sets it, which ends wait() at once, and
+    shuts down the socket of every request opened through open(), which ends a read blocked on
+    it (closing an http.client connection does not). It cannot be reset."""
+
+    def __init__(self) -> None:
+        self._event = threading.Event()
+        self._lock = threading.Lock()
+        self._socks: set[socket.socket] = set()
+
+    def is_set(self) -> bool:
+        """True once cancel() was called."""
+        return self._event.is_set()
+
+    def wait(self, seconds: float) -> bool:
+        """Wait up to seconds; True when cancelled (at once if it already was)."""
+        return self._event.wait(seconds)
+
+    def cancel(self) -> None:
+        """Set the signal and end every open request. Idempotent; any thread may call it."""
+        with self._lock:
+            self._event.set()
+            socks = list(self._socks)
+        for sock in socks:
+            with contextlib.suppress(OSError):
+                sock.shutdown(socket.SHUT_RDWR)
+
+    @contextlib.contextmanager
+    def open(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str],
+        body: bytes | None = None,
+        timeout: float | None,
+    ) -> Iterator[http.client.HTTPResponse]:
+        """Send a request and yield the response whose body is not read yet; the connection is
+        closed on exit. Raises Cancelled when the signal is already set. After cancel() a read
+        returns what it has (often b"") or raises OSError."""
+        conn, path = connection(url, timeout=timeout)
+        resp: http.client.HTTPResponse | None = None
+        sock: socket.socket | None = None
+        try:
+            conn.connect()
+            sock = conn.sock
+            with self._lock:
+                if self._event.is_set():
+                    raise Cancelled()
+                self._socks.add(sock)
+            conn.request(method, path, body=body, headers=headers)
+            resp = conn.getresponse()
+            yield resp
+        finally:
+            if sock is not None:
+                with self._lock:
+                    self._socks.discard(sock)
+            if resp is not None:
+                resp.close()
+            conn.close()

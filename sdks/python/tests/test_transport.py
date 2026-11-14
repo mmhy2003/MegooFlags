@@ -6,12 +6,14 @@ from collections.abc import Iterator
 from email.utils import formatdate
 
 import pytest
-from fake_server import FakeServer, Received, Scripted
+from fake_server import FakeServer, Received, Scripted, Stream
 
 from megooflags import __version__
 from megooflags._transport import (
     USER_AGENT,
     Backoff,
+    Cancel,
+    Cancelled,
     FatalError,
     HttpError,
     RetryAfterError,
@@ -282,3 +284,62 @@ def test_connection_is_chosen_by_scheme() -> None:
 def test_connection_refuses_other_schemes() -> None:
     with pytest.raises(ValueError, match="http or https"):
         connection("ftp://flags.example.com/x", timeout=1)
+
+
+# Cancel
+
+
+def test_cancel_open_returns_the_response_and_closes_it_after(server: FakeServer) -> None:
+    server.reply("/sdk/v1/ruleset", Scripted(200, body=b"body"))
+    cancel = Cancel()
+    with cancel.open("GET", sdk_url(server.url, "ruleset"), headers={}, timeout=5) as resp:
+        assert resp.status == 200
+        assert resp.read() == b"body"
+    assert resp.isclosed()
+    assert not cancel.is_set()
+
+
+def test_cancel_ends_a_blocked_read_on_another_thread(server: FakeServer) -> None:
+    server.reply("/sdk/v1/stream", Stream())
+    cancel = Cancel()
+    got: list[bytes] = []
+    errors: list[BaseException] = []
+
+    def read() -> None:
+        try:
+            with cancel.open("GET", sdk_url(server.url, "stream"), headers={}, timeout=30) as r:
+                got.append(r.readline())
+        except BaseException as err:
+            errors.append(err)
+
+    reader = threading.Thread(target=read)
+    reader.start()
+    server.next_stream()
+    started = time.monotonic()
+    cancel.cancel()
+    reader.join(5)
+    assert not reader.is_alive()
+    assert time.monotonic() - started < 1
+    assert cancel.is_set()
+    assert got == [b""] or isinstance(errors[0], OSError)
+
+
+def test_cancel_refuses_a_request_once_set(server: FakeServer) -> None:
+    cancel = Cancel()
+    cancel.cancel()
+    cancel.cancel()
+    with (
+        pytest.raises(Cancelled),
+        cancel.open("GET", sdk_url(server.url, "ruleset"), headers={}, timeout=5),
+    ):
+        pass
+    assert server.requests == []
+
+
+def test_cancel_wait_returns_early_when_cancelled() -> None:
+    cancel = Cancel()
+    assert cancel.wait(0.01) is False
+    threading.Timer(0.05, cancel.cancel).start()
+    started = time.monotonic()
+    assert cancel.wait(5) is True
+    assert time.monotonic() - started < 1

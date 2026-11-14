@@ -19,7 +19,7 @@ class SseEvent:
 class LineReader(Protocol):
     """A binary stream that can read up to and including the next LF byte."""
 
-    def readline(self, size: int | None = -1, /) -> bytes: ...
+    def readline(self, size: int = -1, /) -> bytes: ...
 
 
 def read_sse(
