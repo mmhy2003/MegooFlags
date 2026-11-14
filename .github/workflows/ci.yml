@@ -314,43 +314,17 @@ jobs:
   sdk-go-e2e:
     runs-on: ubuntu-24.04
     needs: images
-    # Job-level, not on the Stack step: compose needs the secret key to parse the file for logs and down too.
-    env:
-      MEGOOFLAGS_SITE_ADDRESS: ""
-      MEGOOFLAGS_SECRET_KEY: ci-sdk-go-e2e-secret-key-not-used-elsewhere-0123456789
     steps:
       - uses: actions/checkout@v4
-      - id: v
-        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+      - uses: ./.github/actions/sdk-e2e-stack
         with:
-          context: api
-          load: true
-          tags: megooflags-api:ci
-          build-args: |
-            VERSION=${{ steps.v.outputs.version }}
-            REVISION=${{ github.sha }}
-          cache-from: type=gha,scope=api
-      - uses: docker/build-push-action@v6
-        with:
-          context: web
-          load: true
-          tags: megooflags-web:ci
-          build-args: |
-            VERSION=${{ steps.v.outputs.version }}
-            REVISION=${{ github.sha }}
-          cache-from: type=gha,scope=web
+          project: megooflags-sdk-go
       - uses: actions/setup-go@v5
         with:
           go-version-file: sdks/go/go.mod
           cache-dependency-path: sdks/go/go.sum
-      - name: Stack
-        run: docker compose -p megooflags-sdk-go -f deploy/docker-compose.yml -f deploy/compose.ci.yml up -d --wait --wait-timeout 180 caddy
       - name: E2E
         working-directory: sdks/go
-        env:
-          MEGOOFLAGS_E2E_URL: http://localhost:8080
         run: go test -tags e2e -count=1 -v ./e2e
       - if: failure()
         run: docker compose -p megooflags-sdk-go -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color

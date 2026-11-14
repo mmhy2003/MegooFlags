@@ -11,13 +11,13 @@ Humans follow them too. When a rule here and a habit of yours disagree, this fil
 | `web/` | Next.js 16 App Router UI (TypeScript, Tailwind 4, shadcn/ui, `output: "standalone"`) |
 | `deploy/` | Reference single-node bundle: `docker-compose.yml`, `Caddyfile`, `.env.example`, and the CI override `compose.ci.yml` |
 | `scripts/` | Version, release and check scripts shared by CI, the release workflow and developers |
-| `sdks/` | Reserved for in-repo SDKs, one directory per language (see `sdks/README.md`) |
+| `sdks/` | In-repo SDKs, one directory per language (see `sdks/README.md`) |
 | `spec/` | Reserved for the shared evaluation spec and SDK conformance suite (see `spec/README.md`) |
 
 Package managers:
 
-- Python uses **uv** (`api/uv.lock`). Web uses **pnpm** (`web/pnpm-lock.yaml`, pinned by `packageManager` in `web/package.json`; enable it with `corepack enable`).
-- Never switch to pip or npm, and never add a second lockfile.
+- Every project directory has exactly one package manager and at most one lockfile: **uv** for `api/` and `sdks/python/`, **pnpm** for `web/` and `sdks/node/` (enable it with `corepack enable`), **Go modules** for `sdks/go/`, **Maven** for `sdks/java/`, the **dotnet CLI** for `sdks/dotnet/`, **Bundler** for `sdks/ruby/`, **Composer** for `sdks/php/`.
+- Never switch a directory to another package manager, and never add a second lockfile to a directory.
 - Always commit lockfile changes together with the manifest change that caused them.
 
 ## 2. Branches and pull requests

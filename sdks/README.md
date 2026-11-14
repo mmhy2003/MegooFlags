@@ -2,7 +2,7 @@
 
 MegooFlags SDKs live in this repository, one directory per language: `sdks/<lang>/`.
 
-Planned, in order: `go`, `node`, `python`, `java`, `js` (browser), `react`, then mobile.
+Planned, in order: `go`, `node`, `python`, `java`, `dotnet`, `ruby`, `php`, `js` (browser), `react`, then mobile.
 
 ## Versioning and tags
 
@@ -31,3 +31,6 @@ Each SDK is an [OpenFeature](https://openfeature.dev) provider and must pass the
 | Node.js | `sdks/node` | planned | | | |
 | Python | `sdks/python` | planned | | | |
 | Java | `sdks/java` | planned | | | |
+| .NET | `sdks/dotnet` | planned | | | |
+| Ruby | `sdks/ruby` | planned | | | |
+| PHP | `sdks/php` | planned | | | |
