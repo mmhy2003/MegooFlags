@@ -144,6 +144,23 @@ public final class FakeServer implements AutoCloseable {
         public void end() {
             exchange.close();
         }
+
+        /**
+         * Waits until the client has closed the connection, found by writing a comment line every
+         * 10 ms until a write fails, and fails after timeout.
+         */
+        public void awaitClosed(Duration timeout) throws InterruptedException {
+            long deadline = System.nanoTime() + timeout.toNanos();
+            while (System.nanoTime() < deadline) {
+                try {
+                    write(":\n");
+                } catch (IOException e) {
+                    return;
+                }
+                Thread.sleep(10);
+            }
+            throw new AssertionError("the client kept the stream open for " + timeout);
+        }
     }
 
     private final HttpServer server;
