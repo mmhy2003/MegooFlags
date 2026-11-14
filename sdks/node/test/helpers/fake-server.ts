@@ -26,7 +26,13 @@ export interface Stream {
   headers?: Record<string, string>;
 }
 
-export type Reply = Scripted | Stream;
+/**
+ * A function answering each request it receives, possibly later: for
+ * replies that depend on the body, or a response held back.
+ */
+export type Responder = (req: Received) => Scripted | Promise<Scripted>;
+
+export type Reply = Scripted | Stream | Responder;
 
 /** A request the server received, with its whole body. */
 export interface Received {
@@ -176,6 +182,14 @@ export class FakeServer {
     const reply = queue && queue.length > 1 ? queue.shift() : queue?.[0];
     if (reply === undefined) {
       res.writeHead(404).end();
+      return;
+    }
+    if (typeof reply === "function") {
+      void Promise.resolve(reply(req)).then((r) => {
+        if (!res.destroyed) {
+          res.writeHead(r.status, r.headers).end(r.body ?? "");
+        }
+      });
       return;
     }
     if ("stream" in reply) {
