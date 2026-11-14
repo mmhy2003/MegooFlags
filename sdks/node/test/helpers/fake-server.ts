@@ -35,6 +35,8 @@ export interface Received {
   url: string;
   headers: Record<string, string | string[] | undefined>;
   body: string;
+  /** at is when the request arrived, in epoch milliseconds. */
+  at: number;
 }
 
 /** An open event-stream response. */
@@ -151,6 +153,7 @@ export class FakeServer {
   }
 
   private handle(req: IncomingMessage, res: ServerResponse): void {
+    const at = Date.now();
     const chunks: Buffer[] = [];
     req.on("data", (c: Buffer) => chunks.push(c));
     req.on("end", () => {
@@ -161,6 +164,7 @@ export class FakeServer {
         url,
         headers: req.headers,
         body: Buffer.concat(chunks).toString("utf8"),
+        at,
       };
       this.requests.push(received);
       this.answer(received, res);

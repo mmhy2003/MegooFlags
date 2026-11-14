@@ -5,6 +5,27 @@ import { VERSION } from "../../version.js";
 
 export const USER_AGENT = `megooflags-node/${VERSION}`;
 
+/** FetchFn is the global fetch, or the one the config supplies. */
+export type FetchFn = typeof fetch;
+
+/** Logger is the part of console the SDK logs through. */
+export interface Logger {
+  debug(message: string, ...args: unknown[]): void;
+  info(message: string, ...args: unknown[]): void;
+  warn(message: string, ...args: unknown[]): void;
+  error(message: string, ...args: unknown[]): void;
+}
+
+const discard = () => {};
+
+/** silentLogger drops everything; internal parts default to it. */
+export const silentLogger: Logger = {
+  debug: discard,
+  info: discard,
+  warn: discard,
+  error: discard,
+};
+
 /**
  * FatalError reports that the server refused the SDK key (401, 403, or the
  * stream's revoked event). Retrying with the same key cannot succeed.
