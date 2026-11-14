@@ -32,7 +32,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run test/",
-    "test:p99": "vitest run perf/",
+    "test:p99": "vitest run perf/ --reporter=default",
     "e2e": "vitest run e2e/"
   },
   "devDependencies": {
