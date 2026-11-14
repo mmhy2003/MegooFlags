@@ -30,6 +30,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="OpenFeature" Version="2.14.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="MegooFlags.Tests" />
   </ItemGroup>
 

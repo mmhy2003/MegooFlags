@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Linq;
+using MegooFlags.Internal.Json;
 
 namespace MegooFlags.Tests;
 
@@ -178,4 +180,103 @@ internal static class RulesetGen
 
     private static Dictionary<string, object?> BenchRule(string variation, Dictionary<string, object?> clause) =>
         Obj("description", "", "clauses", List(clause), "serve", Obj("variation", variation));
+
+    private static List<object?> BoolVariations() =>
+        List(Obj("key", "on", "value", true), Obj("key", "off", "value", false));
+
+    /// <summary>
+    /// ProviderFlags are the provider tests' flags: one of each type, a target, a rule and a failing prerequisite
+    /// (the Go SDK's testdata/ruleset.json), plus int-flag for the integer evaluation.
+    /// </summary>
+    private static List<Dictionary<string, object?>> ProviderFlags() =>
+    [
+        FlagJson(
+            "bool-flag",
+            "type", "boolean",
+            "variations", BoolVariations(),
+            "rules", List(Obj(
+                "description", "pro plan",
+                "clauses", List(Cl("plan", "in", false, "pro")),
+                "serve", Obj("variation", "on"))),
+            "fallthrough", Obj("variation", "off")),
+        FlagJson(
+            "targeted",
+            "variations", List(Obj("key", "alice", "value", "hello alice"), Obj("key", "other", "value", "hello")),
+            "off_variation", "other",
+            "targets", List(Obj("variation", "alice", "values", List("alice"))),
+            "fallthrough", Obj("variation", "other")),
+        FlagJson(
+            "string-flag",
+            "variations", List(Obj("key", "blue", "value", "blue"), Obj("key", "red", "value", "red")),
+            "off_variation", "red",
+            "fallthrough", Obj("variation", "blue")),
+        FlagJson(
+            "number-flag",
+            "type", "number",
+            "variations", List(Obj("key", "half", "value", 2.5), Obj("key", "zero", "value", 0L)),
+            "off_variation", "zero",
+            "fallthrough", Obj("variation", "half")),
+        FlagJson(
+            "int-flag",
+            "type", "number",
+            "variations", List(
+                Obj("key", "three", "value", 3L),
+                Obj("key", "two", "value", 2.0),
+                Obj("key", "half", "value", 2.5),
+                Obj("key", "big", "value", 3_000_000_000L)),
+            "off_variation", "three",
+            "targets", List(
+                Obj("variation", "two", "values", List("two")),
+                Obj("variation", "half", "values", List("half")),
+                Obj("variation", "big", "values", List("big"))),
+            "fallthrough", Obj("variation", "three")),
+        FlagJson(
+            "json-flag",
+            "type", "json",
+            "variations", List(
+                Obj("key", "cfg", "value", Obj(
+                    "limit", 10L, "big", 3_000_000_000L, "ratio", 0.5, "tags", List("a", "b"), "none", null)),
+                Obj("key", "empty", "value", Obj())),
+            "off_variation", "empty",
+            "fallthrough", Obj("variation", "cfg")),
+        FlagJson("prereq-off", "type", "boolean", "enabled", false, "variations", BoolVariations()),
+        FlagJson(
+            "needs-prereq",
+            "type", "boolean",
+            "variations", BoolVariations(),
+            "prerequisites", List(Obj("flag", "prereq-off", "variation", "on"))),
+    ];
+
+    /// <summary>ProviderRuleset is the provider tests' ruleset as JSON text.</summary>
+    public static string ProviderRuleset() => JsonTree.Write(RulesetJson(ProviderFlags(), Obj()));
+
+    /// <summary>ChangedProviderRuleset serves red for string-flag (version 2), removes targeted and adds new-flag.</summary>
+    public static string ChangedProviderRuleset()
+    {
+        var flags = new List<Dictionary<string, object?>>();
+        foreach (var f in ProviderFlags())
+        {
+            switch ((string)f["key"]!)
+            {
+                case "targeted":
+                    continue;
+                case "string-flag":
+                    f["version"] = 2L;
+                    f["fallthrough"] = Obj("variation", "red");
+                    flags.Add(new Dictionary<string, object?>(f) { ["key"] = "new-flag" });
+                    break;
+            }
+            flags.Add(f);
+        }
+        return JsonTree.Write(RulesetJson(flags, Obj()));
+    }
+
+    /// <summary>StringFlagRuleset has only string-flag, serving variation (blue or red) at version.</summary>
+    public static string StringFlagRuleset(string variation, long version)
+    {
+        var f = ProviderFlags().Single(x => (string)x["key"]! == "string-flag");
+        f["version"] = version;
+        f["fallthrough"] = Obj("variation", variation);
+        return JsonTree.Write(RulesetJson([f], Obj()));
+    }
 }
