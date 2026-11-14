@@ -125,6 +125,37 @@ class TransportTest < Minitest::Test
     assert cancel.wait(10)
   end
 
+  def test_cancel_guard_runs_the_hook_on_cancel_only_while_the_block_runs
+    cancel = Transport::Cancel.new
+    calls = 0
+    hook = -> { calls += 1 }
+
+    assert_equal :done, cancel.guard(hook) { :done }
+    cancel.cancel
+
+    assert_equal 0, calls
+    cancel = Transport::Cancel.new
+    cancel.guard(hook) { cancel.cancel }
+
+    assert_equal 1, calls
+  end
+
+  def test_cancel_guard_runs_the_hook_at_once_when_already_cancelled
+    cancel = Transport::Cancel.new
+    cancel.cancel
+    calls = 0
+    cancel.guard(-> { calls += 1 }) { nil }
+
+    assert_equal 1, calls
+  end
+
+  def test_cancel_guard_ignores_a_failing_hook
+    cancel = Transport::Cancel.new
+    cancel.guard(-> { raise IOError, "not started" }) { cancel.cancel }
+
+    assert_predicate cancel, :cancelled?
+  end
+
   def test_request_sends_headers_and_body_and_returns_the_response
     with_server do |server|
       server.reply("/sdk/v1/events", FakeServer::Scripted.new(status: 202, headers: { "ETag" => '"e1"' },

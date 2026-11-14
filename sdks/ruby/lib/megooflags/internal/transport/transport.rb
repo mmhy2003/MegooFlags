@@ -52,23 +52,48 @@ module MegooFlags
         def header(name) = headers[name.downcase]
       end
 
-      # Cancel is the stop signal of one worker thread: cancel ends wait at once. It cannot be
+      # CancelledError reports a request ended by Cancel#cancel.
+      class CancelledError < StandardError
+        def initialize(message = "megooflags: cancelled") = super
+      end
+
+      # Cancel is the stop signal of one worker thread: cancel ends wait at once and runs the
+      # hooks of the guard blocks in progress, such as closing an open connection. It cannot be
       # reset.
       class Cancel
         def initialize
           @lock = Mutex.new
           @cond = ConditionVariable.new
           @cancelled = false
+          @hooks = []
         end
 
         def cancelled? = @lock.synchronize { @cancelled }
 
-        # cancel sets the signal. Idempotent; any thread may call it.
+        # cancel sets the signal, then runs the hooks of the guards in progress (an error a hook
+        # raises is ignored). Idempotent; any thread may call it.
         def cancel
-          @lock.synchronize do
+          hooks = @lock.synchronize do
             @cancelled = true
             @cond.broadcast
+            @hooks.dup.tap { @hooks.clear }
           end
+          hooks.each { |hook| run(hook) }
+          nil
+        end
+
+        # guard yields and returns the block's value; hook runs if cancel is called meanwhile, or
+        # at once when it already was. The signal is set before a hook runs, so a block that
+        # checks cancelled? after each step it cannot interrupt never misses it.
+        def guard(hook)
+          now = @lock.synchronize do
+            @hooks << hook unless @cancelled
+            @cancelled
+          end
+          run(hook) if now
+          yield
+        ensure
+          @lock.synchronize { @hooks.delete(hook) }
         end
 
         # wait waits up to seconds; true when cancelled (at once if it already was).
@@ -83,6 +108,14 @@ module MegooFlags
             end
             @cancelled
           end
+        end
+
+        private
+
+        def run(hook)
+          hook.call
+        rescue StandardError
+          nil
         end
       end
 
@@ -154,6 +187,26 @@ module MegooFlags
         names = {}
         resp.each_header { |name, value| names[name] = value }
         Response.new(status: resp.code.to_i, headers: names.freeze, body: (resp.body || "").b)
+      end
+
+      # get sends a GET and yields the Net::HTTPResponse before its body is read; the connection
+      # closes after the block and get returns the block's value. cancel closes the connection
+      # at once, ending a connect, a read or a read_body in progress: once cancel is set, any
+      # error becomes CancelledError.
+      def get(url, headers:, timeout:, cancel:)
+        http, path = connection(url, timeout: timeout)
+        cancel.guard(-> { http.finish if http.started? }) do
+          http.start do
+            raise CancelledError if cancel.cancelled?
+
+            # return leaves at once: the rest of the body is not drained, start closes the socket.
+            http.request(Net::HTTP::Get.new(path, headers)) { |resp| return yield resp }
+          end
+        end
+      rescue StandardError
+        raise CancelledError if cancel.cancelled?
+
+        raise
       end
 
       def header(headers, name)
