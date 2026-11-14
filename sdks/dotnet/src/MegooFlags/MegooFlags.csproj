@@ -18,14 +18,10 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>feature-flags;openfeature;megooflags</PackageTags>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-  </PropertyGroup>
-
-  <!-- The README is written with the docs; until then the package is built without it. -->
-  <PropertyGroup Condition="Exists('../../README.md')">
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
-  <ItemGroup Condition="Exists('../../README.md')">
+  <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 

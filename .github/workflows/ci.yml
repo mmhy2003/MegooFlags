@@ -472,3 +472,47 @@ jobs:
         run: docker compose -p megooflags-sdk-java -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
       - if: always()
         run: docker compose -p megooflags-sdk-java -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
+
+  sdk-dotnet:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dotnet: "8.0.x"
+            tfm: net8.0
+          - dotnet: "10.0.x"
+            tfm: net10.0
+    defaults:
+      run:
+        working-directory: sdks/dotnet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ matrix.dotnet }}
+      - run: dotnet format --verify-no-changes
+      - run: dotnet build -c Release -p:TestTargetFramework=${{ matrix.tfm }}
+      - run: dotnet test -c Release --no-build -p:TestTargetFramework=${{ matrix.tfm }} --filter "Category!=P99&Category!=E2E"
+      - name: p99 guard
+        run: dotnet test -c Release --no-build -p:TestTargetFramework=${{ matrix.tfm }} --filter "Category=P99"
+      - run: dotnet pack src/MegooFlags -c Release --no-build -o out
+
+  sdk-dotnet-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-sdk-dotnet
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+      - name: E2E
+        working-directory: sdks/dotnet
+        run: dotnet test -c Release --filter "Category=E2E"
+      - if: failure()
+        run: docker compose -p megooflags-sdk-dotnet -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: always()
+        run: docker compose -p megooflags-sdk-dotnet -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
