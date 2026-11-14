@@ -158,8 +158,9 @@ export function ServeEditor({
             <RolloutSlider
               label="Percentage serving true"
               value={percentOf(serve.weights, "true")}
+              disabled={readOnly}
               onValueChange={(p) =>
-                !readOnly && onChange({ ...serve, weights: booleanWeights(p) })
+                onChange({ ...serve, weights: booleanWeights(p) })
               }
             />
           ) : (

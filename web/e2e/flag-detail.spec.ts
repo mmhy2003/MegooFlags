@@ -14,6 +14,7 @@ import {
   SHOP,
 } from "./support/api";
 import { noHorizontalScroll, smallTargets } from "./support/checks";
+import { VIEWER } from "./support/users";
 
 let api: APIRequestContext;
 
@@ -1066,5 +1067,142 @@ test.describe("settings", () => {
     await expect(page).toHaveURL(/\/projects\/shop\/flags$/);
     const gone = await api.get(`/api/projects/${SHOP}/flags/${flag}`);
     expect(gone.status()).toBe(404);
+  });
+});
+
+test.describe("viewer", () => {
+  test.use({
+    storageState: VIEWER.storageState,
+    viewport: { width: 1440, height: 900 },
+  });
+
+  test("the list has no New flag and no checkboxes", async ({ page }) => {
+    await page.goto(`/projects/${SHOP}/flags`);
+    const table = page.getByRole("table", { name: "Flags" });
+    await expect(
+      table.getByRole("link", { name: "checkout-v2", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "New flag" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "New flag" })).toHaveCount(0);
+    await expect(page.getByRole("checkbox")).toHaveCount(0);
+  });
+
+  test("toggles and kill switches are disabled", async ({ page }) => {
+    await page.goto(detail("checkout-v2"));
+    for (const env of ["Development", "Staging", "Production"]) {
+      await expect(
+        page.getByRole("switch", { name: `checkout-v2 in ${env}` }),
+      ).toBeDisabled();
+      await expect(
+        page.getByRole("button", { name: `Kill switch in ${env}` }),
+      ).toBeDisabled();
+    }
+  });
+
+  test("Targeting is read-only", async ({ page }) => {
+    await page.goto(detail("checkout-v2"));
+    const targets = page.getByRole("textbox", {
+      name: "Context keys served true",
+    });
+    await expect(targets).toHaveValue("user-1");
+    await expect(targets).not.toBeEditable();
+    const rule = page.getByRole("group", { name: "Rule 1" });
+    await expect(rule.getByRole("textbox", { name: "Values" })).toHaveValue(
+      "NL",
+    );
+    await expect(
+      rule.getByRole("textbox", { name: "Values" }),
+    ).not.toBeEditable();
+    await expect(
+      rule.getByRole("combobox", { name: "Operator" }),
+    ).toBeDisabled();
+    const fallthrough = page.getByRole("region", { name: "Default rule" });
+    await expect(
+      fallthrough.getByRole("radio", { name: "Serve a rollout" }),
+    ).toBeDisabled();
+    await expect(
+      fallthrough.getByRole("combobox", { name: "Variation" }),
+    ).toBeDisabled();
+    for (const name of [
+      "Add rule",
+      "Add prerequisite",
+      "Add clause",
+      "Remove rule 1",
+      "Move rule 1 down",
+      "Copy to…",
+    ])
+      await expect(page.getByRole("button", { name })).toHaveCount(0);
+    await expect(
+      page.getByRole("status", { name: "Unsaved changes" }),
+    ).toHaveCount(0);
+  });
+
+  test("a rollout can't be dragged", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await putConfig(api, flag, "development", (c) => {
+      c.fallthrough = {
+        variation: null,
+        rollout: {
+          bucket_by: "key",
+          weights: [
+            { variation: "true", weight: 25000 },
+            { variation: "false", weight: 75000 },
+          ],
+        },
+      };
+    });
+    await page.goto(detail(flag));
+    const fallthrough = page.getByRole("region", { name: "Default rule" });
+    await expect(
+      fallthrough.getByRole("spinbutton", { name: "Rollout percentage" }),
+    ).toHaveValue("25");
+    await expect(
+      fallthrough.getByRole("spinbutton", { name: "Rollout percentage" }),
+    ).toBeDisabled();
+    await expect(
+      fallthrough.getByRole("slider", { name: "Percentage serving true" }),
+    ).toBeDisabled();
+    await expect(
+      fallthrough.getByRole("textbox", { name: "Bucket by" }),
+    ).toBeDisabled();
+  });
+
+  test("Test evaluates and History shows", async ({ page }) => {
+    await page.goto(detail("checkout-v2", "?env=development&tab=test"));
+    await page
+      .getByRole("textbox", { name: "Context (JSON)" })
+      .fill('{"key":"user-1"}');
+    await page.getByRole("button", { name: "Evaluate" }).click();
+    await expect(
+      page.getByRole("region", { name: "Result", exact: true }),
+    ).toContainText("Individual target");
+
+    await page.getByRole("tab", { name: "History" }).click();
+    await expect(
+      page.getByRole("list", { name: "Change history" }).getByRole("listitem"),
+    ).not.toHaveCount(0);
+  });
+
+  test("Settings has no Save or Archive", async ({ page }) => {
+    await page.goto(detail("checkout-v2", "?tab=settings"));
+    await expect(page.getByRole("heading", { name: "Details" })).toBeVisible();
+    await expect(page.getByRole("textbox")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Save/ })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Archive flag" }),
+    ).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Delete flag" })).toHaveCount(
+      0,
+    );
+  });
+
+  test("New flag says it isn't allowed", async ({ page }) => {
+    await page.goto(`/projects/${SHOP}/flags/new`);
+    await expect(
+      page.getByText("You can't create flags in this project"),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create flag" })).toHaveCount(
+      0,
+    );
   });
 });

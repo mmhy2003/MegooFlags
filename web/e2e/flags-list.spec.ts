@@ -44,6 +44,11 @@ function listedKeys(page: Page): Promise<string[]> {
     .allTextContents();
 }
 
+/** The listed keys of the seeded flags, without the `t-` flags that other specs create. */
+async function seededKeys(page: Page): Promise<string[]> {
+  return (await listedKeys(page)).filter((k) => !k.startsWith("t-"));
+}
+
 async function openFilters(page: Page) {
   const toggle = page.getByRole("button", { name: /^Filters \(\d+\)$/ });
   if ((await toggle.getAttribute("aria-expanded")) !== "true")
@@ -58,7 +63,7 @@ test.describe("flag list", () => {
     await page
       .getByRole("searchbox", { name: "Search flags" })
       .fill("checkout");
-    await expect.poll(() => listedKeys(page)).toEqual(["checkout-v2"]);
+    await expect.poll(() => seededKeys(page)).toEqual(["checkout-v2"]);
     await expect(page).toHaveURL(/\?q=checkout$/);
   });
 
@@ -77,7 +82,7 @@ test.describe("flag list", () => {
     const owner = page.getByRole("textbox", { name: "Owner" });
     await owner.fill("team-web");
     await owner.press("Enter");
-    await expect.poll(() => listedKeys(page)).toEqual(["checkout-v2"]);
+    await expect.poll(() => seededKeys(page)).toEqual(["checkout-v2"]);
 
     await page.getByRole("button", { name: "Clear filters" }).click();
     await openFilters(page);
@@ -98,14 +103,14 @@ test.describe("flag list", () => {
       .getByRole("combobox", { name: "Environment", exact: true })
       .selectOption("staging");
     await state.selectOption("on");
-    await expect.poll(() => listedKeys(page)).toEqual(["checkout-v2"]);
+    await expect.poll(() => seededKeys(page)).toEqual(["checkout-v2"]);
     await expect(page).toHaveURL(/\?env=staging&enabled=on$/);
     await expect(
       page.getByRole("button", { name: "Filters (1)" }),
     ).toBeVisible();
 
     await page.reload();
-    await expect.poll(() => listedKeys(page)).toEqual(["checkout-v2"]);
+    await expect.poll(() => seededKeys(page)).toEqual(["checkout-v2"]);
     await openFilters(page);
     await expect(
       page.getByRole("combobox", { name: "Environment", exact: true }),
