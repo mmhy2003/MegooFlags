@@ -103,6 +103,13 @@
         <configuration>
           <groups>${surefire.groups}</groups>
           <excludedGroups>${surefire.excludedGroups}</excludedGroups>
+          <!-- Report tests by display name, so conformance cases read <stem>::<name>. -->
+          <statelessTestsetReporter implementation="org.apache.maven.plugin.surefire.extensions.junit5.JUnit5Xml30StatelessReporter">
+            <usePhrasedTestCaseMethodName>true</usePhrasedTestCaseMethodName>
+          </statelessTestsetReporter>
+          <statelessTestsetInfoReporter implementation="org.apache.maven.plugin.surefire.extensions.junit5.JUnit5StatelessTestsetInfoReporter">
+            <usePhrasedClassNameInRunning>true</usePhrasedClassNameInRunning>
+          </statelessTestsetInfoReporter>
         </configuration>
       </plugin>
     </plugins>
