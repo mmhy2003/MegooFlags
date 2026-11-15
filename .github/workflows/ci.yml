@@ -944,3 +944,24 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - run: flutter pub publish --dry-run
+
+  sdk-flutter-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-sdk-flutter
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.38.x
+          cache: true
+      - name: E2E
+        working-directory: sdks/flutter
+        run: flutter pub get && flutter test e2e
+      - if: failure()
+        run: docker compose -p megooflags-sdk-flutter -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: always()
+        run: docker compose -p megooflags-sdk-flutter -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
