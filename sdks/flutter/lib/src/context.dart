@@ -22,7 +22,7 @@ Map<String, Object?> toRequestContext(EvaluationContext ctx) {
 }
 
 Object? _toJson(Object? v) => switch (v) {
-  DateTime() => _formatUtcMillis(v),
+  DateTime() => formatUtcMillis(v),
   double() when _isExactInteger(v) => v.toInt(),
   List() => [for (final x in v) _toJson(x)],
   Map() => {for (final e in v.entries) e.key as String: _toJson(e.value)},
@@ -32,9 +32,9 @@ Object? _toJson(Object? v) => switch (v) {
 bool _isExactInteger(double v) =>
     v.isFinite && v == v.truncateToDouble() && v.abs() < _exactIntegerLimit;
 
-/// _formatUtcMillis writes [t] as yyyy-MM-ddTHH:mm:ss.SSSZ in UTC
+/// formatUtcMillis writes [t] as yyyy-MM-ddTHH:mm:ss.SSSZ in UTC
 /// (toIso8601String would add microseconds when it has them).
-String _formatUtcMillis(DateTime t) {
+String formatUtcMillis(DateTime t) {
   final u = t.toUtc();
   String pad(int n, int width) => n.toString().padLeft(width, '0');
   return '${pad(u.year, 4)}-${pad(u.month, 2)}-${pad(u.day, 2)}'
