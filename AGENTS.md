@@ -16,7 +16,7 @@ Humans follow them too. When a rule here and a habit of yours disagree, this fil
 
 Package managers:
 
-- Every project directory has exactly one package manager and at most one lockfile: **uv** for `api/` and `sdks/python/`, **pnpm** for `web/` and `sdks/node/` (enable it with `corepack enable`), **Go modules** for `sdks/go/`, **Maven** for `sdks/java/`, the **dotnet CLI** for `sdks/dotnet/`, **Bundler** for `sdks/ruby/`, **Composer** for `sdks/php/`.
+- Every project directory has exactly one package manager and at most one lockfile: **uv** for `api/` and `sdks/python/`, **pnpm** for `web/`, `sdks/node/`, `sdks/js/`, `sdks/react/` and `sdks/react-native/` (enable it with `corepack enable`), **Go modules** for `sdks/go/`, **Maven** for `sdks/java/`, the **dotnet CLI** for `sdks/dotnet/`, **Bundler** for `sdks/ruby/`, **Composer** for `sdks/php/`, **SwiftPM** for `sdks/ios/` (lockfile `Package.resolved`), the **Gradle wrapper** for `sdks/android/` (no lockfile), **Flutter/pub** for `sdks/flutter/` (no committed lockfile: `pubspec.lock` is ignored, as for any pub library package).
 - Never switch a directory to another package manager, and never add a second lockfile to a directory.
 - Always commit lockfile changes together with the manifest change that caused them.
 
@@ -202,7 +202,7 @@ If you change a workflow, also run `docker run --rm -v "$PWD:/repo" -w /repo rhy
 ### SDK checks
 
 When you change an SDK, run its group (the `sdk-<lang>` and `sdk-<lang>-e2e` jobs in `ci.yml`). When you
-change `spec/`, run the check of every SDK. From the repository root:
+change `spec/`, run the check of every SDK, the client SDKs included. From the repository root:
 
 ```bash
 # Go (sdks/go)
@@ -243,6 +243,38 @@ change `spec/`, run the check of every SDK. From the repository root:
 (cd sdks/php && composer install && composer validate --strict && composer cs && composer stan && composer test)
 (cd sdks/php && composer p99)
 (cd sdks/php && composer e2e)
+
+# JavaScript (sdks/js); the e2e needs Chromium once: pnpm exec playwright install --with-deps chromium
+(cd sdks/js && pnpm install --frozen-lockfile && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test \
+  && pnpm build && pnpm pack)
+(cd sdks/js && pnpm e2e)
+
+# React (sdks/react); it links ../js, so build that first
+(cd sdks/js && pnpm install --frozen-lockfile && pnpm build)
+(cd sdks/react && pnpm install --frozen-lockfile && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test \
+  && pnpm build && pnpm pack)
+(cd sdks/react && pnpm e2e)
+
+# React Native (sdks/react-native); it links ../js and ../react, so build both first
+(cd sdks/js && pnpm install --frozen-lockfile && pnpm build)
+(cd sdks/react && pnpm install --frozen-lockfile && pnpm build)
+(cd sdks/react-native && pnpm install --frozen-lockfile && pnpm format:check && pnpm lint && pnpm typecheck \
+  && pnpm test && pnpm build && pnpm pack)
+(cd sdks/react-native && pnpm e2e)
+
+# iOS (sdks/ios); macOS with Xcode 16.4 (Swift 6.1) only
+(cd sdks/ios && swift format lint --strict --recursive Sources Tests Package.swift && swift build \
+  && swift test --filter MegooFlagsTests && xcodebuild -scheme MegooFlags -destination 'generic/platform=iOS' build)
+(cd sdks/ios && swift test --filter MegooFlagsE2ETests)
+
+# Android (sdks/android); JDK 17
+(cd sdks/android && ./gradlew spotlessCheck lint testDebugUnitTest assembleRelease)
+(cd sdks/android && ./gradlew testDebugUnitTest -Pe2e)
+
+# Flutter (sdks/flutter); Flutter 3.38
+(cd sdks/flutter && flutter pub get && dart format --output=none --set-exit-if-changed . && flutter analyze \
+  && flutter test && flutter pub publish --dry-run)
+(cd sdks/flutter && flutter pub get && flutter test e2e)
 ```
 
 The e2e tests are skipped unless `MEGOOFLAGS_E2E_URL` and `MEGOOFLAGS_API_TOKEN` are set (Go needs only
@@ -258,6 +290,10 @@ export MEGOOFLAGS_API_TOKEN=$(bash scripts/sdk_e2e_token.sh "$MEGOOFLAGS_E2E_URL
 # ... run the e2e commands above, then:
 docker compose -p megooflags-sdk-e2e -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
 ```
+
+macOS CI runners have no Docker, so the iOS e2e runs the API, Postgres and Valkey natively instead of
+the compose stack: see the `sdk-ios-e2e` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+On a Mac with Docker, the compose stack above works too.
 
 ## 10. Releases
 
@@ -299,5 +335,10 @@ apply: agents never push SDK tags. See `sdks/README.md` and `spec/README.md`.
 
 The Node.js, Python, Java, .NET, Ruby and PHP SDKs are released with the tags `sdk-node/vX.Y.Z`,
 `sdk-python/vX.Y.Z`, `sdk-java/vX.Y.Z`, `sdk-dotnet/vX.Y.Z`, `sdk-ruby/vX.Y.Z` and `sdk-php/vX.Y.Z`.
+The JavaScript, React, React Native, iOS, Android and Flutter client SDKs are released with the tags
+`sdk-js/vX.Y.Z`, `sdk-react/vX.Y.Z`, `sdk-react-native/vX.Y.Z`, `sdk-ios/vX.Y.Z`, `sdk-android/vX.Y.Z`
+and `sdk-flutter/vX.Y.Z`. The iOS release pushes `sdks/ios` to the read-only split repository
+`mmhy2003/megooflags-swift` with the tag `X.Y.Z`, which is what SwiftPM reads; never commit to that
+repository by hand.
 How an SDK release works, the one-time registry setup and the `SDK_PUBLISH_<LANG>` switches are described
 in `sdks/RELEASING.md`.
