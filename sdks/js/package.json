@@ -44,6 +44,7 @@
     "@openfeature/web-sdk": "^1.10.0",
     "@types/node": "^22.20.5",
     "eslint": "^9.39.5",
+    "jsdom": "^31.0.1",
     "prettier": "^3.10.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.72.2",

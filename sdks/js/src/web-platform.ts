@@ -1,7 +1,56 @@
 // What the SDK uses from a browser.
-import type { StorageLike, StreamOpener } from "./platform.js";
+import type {
+  BackgroundSignal,
+  BackgroundState,
+  Platform,
+  StorageLike,
+  StreamOpener,
+} from "./platform.js";
 
 const PROBE = "megooflags-probe";
+
+/**
+ * webPlatform is the browser platform: the stream over fetchFn,
+ * localStorage when it works and the page visibility.
+ */
+export function webPlatform(
+  fetchFn: typeof fetch = globalThis.fetch.bind(globalThis),
+): Platform {
+  return {
+    openStream: webStreamOpener(fetchFn),
+    storage: localStorageOrNull(),
+    background: webBackground(),
+  };
+}
+
+/**
+ * webBackground follows the page visibility: visibilitychange reports
+ * visible or hidden, pagehide terminated and pageshow visible. It is null
+ * without a document (server rendering).
+ */
+export function webBackground(): BackgroundSignal | null {
+  if (typeof document === "undefined" || typeof window === "undefined") {
+    return null;
+  }
+  const current = (): BackgroundState =>
+    document.visibilityState === "hidden" ? "hidden" : "visible";
+  return {
+    current,
+    subscribe(listener) {
+      const onVisibility = () => listener(current());
+      const onPageHide = () => listener("terminated");
+      const onPageShow = () => listener("visible");
+      document.addEventListener("visibilitychange", onVisibility);
+      window.addEventListener("pagehide", onPageHide);
+      window.addEventListener("pageshow", onPageShow);
+      return () => {
+        document.removeEventListener("visibilitychange", onVisibility);
+        window.removeEventListener("pagehide", onPageHide);
+        window.removeEventListener("pageshow", onPageShow);
+      };
+    },
+  };
+}
 
 /**
  * localStorageOrNull returns localStorage when it can be written, else null:

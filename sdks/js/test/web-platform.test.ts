@@ -1,5 +1,12 @@
+// @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { localStorageOrNull } from "../src/web-platform.js";
+import { webPlatform as fromPlatformEntry } from "../src/platform.js";
+import type { BackgroundState } from "../src/platform.js";
+import {
+  localStorageOrNull,
+  webBackground,
+  webPlatform,
+} from "../src/web-platform.js";
 
 const memoryStorage = () => {
   const items = new Map<string, string>();
@@ -55,5 +62,82 @@ describe("localStorageOrNull", () => {
       if (original) Object.defineProperty(globalThis, "localStorage", original);
       else delete (globalThis as { localStorage?: unknown }).localStorage;
     }
+  });
+});
+
+describe("webBackground", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete (document as { visibilityState?: unknown }).visibilityState;
+  });
+
+  const setVisibility = (state: DocumentVisibilityState) =>
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => state,
+    });
+
+  it("is null without a document (server rendering)", () => {
+    vi.stubGlobal("document", undefined);
+    expect(webBackground()).toBeNull();
+  });
+
+  it("reads the current state from document.visibilityState", () => {
+    const signal = webBackground()!;
+    setVisibility("hidden");
+    expect(signal.current()).toBe("hidden");
+    setVisibility("visible");
+    expect(signal.current()).toBe("visible");
+  });
+
+  it("reports visibilitychange, pagehide and pageshow", () => {
+    const states: BackgroundState[] = [];
+    const unsubscribe = webBackground()!.subscribe((s) => states.push(s));
+
+    setVisibility("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("pagehide"));
+    window.dispatchEvent(new Event("pageshow"));
+    setVisibility("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    unsubscribe();
+
+    expect(states).toEqual(["hidden", "terminated", "visible", "visible"]);
+  });
+
+  it("unsubscribe removes all three listeners", () => {
+    const states: BackgroundState[] = [];
+    webBackground()!.subscribe((s) => states.push(s))();
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("pagehide"));
+    window.dispatchEvent(new Event("pageshow"));
+
+    expect(states).toEqual([]);
+  });
+});
+
+describe("webPlatform", () => {
+  it("opens the stream with the given fetch and uses localStorage and the page visibility", async () => {
+    const fetchFn = vi.fn(
+      async () => new Response("data: x\n\n", { status: 200 }),
+    );
+    const platform = webPlatform(fetchFn as typeof fetch);
+
+    const res = await platform.openStream(
+      "https://flags.example.com/sdk/v1/stream",
+      {},
+      new AbortController().signal,
+    );
+
+    expect(fetchFn).toHaveBeenCalledOnce();
+    expect(res.status).toBe(200);
+    expect(platform.storage).toBe(localStorage);
+    expect(platform.background).not.toBeNull();
+  });
+
+  it("is exported from the platform entry point", () => {
+    expect(typeof fromPlatformEntry).toBe("function");
+    expect(fromPlatformEntry).toBe(webPlatform);
   });
 });

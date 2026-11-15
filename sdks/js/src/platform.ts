@@ -33,3 +33,5 @@ export interface Platform {
   storage: StorageLike | null;
   background: BackgroundSignal | null;
 }
+
+export { webPlatform } from "./web-platform.js";
