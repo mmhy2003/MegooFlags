@@ -29,7 +29,8 @@
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run test/"
+    "test": "vitest run test/",
+    "e2e": "vitest run e2e/"
   },
   "dependencies": {
     "@megooflags/js": "^0.1.0",
