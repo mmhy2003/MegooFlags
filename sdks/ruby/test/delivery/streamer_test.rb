@@ -208,7 +208,9 @@ class StreamerTest < Minitest::Test
     @server.reply(STREAM, scripted(500), scripted(500), stream, scripted(500), stream)
     seen, = start(stable_after: 0.05)
     conn = @server.next_stream
-    sleep 0.08
+    # The stable clock starts when the client has read the 200, not when the server accepted.
+    wait_for { seen.connected == 1 }
+    sleep 0.2
     conn.finish
     @server.next_stream
 
