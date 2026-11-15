@@ -4,8 +4,11 @@ from megooflags_api.models.enums import (
     ApiTokenKind,
     ChangeRequestKind,
     ChangeRequestStatus,
+    DeliveryStatus,
+    EventGroup,
     FlagLifecycle,
     FlagType,
+    IntegrationKind,
     InvitationPurpose,
     Operator,
     ReviewDecision,
@@ -61,6 +64,10 @@ def test_metadata_has_all_tables() -> None:
         "change_request_comment",
         "scheduled_change",
         "progressive_rollout",
+        "integration",
+        "integration_environment",
+        "integration_outbox",
+        "integration_delivery",
     }
 
 
@@ -112,3 +119,6 @@ def test_enum_values() -> None:
         "failed",
     ]
     assert [d.value for d in ReviewDecision] == ["approve", "reject"]
+    assert [k.value for k in IntegrationKind] == ["webhook", "slack", "teams"]
+    assert [s.value for s in DeliveryStatus] == ["pending", "delivered", "failed"]
+    assert [g.value for g in EventGroup] == ["flags", "targeting", "segments", "change_requests"]

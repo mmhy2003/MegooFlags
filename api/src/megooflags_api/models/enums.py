@@ -136,3 +136,16 @@ class IntegrationKind(StrEnum):
     WEBHOOK = "webhook"
     SLACK = "slack"
     TEAMS = "teams"
+
+
+class DeliveryStatus(StrEnum):
+    PENDING = "pending"
+    DELIVERED = "delivered"
+    FAILED = "failed"
+
+
+class EventGroup(StrEnum):
+    FLAGS = "flags"
+    TARGETING = "targeting"  # shown as "Targeting and state"
+    SEGMENTS = "segments"
+    CHANGE_REQUESTS = "change_requests"
