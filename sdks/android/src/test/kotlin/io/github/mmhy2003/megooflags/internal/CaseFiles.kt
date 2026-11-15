@@ -69,15 +69,3 @@ fun toValue(v: Any?): Value =
             error("not a JSON value: $v")
         }
     }
-
-/** sameJson is JSON equality: numbers compare numerically (3 == 3.0). */
-fun sameJson(
-    a: Any?,
-    b: Any?,
-): Boolean =
-    when {
-        a is Number && b is Number -> a.toDouble() == b.toDouble()
-        a is List<*> && b is List<*> -> a.size == b.size && a.indices.all { sameJson(a[it], b[it]) }
-        a is Map<*, *> && b is Map<*, *> -> a.keys == b.keys && a.keys.all { sameJson(a[it], b[it]) }
-        else -> a == b
-    }

@@ -72,6 +72,21 @@ private fun fromOrgJson(v: Any?): Any? =
     }
 
 /**
+ * sameJson is JSON equality between parsed values: numbers compare numerically (1 == 1.0), but true != 1 and
+ * "1" != 1; lists element by element, maps key by key, {} is not [].
+ */
+internal fun sameJson(
+    a: Any?,
+    b: Any?,
+): Boolean =
+    when {
+        a is Number && b is Number -> a.toDouble() == b.toDouble()
+        a is List<*> && b is List<*> -> a.size == b.size && a.indices.all { sameJson(a[it], b[it]) }
+        a is Map<*, *> && b is Map<*, *> -> a.keys == b.keys && a.keys.all { sameJson(a[it], b[it]) }
+        else -> a == b
+    }
+
+/**
  * writeCanonical writes [value] without whitespace, object keys sorted by Unicode code point, strings escaping
  * only `"`, `\` and control characters, and integral numbers (|x| < 2^53) as integers. Other doubles use
  * Double.toString; NaN and infinities are null. A value that is not JSON throws IllegalArgumentException.
