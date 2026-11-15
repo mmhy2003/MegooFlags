@@ -1,0 +1,26 @@
+# frozen_string_literal: true
+
+require "rake/testtask"
+
+Rake::TestTask.new(:test) do |t|
+  t.libs << "lib" << "test"
+  t.pattern = "test/**/*_test.rb"
+  t.warning = true
+end
+
+# The p99 guard runs alone so the unit tests don't compete with it for the CPU.
+Rake::TestTask.new(:p99) do |t|
+  t.libs << "lib" << "test"
+  t.pattern = "perf/p99_test.rb"
+  t.warning = true
+end
+
+# The end-to-end test needs a running stack: it is skipped unless MEGOOFLAGS_E2E_URL and
+# MEGOOFLAGS_API_TOKEN are set.
+Rake::TestTask.new(:e2e) do |t|
+  t.libs << "lib" << "test"
+  t.pattern = "e2e/e2e_test.rb"
+  t.warning = true
+end
+
+task default: :test

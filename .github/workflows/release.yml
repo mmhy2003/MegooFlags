@@ -7,6 +7,18 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
       - "sdks/go/v[0-9]+.[0-9]+.[0-9]+"
       - "sdks/go/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-node/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-node/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-python/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-python/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-java/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-java/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-dotnet/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-dotnet/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-ruby/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-ruby/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-php/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-php/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
 
 permissions:
   contents: read
@@ -201,3 +213,327 @@ jobs:
           done
           echo "::error::proxy.golang.org did not resolve github.com/mmhy2003/MegooFlags/sdks/go@v${v}"
           exit 1
+
+  # SDK releases (sdks/RELEASING.md): sdk-tag checks that the tag is on main, then each
+  # sdk-<lang>-release job checks the tag against the SDK's manifest, runs the checks, and builds and
+  # uploads the package. Publishing happens only when the repository variable SDK_PUBLISH_<LANG> is
+  # "true" and the tag is not a release candidate. For the registries with trusted publishing, a
+  # separate sdk-<lang>-publish job holds id-token: write and only downloads the built artifact, so
+  # no third-party install or build code runs with it.
+
+  sdk-tag:
+    if: startsWith(github.ref_name, 'sdk-')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag is on main
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *-rc.*)
+              echo "$GITHUB_REF_NAME is a release candidate; the main-branch check is skipped."
+              ;;
+            *)
+              if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+                echo "::error::$GITHUB_REF_NAME must point to a commit on main"
+                exit 1
+              fi
+              echo "$GITHUB_REF_NAME is on main."
+              ;;
+          esac
+
+  sdk-node-release:
+    if: startsWith(github.ref_name, 'sdk-node/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/node
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches package.json
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk node --tag "$GITHUB_REF_NAME"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/node/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: sdks/node/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack --pack-destination out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-node
+          path: sdks/node/out/*.tgz
+          if-no-files-found: error
+
+  sdk-node-publish:
+    needs: sdk-node-release
+    if: vars.SDK_PUBLISH_NODE == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-node
+          path: out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm
+        # Trusted publishing (OIDC) needs npm 11.5.1 or later; no token.
+        run: |
+          npm install -g npm@^11.5.1
+          npm publish out/*.tgz --access public
+
+  sdk-python-release:
+    if: startsWith(github.ref_name, 'sdk-python/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/python
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches pyproject.toml
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk python --tag "$GITHUB_REF_NAME"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          enable-cache: true
+          cache-dependency-glob: sdks/python/uv.lock
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-python
+          path: sdks/python/dist/*
+          if-no-files-found: error
+
+  sdk-python-publish:
+    needs: sdk-python-release
+    if: vars.SDK_PUBLISH_PYTHON == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-python
+          path: dist
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+  sdk-java-release:
+    if: startsWith(github.ref_name, 'sdk-java/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/java
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches pom.xml
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk java --tag "$GITHUB_REF_NAME"
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: sdks/java/pom.xml
+          # Names of the environment variables that hold the Central Portal token, not the values.
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+      - run: mvn -B -ntp verify
+      - run: mvn -B -ntp -Prelease -Dgpg.skip=true package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-java
+          path: sdks/java/target/*.jar
+          if-no-files-found: error
+      - name: Publish to Maven Central
+        if: vars.SDK_PUBLISH_JAVA == 'true' && !contains(github.ref_name, '-rc.')
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          MAVEN_GPG_KEY: ${{ secrets.GPG_SIGNING_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: mvn -B -ntp -Prelease -DskipTests deploy
+
+  sdk-dotnet-release:
+    if: startsWith(github.ref_name, 'sdk-dotnet/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/dotnet
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches MegooFlags.csproj
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk dotnet --tag "$GITHUB_REF_NAME"
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet format --verify-no-changes
+      - run: dotnet build -c Release
+      - run: dotnet test -c Release --no-build --filter "Category!=P99&Category!=E2E"
+      - run: dotnet pack src/MegooFlags -c Release -o out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-dotnet
+          path: sdks/dotnet/out/*.nupkg
+          if-no-files-found: error
+
+  sdk-dotnet-publish:
+    needs: sdk-dotnet-release
+    if: vars.SDK_PUBLISH_DOTNET == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-dotnet
+          path: out
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+      - id: nuget
+        name: NuGet login (trusted publishing)
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+      - name: Publish to NuGet
+        env:
+          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
+        run: dotnet nuget push out/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json
+
+  sdk-ruby-release:
+    if: startsWith(github.ref_name, 'sdk-ruby/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/ruby
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches version.rb
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk ruby --tag "$GITHUB_REF_NAME"
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          working-directory: sdks/ruby
+      - run: bundle exec rubocop
+      - run: bundle exec rake test
+      - run: gem build megooflags.gemspec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-ruby
+          path: sdks/ruby/*.gem
+          if-no-files-found: error
+
+  sdk-ruby-publish:
+    needs: sdk-ruby-release
+    if: vars.SDK_PUBLISH_RUBY == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-ruby
+          path: out
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+      - name: RubyGems credentials (trusted publishing)
+        uses: rubygems/configure-rubygems-credentials@v2.1.0
+      - name: Publish to RubyGems
+        run: gem push out/megooflags-*.gem
+
+  sdk-php-release:
+    if: startsWith(github.ref_name, 'sdk-php/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/php
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # No GITHUB_TOKEN header in .git/config: it would override the split token on the push,
+          # and composer install runs third-party code.
+          persist-credentials: false
+      - name: Tag matches Version.php
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk php --tag "$GITHUB_REF_NAME"
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: curl, json
+          coverage: none
+          tools: composer
+      - run: composer install --no-interaction --no-progress
+      - run: composer validate --strict
+      - run: composer cs
+      - run: composer stan
+      - run: composer test
+      - name: composer archive
+        # Composer cannot read the version from an sdk-php/v* tag, so give it the tag's.
+        run: COMPOSER_ROOT_VERSION="${GITHUB_REF_NAME#sdk-php/v}" composer archive --format=zip --dir=out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-php
+          path: sdks/php/out/*.zip
+          if-no-files-found: error
+      - name: Publish to the Packagist split repository
+        if: vars.SDK_PUBLISH_PHP == 'true' && !contains(github.ref_name, '-rc.')
+        working-directory: .
+        # Packagist reads the read-only split repository: sdks/php as its root, tagged vX.Y.Z.
+        env:
+          SDK_PHP_SPLIT_TOKEN: ${{ secrets.SDK_PHP_SPLIT_TOKEN }}
+          SPLIT_REPO: ${{ vars.SDK_PHP_SPLIT_REPO || 'mmhy2003/megooflags-php' }}
+        run: |
+          version="${GITHUB_REF_NAME#sdk-php/}"
+          git subtree split --prefix=sdks/php -b sdk-php-split
+          git push "https://x-access-token:${SDK_PHP_SPLIT_TOKEN}@github.com/${SPLIT_REPO}.git" \
+            sdk-php-split:refs/heads/main "sdk-php-split:refs/tags/${version}"

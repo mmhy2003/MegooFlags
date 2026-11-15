@@ -1,0 +1,29 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/*
+ * megooflags-sync: the optional MegooFlags sync daemon for PHP. It keeps the
+ * cache files of one server SDK key fresh so that requests skip upkeep.
+ * Run it with --help for the options.
+ */
+
+$autoload = $GLOBALS['_composer_autoload_path'] ?? null;
+if (!is_string($autoload) || !is_file($autoload)) {
+    // Run from the package itself, or from vendor/megooflags/megooflags/bin.
+    foreach ([__DIR__ . '/../vendor/autoload.php', __DIR__ . '/../../../autoload.php'] as $candidate) {
+        if (is_file($candidate)) {
+            $autoload = $candidate;
+            break;
+        }
+    }
+}
+if (!is_string($autoload) || !is_file($autoload)) {
+    fwrite(STDERR, "megooflags-sync: cannot find the Composer autoloader; run composer install\n");
+    exit(1);
+}
+require $autoload;
+
+/** @var list<string> $argv */
+exit(MegooFlags\Internal\Daemon\Daemon::main($argv, getenv(), STDOUT, STDERR));

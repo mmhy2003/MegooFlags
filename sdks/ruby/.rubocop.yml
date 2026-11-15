@@ -1,0 +1,33 @@
+AllCops:
+  TargetRubyVersion: 3.4
+  NewCops: enable
+  SuggestExtensions: false
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes
+
+Layout/LineLength:
+  Max: 120
+
+# The engine ports algorithms from sdks/go one function at a time; the
+# default limits would split them in ways the other SDKs don't.
+Metrics/AbcSize:
+  Max: 35
+  Exclude:
+    - "test/**/*"
+Metrics/CyclomaticComplexity:
+  Max: 15
+Metrics/PerceivedComplexity:
+  Max: 15
+Metrics/MethodLength:
+  Max: 30
+  Exclude:
+    - "test/**/*"
+Metrics/ParameterLists:
+  Max: 6
+Metrics/ClassLength:
+  Exclude:
+    - "test/**/*"
