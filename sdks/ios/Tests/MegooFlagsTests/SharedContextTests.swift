@@ -6,49 +6,6 @@ import XCTest
 
 @testable import MegooFlags
 
-/// The repository's spec/client directory, found from this file's path.
-private let clientDir = URL(fileURLWithPath: #filePath)
-    .deletingLastPathComponent()  // MegooFlagsTests
-    .deletingLastPathComponent()  // Tests
-    .deletingLastPathComponent()  // ios
-    .deletingLastPathComponent()  // sdks
-    .deletingLastPathComponent()  // repository root
-    .appendingPathComponent("spec/client")
-
-private struct CaseFileError: Error, CustomStringConvertible {
-    let description: String
-}
-
-/// loadCaseFile reads a case file and refuses any schema_version other than 1.
-private func loadCaseFile(_ url: URL) throws -> [String: JSONValue] {
-    let value = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
-    guard case .object(let file) = value else {
-        throw CaseFileError(description: "\(url.lastPathComponent): not an object")
-    }
-    guard file["schema_version"] == .int(1) else {
-        let version = file["schema_version"].map(canonicalJSON) ?? "missing"
-        throw CaseFileError(description: "\(url.lastPathComponent): unsupported schema_version \(version)")
-    }
-    return file
-}
-
-/// toValue builds an OpenFeature value; {"$date": s} becomes a date.
-private func toValue(_ v: JSONValue) -> Value {
-    switch v {
-    case .null: return .null
-    case .bool(let b): return .boolean(b)
-    case .int(let i): return .integer(i)
-    case .double(let d): return .double(d)
-    case .string(let s): return .string(s)
-    case .array(let a): return .list(a.map(toValue))
-    case .object(let o):
-        if o.count == 1, case .string(let s)? = o["$date"], let date = ISO8601DateFormatter().date(from: s) {
-            return .date(date)
-        }
-        return .structure(o.mapValues(toValue))
-    }
-}
-
 /// toContext builds the case's EvaluationContext: targetingKey is the
 /// targeting key, every other member an attribute.
 private func toContext(_ o: [String: JSONValue]) -> EvaluationContext {
@@ -59,17 +16,6 @@ private func toContext(_ o: [String: JSONValue]) -> EvaluationContext {
     }
     return ImmutableContext(
         targetingKey: targetingKey, structure: ImmutableStructure(attributes: attributes.mapValues(toValue)))
-}
-
-/// sameJSON is JSON equality: 1 == 1.0, but true != 1 and "1" != 1.
-private func sameJSON(_ a: JSONValue, _ b: JSONValue) -> Bool {
-    switch (a, b) {
-    case (.int(let x), .double(let y)), (.double(let y), .int(let x)): return Double(x) == y
-    case (.array(let x), .array(let y)): return x.count == y.count && zip(x, y).allSatisfy { sameJSON($0, $1) }
-    case (.object(let x), .object(let y)):
-        return x.count == y.count && x.allSatisfy { k, v in y[k].map { sameJSON(v, $0) } ?? false }
-    default: return a == b
-    }
 }
 
 final class SharedContextTests: XCTestCase {
@@ -112,13 +58,5 @@ final class SharedContextTests: XCTestCase {
         let ctx = toContext(["a": .array([.object(["$date": .string("2026-11-10T09:15:02Z")])])])
         XCTAssertEqual(ctx.getValue(key: "a"), .list([.date(Date(timeIntervalSince1970: 1_794_302_102))]))
         XCTAssertEqual(ctx.getTargetingKey(), "")
-    }
-
-    func testSameJSON() {
-        XCTAssert(sameJSON(.int(1), .double(1)))
-        XCTAssertFalse(sameJSON(.bool(true), .int(1)))
-        XCTAssertFalse(sameJSON(.string("1"), .int(1)))
-        XCTAssertFalse(sameJSON(.object([:]), .array([])))
-        XCTAssertFalse(sameJSON(.object(["a": .int(1)]), .object(["a": .int(1), "b": .int(2)])))
     }
 }
