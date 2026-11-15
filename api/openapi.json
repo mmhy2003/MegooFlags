@@ -10996,6 +10996,113 @@
         ]
       }
     },
+    "/api/projects/{project}/environments/{env}/ruleset": {
+      "get": {
+        "description": "The ruleset of the environment, byte for byte what `/sdk/v1/ruleset` serves, for API\ntokens: `megooflags ruleset pull` saves it as a bootstrap file for the SDKs' offline mode.",
+        "operationId": "download_ruleset_api_projects__project__environments__env__ruleset_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "env",
+            "required": true,
+            "schema": {
+              "title": "Env",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "The ruleset (spec/ruleset.schema.json)."
+          },
+          "304": {
+            "description": "The ruleset matches `If-None-Match`."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Download Ruleset",
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
     "/api/projects/{project}/environments/{env}/sdk-keys": {
       "get": {
         "operationId": "list_sdk_keys_api_projects__project__environments__env__sdk_keys_get",
