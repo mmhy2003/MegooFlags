@@ -380,4 +380,17 @@ describe("Batcher", () => {
     await advance(60_000);
     expect(server.calls).toHaveLength(1);
   });
+
+  it("stop sends nothing more, even on close", async () => {
+    const server = fakeServer(202);
+    make(server).start();
+    fill(2);
+
+    batcher!.stop();
+    await advance(60_000);
+    await batcher!.close(5_000);
+
+    expect(server.calls).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

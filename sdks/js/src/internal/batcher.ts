@@ -108,7 +108,7 @@ export class Batcher {
       })();
       this.#closing = Promise.race([final, deadline]).then(() => {
         clearTimeout(timer);
-        this.#stop();
+        this.stop();
       });
     }
     return this.#closing;
@@ -171,7 +171,7 @@ export class Batcher {
       return null;
     }
     if (err instanceof FatalError) {
-      this.#stop();
+      this.stop();
       this.#onFatal(err.status as number);
       return null;
     }
@@ -232,7 +232,8 @@ export class Batcher {
     this.#retry = undefined;
   }
 
-  #stop(): void {
+  /** stop ends the timers and aborts a request in flight, sending nothing more. */
+  stop(): void {
     this.#stopped = true;
     this.#clearTimers();
     this.#controller.abort();
