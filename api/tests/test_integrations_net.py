@@ -56,6 +56,10 @@ def test_http_is_accepted_only_with_allow_private() -> None:
         ("not a url", IntegrationKind.WEBHOOK),
         ("https://example.com/services/T/B/x", IntegrationKind.SLACK),
         ("https://hooks.slack.com.evil.example/x", IntegrationKind.SLACK),
+        # urlsplit accepts these, httpx refuses them when it builds the request.
+        ("https://999.1.1.1/x", IntegrationKind.WEBHOOK),
+        ("https://-\u00e9.example/x", IntegrationKind.WEBHOOK),  # invalid IDNA
+        ("https://example.com/\x00", IntegrationKind.WEBHOOK),
     ],
 )
 def test_bad_urls_are_refused(url: str, kind: IntegrationKind) -> None:
@@ -82,13 +86,15 @@ def test_bad_urls_are_refused(url: str, kind: IntegrationKind) -> None:
         "0.0.0.0",
         "100.64.0.1",
         "224.0.0.1",
+        "64:ff9b::a00:1",  # NAT64 wrapping 10.0.0.1
+        "64:ff9b::7f00:1",  # NAT64 wrapping 127.0.0.1
     ],
 )
 def test_non_public_addresses_are_refused(ip: str) -> None:
     assert not is_allowed_ip(ip_address(ip), allow_private=False)
 
 
-@pytest.mark.parametrize("ip", ["93.184.216.34", "2606:2800:220:1::1"])
+@pytest.mark.parametrize("ip", ["93.184.216.34", "2606:2800:220:1::1", "64:ff9b::5db8:d822"])
 def test_public_addresses_are_allowed(ip: str) -> None:
     assert is_allowed_ip(ip_address(ip), allow_private=False)
 
@@ -168,10 +174,13 @@ async def test_connects_to_the_checked_address_not_the_hostname() -> None:
 
 
 async def test_dns_change_between_check_and_connect_is_caught() -> None:
+    # The first answer is for the check made when the integration is saved, the second for the
+    # lookup made when the request connects.
     resolver = fixed_resolver(["93.184.216.34"], ["127.0.0.1"])
-    # The check made when the integration was saved sees a public address.
-    first = await resolver("example.com", 443)
-    assert all(is_allowed_ip(ip_address(a), allow_private=False) for a in first)
+    validate_url("https://example.com/x", IntegrationKind.WEBHOOK, allow_private=False)
+    save_check = CheckedBackend(allow_private=False, resolver=resolver, backend=RecordingBackend())
+    with pytest.raises(httpcore.ConnectError):  # passed the check, then reached the fake network
+        await save_check.connect_tcp("example.com", 443)
 
     inner = RecordingBackend()
     transport = SafeTransport(allow_private=False, resolver=resolver, backend=inner)
@@ -324,3 +333,20 @@ async def test_unsafe_url_becomes_error_without_a_request() -> None:
     assert result.error is not None
     assert result.error.startswith("unsafe address")
     assert requests == []
+
+
+async def test_url_httpx_cannot_parse_becomes_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200)
+
+    result = await post_json(
+        "https://999.1.1.1/x",
+        b"{}",
+        {},
+        allow_private=False,
+        timeout=5,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert result.status is None
+    assert result.error == "unsafe address: the URL is not valid"

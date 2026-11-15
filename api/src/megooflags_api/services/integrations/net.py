@@ -11,7 +11,7 @@ import socket
 import time
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
-from ipaddress import IPv4Address, IPv6Address, ip_address
+from ipaddress import IPv4Address, IPv6Address, IPv6Network, ip_address
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -24,6 +24,9 @@ SLACK_HOST = "hooks.slack.com"
 MAX_READ_BYTES = 65536
 MAX_BODY_CHARS = 2048
 
+# NAT64 (RFC 6052): the last 32 bits are the IPv4 address the gateway connects to.
+NAT64_PREFIX = IPv6Network("64:ff9b::/96")
+
 Resolver = Callable[[str, int], Awaitable[list[str]]]
 
 
@@ -35,7 +38,8 @@ def validate_url(url: str, kind: IntegrationKind, *, allow_private: bool) -> Non
     try:
         parts = urlsplit(url)
         parts.port  # noqa: B018 - raises ValueError for a bad port
-    except ValueError as exc:
+        httpx.URL(url)  # stricter than urlsplit: refuses what httpx could not send
+    except (ValueError, httpx.InvalidURL) as exc:
         raise UnsafeUrl("unsafe address: the URL is not valid") from exc
     schemes = ("https", "http") if allow_private else ("https",)
     if parts.scheme not in schemes:
@@ -50,7 +54,10 @@ def validate_url(url: str, kind: IntegrationKind, *, allow_private: bool) -> Non
 
 def is_allowed_ip(ip: IPv4Address | IPv6Address, *, allow_private: bool) -> bool:
     if isinstance(ip, IPv6Address):
-        ip = ip.ipv4_mapped or ip.sixtofour or ip
+        if ip in NAT64_PREFIX:
+            ip = IPv4Address(int(ip) & 0xFFFFFFFF)
+        else:
+            ip = ip.ipv4_mapped or ip.sixtofour or ip
     if ip.is_unspecified or ip.is_multicast:
         return False
     return allow_private or ip.is_global
@@ -175,6 +182,8 @@ async def post_json(
             return result(response.status_code, text[:MAX_BODY_CHARS])
     except UnsafeUrl as exc:
         return result(None, error=str(exc))
+    except httpx.InvalidURL:  # validate_url parses with httpx too; kept so this never raises
+        return result(None, error="unsafe address: the URL is not valid")
     except httpx.TimeoutException:
         return result(None, error="timeout")
     except httpx.HTTPError as exc:
