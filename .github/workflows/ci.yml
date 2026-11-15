@@ -896,3 +896,29 @@ jobs:
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew spotlessCheck lint testDebugUnitTest assembleRelease
+
+  sdk-android-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-sdk-android
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: E2E
+        working-directory: sdks/android
+        run: ./gradlew testDebugUnitTest -Pe2e
+      - if: failure()
+        run: docker compose -p megooflags-sdk-android -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-android-e2e
+          path: sdks/android/build/reports/tests
+      - if: always()
+        run: docker compose -p megooflags-sdk-android -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v

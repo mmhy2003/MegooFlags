@@ -48,6 +48,9 @@ dependencies {
 tasks.withType<Test>().configureEach {
     if (project.hasProperty("e2e")) {
         filter { includeTestsMatching("io.github.mmhy2003.megooflags.e2e.*") }
+        // The stack and its token change between runs; never skip the run as up to date.
+        for (name in listOf("MEGOOFLAGS_E2E_URL", "MEGOOFLAGS_API_TOKEN")) environment(name, System.getenv(name) ?: "")
+        outputs.upToDateWhen { false }
     } else {
         exclude("**/e2e/**")
     }
