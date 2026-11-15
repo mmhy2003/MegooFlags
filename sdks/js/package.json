@@ -1,0 +1,53 @@
+{
+  "name": "@megooflags/js",
+  "version": "0.1.0",
+  "description": "MegooFlags client SDK for browsers: an OpenFeature web provider that evaluates flags remotely",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mmhy2003/MegooFlags.git",
+    "directory": "sdks/js"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./platform": {
+      "types": "./dist/platform.d.ts",
+      "default": "./dist/platform.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run test/"
+  },
+  "peerDependencies": {
+    "@openfeature/web-sdk": "^1.10.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@openfeature/core": "^1.12.0",
+    "@openfeature/web-sdk": "^1.10.0",
+    "@types/node": "^22.20.5",
+    "eslint": "^9.39.5",
+    "prettier": "^3.10.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^5.1.0"
+  },
+  "packageManager": "pnpm@10.34.9"
+}
