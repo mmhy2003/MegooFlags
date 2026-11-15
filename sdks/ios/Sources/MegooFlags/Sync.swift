@@ -155,7 +155,7 @@ actor Sync {
         try await start(body: toRequestContext(context))
     }
 
-    private func start(body: [String: JSONValue]) async throws {
+    func start(body: [String: JSONValue]) async throws {
         starting = true
         defer { starting = false }
         setBody(body)
@@ -225,7 +225,7 @@ actor Sync {
         try await setContext(body: toRequestContext(context))
     }
 
-    private func setContext(body: [String: JSONValue]) async throws {
+    func setContext(body: [String: JSONValue]) async throws {
         if evaluator == nil || halted != nil {
             setBody(body)
             try await request()
