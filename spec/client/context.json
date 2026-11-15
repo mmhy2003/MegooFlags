@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "kind": "context",
+  "description": "OpenFeature contexts mapped to the evaluate request context, its canonical JSON and hash",
+  "tests": [
+    {
+      "name": "targeting-key-becomes-key",
+      "context": {
+        "targetingKey": "user-1",
+        "plan": "pro"
+      },
+      "body": {
+        "plan": "pro",
+        "key": "user-1"
+      },
+      "canonical": "{\"key\":\"user-1\",\"plan\":\"pro\"}",
+      "context_hash": "e38a15b496693e013a31fba1d1c8804c3c06f1d0686e0152549c8c05609babbe"
+    },
+    {
+      "name": "targeting-key-replaces-key-attribute",
+      "context": {
+        "targetingKey": "user-1",
+        "key": "other",
+        "plan": "pro"
+      },
+      "body": {
+        "key": "user-1",
+        "plan": "pro"
+      },
+      "canonical": "{\"key\":\"user-1\",\"plan\":\"pro\"}",
+      "context_hash": "e38a15b496693e013a31fba1d1c8804c3c06f1d0686e0152549c8c05609babbe"
+    },
+    {
+      "name": "no-targeting-key-keeps-key-attribute",
+      "context": {
+        "key": "user-2",
+        "country": "EG"
+      },
+      "body": {
+        "key": "user-2",
+        "country": "EG"
+      },
+      "canonical": "{\"country\":\"EG\",\"key\":\"user-2\"}",
+      "context_hash": "407c8730ee277282e195a79f331d40f00580ebf2736c6dcf0d015a2ae7c12c76"
+    },
+    {
+      "name": "empty-targeting-key-is-absent",
+      "context": {
+        "targetingKey": "",
+        "plan": "free"
+      },
+      "body": {
+        "plan": "free"
+      },
+      "canonical": "{\"plan\":\"free\"}",
+      "context_hash": "a384ee0f125e7472582e4fd4580c2c3a0ddc59fc41fa4b3dd809d5c2f92ee5e2"
+    },
+    {
+      "name": "nested-objects-and-lists",
+      "context": {
+        "targetingKey": "user-1",
+        "device": {
+          "os": "ios",
+          "tags": [
+            "beta",
+            {
+              "level": 2
+            }
+          ]
+        },
+        "groups": [
+          [
+            "a"
+          ],
+          []
+        ],
+        "empty": {}
+      },
+      "body": {
+        "device": {
+          "os": "ios",
+          "tags": [
+            "beta",
+            {
+              "level": 2
+            }
+          ]
+        },
+        "groups": [
+          [
+            "a"
+          ],
+          []
+        ],
+        "empty": {},
+        "key": "user-1"
+      },
+      "canonical": "{\"device\":{\"os\":\"ios\",\"tags\":[\"beta\",{\"level\":2}]},\"empty\":{},\"groups\":[[\"a\"],[]],\"key\":\"user-1\"}",
+      "context_hash": "7df04f97bab4687f52fdfc2c643ceab7a04ae50da22e9ee0160f2e76ae714952"
+    },
+    {
+      "name": "booleans-null-and-numbers",
+      "context": {
+        "targetingKey": "user-1",
+        "admin": true,
+        "trial": false,
+        "team": null,
+        "age": 42,
+        "balance": -7,
+        "whole": 3.0,
+        "ratio": 1.5
+      },
+      "body": {
+        "admin": true,
+        "trial": false,
+        "team": null,
+        "age": 42,
+        "balance": -7,
+        "whole": 3,
+        "ratio": 1.5,
+        "key": "user-1"
+      },
+      "canonical": "{\"admin\":true,\"age\":42,\"balance\":-7,\"key\":\"user-1\",\"ratio\":1.5,\"team\":null,\"trial\":false,\"whole\":3}",
+      "context_hash": "c20fbb0c479f935d480780d678edf8b497340893a57ee617f672313eb48a46e0"
+    },
+    {
+      "name": "date-becomes-utc-milliseconds",
+      "context": {
+        "targetingKey": "user-1",
+        "signed_up": {
+          "$date": "2026-11-10T09:15:02Z"
+        }
+      },
+      "body": {
+        "signed_up": "2026-11-10T09:15:02.000Z",
+        "key": "user-1"
+      },
+      "canonical": "{\"key\":\"user-1\",\"signed_up\":\"2026-11-10T09:15:02.000Z\"}",
+      "context_hash": "84e477a5fff5d9331d8561da91df7323cb14e4c174217efbaaa58825d6bd32aa"
+    },
+    {
+      "name": "input-key-order-does-not-matter",
+      "context": {
+        "zeta": 1,
+        "targetingKey": "user-1",
+        "alpha": 2,
+        "Mid": 3,
+        "beta": {
+          "y": 1,
+          "x": 2
+        }
+      },
+      "body": {
+        "zeta": 1,
+        "alpha": 2,
+        "Mid": 3,
+        "beta": {
+          "y": 1,
+          "x": 2
+        },
+        "key": "user-1"
+      },
+      "canonical": "{\"Mid\":3,\"alpha\":2,\"beta\":{\"x\":2,\"y\":1},\"key\":\"user-1\",\"zeta\":1}",
+      "context_hash": "ed3b9b51f8213938c810df9e8918adc389033dcd4de72aa01d96967578691ea8"
+    },
+    {
+      "name": "keys-sorted-by-code-point",
+      "context": {
+        "targetingKey": "user-1",
+        "😀": "emoji",
+        "～": "fullwidth tilde",
+        "é": "e acute",
+        "Z": "upper",
+        "a": "lower"
+      },
+      "body": {
+        "😀": "emoji",
+        "～": "fullwidth tilde",
+        "é": "e acute",
+        "Z": "upper",
+        "a": "lower",
+        "key": "user-1"
+      },
+      "canonical": "{\"Z\":\"upper\",\"a\":\"lower\",\"key\":\"user-1\",\"é\":\"e acute\",\"～\":\"fullwidth tilde\",\"😀\":\"emoji\"}",
+      "context_hash": "c32a25113db93bc25902354e409e6b0513462cb35644ae5d1c74c3015a01ad0f"
+    },
+    {
+      "name": "string-escapes",
+      "context": {
+        "targetingKey": "user-1",
+        "text": "quote \" backslash \\ newline \n tab \t control \u0001 café 日本 😀"
+      },
+      "body": {
+        "text": "quote \" backslash \\ newline \n tab \t control \u0001 café 日本 😀",
+        "key": "user-1"
+      },
+      "canonical": "{\"key\":\"user-1\",\"text\":\"quote \\\" backslash \\\\ newline \\n tab \\t control \\u0001 café 日本 😀\"}",
+      "context_hash": "2ed8a3a0efe9cdaf80c542701d542d02f8eabcbad4dfd9192602ebddb4109f34"
+    }
+  ]
+}
