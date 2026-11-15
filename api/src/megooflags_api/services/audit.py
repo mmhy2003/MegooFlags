@@ -20,6 +20,7 @@ from megooflags_api.db import SessionDep
 from megooflags_api.errors import validation_error
 from megooflags_api.models import AuditEntry, Environment, Flag, Project
 from megooflags_api.schemas.audit import AuditActor, AuditEntryOut
+from megooflags_api.services.integrations import outbox
 from megooflags_api.services.pagination import decode_cursor, page_slice
 
 SECRET_FIELDS = frozenset(
@@ -124,6 +125,7 @@ async def record(
     )
     session.add(entry)
     await session.flush()
+    await outbox.enqueue(session, entry)
     return entry
 
 
@@ -203,6 +205,7 @@ async def record_system(
     )
     session.add(entry)
     await session.flush()
+    await outbox.enqueue(session, entry)
     return entry
 
 
