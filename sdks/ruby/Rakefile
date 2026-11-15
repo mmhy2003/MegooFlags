@@ -15,4 +15,12 @@ Rake::TestTask.new(:p99) do |t|
   t.warning = true
 end
 
+# The end-to-end test needs a running stack: it is skipped unless MEGOOFLAGS_E2E_URL and
+# MEGOOFLAGS_API_TOKEN are set.
+Rake::TestTask.new(:e2e) do |t|
+  t.libs << "lib" << "test"
+  t.pattern = "e2e/e2e_test.rb"
+  t.warning = true
+end
+
 task default: :test

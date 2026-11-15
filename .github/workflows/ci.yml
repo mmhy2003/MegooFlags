@@ -516,3 +516,46 @@ jobs:
         run: docker compose -p megooflags-sdk-dotnet -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
       - if: always()
         run: docker compose -p megooflags-sdk-dotnet -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
+
+  sdk-ruby:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: ["3.4", "4.0"]
+    defaults:
+      run:
+        working-directory: sdks/ruby
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+          working-directory: sdks/ruby
+      - run: bundle exec rubocop
+      - run: bundle exec rake test
+      - name: p99 guard
+        run: bundle exec rake p99
+      - run: gem build megooflags.gemspec
+
+  sdk-ruby-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-sdk-ruby
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          working-directory: sdks/ruby
+      - name: E2E
+        working-directory: sdks/ruby
+        run: bundle exec rake e2e
+      - if: failure()
+        run: docker compose -p megooflags-sdk-ruby -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: always()
+        run: docker compose -p megooflags-sdk-ruby -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
