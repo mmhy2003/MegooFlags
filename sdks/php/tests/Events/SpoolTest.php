@@ -89,6 +89,47 @@ final class SpoolTest extends TestCase
         self::assertSame([], glob($this->dir . '/*') ?: []);
     }
 
+    public function testClaimedSpoolIsNotStaleRightAway(): void
+    {
+        // The spool was last appended to long ago: the claimed file must not
+        // keep that mtime, or another shipper takes it as abandoned at once.
+        $spool = new Spool($this->path);
+        $spool->append('{"a":1}');
+        touch($this->path, time() - Spool::STALE_AFTER - 60);
+
+        $claimed = $spool->claim();
+
+        self::assertCount(1, $claimed);
+        clearstatcache();
+        self::assertGreaterThanOrEqual(time() - 5, (int) filemtime($claimed[0]));
+        self::assertSame([], (new Spool($this->path))->claim());
+        self::assertSame(['{"a":1}'], $spool->lines($claimed));
+    }
+
+    public function testClaimWaitsForAWriterHoldingTheSpoolLock(): void
+    {
+        // A writer opened and locked the spool just before the claim renamed
+        // it; its line must be in what the claim reads.
+        $spool = new Spool($this->path);
+        $spool->append('{"early":1}');
+        $ready = $this->dir . '/writer-ready';
+        $code = '$h = fopen($argv[1], "a"); flock($h, LOCK_EX); touch($argv[2]); usleep(300000);'
+            . ' fwrite($h, "{\"late\":1}\n"); fflush($h); flock($h, LOCK_UN); fclose($h);';
+        $child = proc_open([PHP_BINARY, '-r', $code, $this->path, $ready], [], $pipes);
+        self::assertIsResource($child);
+        $deadline = microtime(true) + 5.0;
+        while (!is_file($ready) && microtime(true) < $deadline) {
+            usleep(10_000);
+        }
+        self::assertFileExists($ready);
+
+        $claimed = $spool->claim();
+        $lines = $spool->lines($claimed);
+
+        self::assertSame(0, proc_close($child));
+        self::assertSame(['{"early":1}', '{"late":1}'], $lines);
+    }
+
     public function testClaimWithoutASpoolFindsNothing(): void
     {
         self::assertSame([], (new Spool($this->path))->claim());

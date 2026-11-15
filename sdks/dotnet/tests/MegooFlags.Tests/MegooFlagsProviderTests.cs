@@ -121,6 +121,25 @@ public sealed class MegooFlagsProviderTests : IAsyncLifetime
         Assert.Equal(ProviderStatus.Ready, c.ProviderStatus);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("http://[")]
+    public async Task BuildsNoEndpointUrlsOffline(string baseUrl)
+    {
+        // BaseUrl is optional offline and not validated: "http://[" makes new Uri throw on every platform, so
+        // building the ruleset, stream or events URL would fail the constructor.
+        var c = await ClientAsync(new MegooFlagsProvider(new MegooFlagsOptions
+        {
+            SdkKey = Key,
+            BaseUrl = baseUrl,
+            Offline = true,
+            BootstrapFile = _bootstrapFile,
+            Logger = new RecordingLogger(),
+        }));
+        Assert.Equal(ProviderStatus.Ready, c.ProviderStatus);
+        Assert.True(await c.GetBooleanValueAsync("bool-flag", false, Ctx(null, "plan", "pro")));
+    }
+
     [Fact]
     public async Task ResolvesABooleanFlag()
     {

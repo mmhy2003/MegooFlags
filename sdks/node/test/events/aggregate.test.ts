@@ -152,19 +152,19 @@ describe("Aggregator", () => {
     expect(a.take(1000).counts[0]!.count).toBe(6);
   });
 
-  it("drops an evaluation that needs a bucket beyond maxBuckets", () => {
-    const a = new Aggregator({ maxBuckets: 2 });
-    a.add(served("f", "on", "u1"));
-    a.add(served("g", "on", "u1"));
-    a.add(served("h", "on", "u1"));
-    a.add(served("f", "on", "u2")); // an existing bucket still counts
-    expect(a.dropped).toBe(1);
-    const b = a.take(1000);
-    expect(b.exposures.map((e) => e.flag_key)).toEqual(["f", "g", "f"]);
-    expect(b.counts.map((c) => [c.flag_key, c.count])).toEqual([
-      ["f", 2],
-      ["g", 1],
-    ]);
+  it("never drops a count, however many buckets are pending", () => {
+    const a = new Aggregator();
+    for (let i = 0; i < 10_001; i++) {
+      a.add(unserved(`f${i}`));
+    }
+    a.add(served("f10000", "on", "u2"));
+    expect(a.dropped).toBe(0);
+    expect(a.pending()).toEqual({ exposures: 1, counts: 10_002 });
+    let total = 0;
+    while (a.pending().counts > 0) {
+      total += a.take(1000).counts.reduce((n, c) => n + c.count, 0);
+    }
+    expect(total).toBe(10_002);
   });
 
   it("takes at most the limit of each list, oldest first", () => {

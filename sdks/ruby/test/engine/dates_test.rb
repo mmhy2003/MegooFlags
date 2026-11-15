@@ -39,6 +39,17 @@ class DatesTest < Minitest::Test
     INVALID.each { |s| assert_nil Dates.parse_rfc3339_millis(s), s.inspect }
   end
 
+  def test_invalid_utf8_is_not_a_date
+    ["\xFF", "2026-01-01T00:00:00Z\xFF", "\xC3"].each do |s|
+      assert_nil Dates.parse_rfc3339_millis((+s).force_encoding(Encoding::UTF_8)), s.inspect
+    end
+  end
+
+  def test_other_encodings_are_transcoded
+    assert_equal 0, Dates.parse_rfc3339_millis("1970-01-01T00:00:00Z".encode(Encoding::UTF_16LE))
+    assert_nil Dates.parse_rfc3339_millis((+"\xFF").force_encoding(Encoding::BINARY))
+  end
+
   def test_to_millis
     assert_equal 1500, Dates.to_millis(1500.9)
     assert_equal(-1, Dates.to_millis(-0.5))

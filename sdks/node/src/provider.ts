@@ -29,6 +29,7 @@ import {
   type ExpectedType,
 } from "./internal/engine/evaluate.js";
 import { Batcher } from "./internal/events/batcher.js";
+import { timerDelay } from "./internal/transport/backoff.js";
 import { sdkUrl } from "./internal/transport/transport.js";
 
 /** SHUTDOWN_DEADLINE_MS bounds the final events flush. */
@@ -315,12 +316,14 @@ export class MegooFlagsProvider implements Provider {
   /** waitFirstRuleset waits for the first ruleset, a fatal status, close or the timeout. */
   private waitFirstRuleset(): Promise<Outcome> {
     return new Promise((resolve) => {
+      // Not unref'd: the caller is waiting and the sync's retry sleeps are
+      // unref'd, so this timer keeps the process alive until initialize
+      // settles. done clears it when that happens first.
       const timer = setTimeout(() => {
         this.waiters.delete(done);
         this.initTimedOut = true;
         resolve("timeout");
-      }, this.cfg.initTimeoutMs);
-      timer.unref();
+      }, timerDelay(this.cfg.initTimeoutMs));
       const done = (o: Outcome) => {
         clearTimeout(timer);
         resolve(o);

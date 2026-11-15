@@ -130,7 +130,8 @@ Unless `offline`, the provider sends events to `POST /sdk/v1/events` in the back
   entries).
 - An exposure carries no context unless `sendContext` is true, and the server stores it only when it
   runs with `MEGOOFLAGS_PERSIST_CONTEXT=true`.
-- Evaluation never waits on events. If the buffer is full, events are dropped and counted.
+- Evaluation never waits on events. When 10 000 exposures are waiting, new exposures are dropped
+  and counted; evaluation counts are never dropped.
 - 429 and 5xx keep the batch and retry with backoff; 413 splits it; 422 drops it.
 - `OpenFeature.close()` stops the sync and sends the buffered events within 5 s.
 

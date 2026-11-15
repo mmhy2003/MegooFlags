@@ -175,8 +175,9 @@ every `flush_interval`, when 1000 items are waiting, and on shutdown.
 - Regular expressions use Python's `re` with `re.ASCII`, the semantics every MegooFlags SDK
   reproduces, so a pattern evaluates the same everywhere: `(?i)` folds ASCII letters only, `\d`,
   `\w` and `\s` are ASCII, and `$` also matches before a final newline. Patterns outside the portable
-  subset (for example lookarounds, backreferences or `\p{…}`) never match; a ruleset with such a
-  pattern is loaded and a warning is logged.
+  subset (lookarounds, backreferences, conditionals, atomic groups, possessive quantifiers, or a
+  pattern Python cannot compile, such as `\p{…}`) never match, even though Python `re` would accept
+  some of them; a ruleset with such a pattern is loaded and a warning is logged.
 
 ## Versioning and license
 

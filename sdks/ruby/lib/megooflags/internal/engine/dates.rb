@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "values"
+
 module MegooFlags
   module Internal
     module Engine
@@ -16,8 +18,11 @@ module MegooFlags
         # parse_rfc3339_millis parses YYYY-MM-DD, a T, t or space, hh:mm:ss, an
         # optional fraction (truncated to milliseconds) and a Z, z or +-hh:mm
         # zone. Returns nil for anything else or an out-of-range field. Only the
-        # whole offset must be under 24 h.
+        # whole offset must be under 24 h. Invalid UTF-8 is nil too.
         def parse_rfc3339_millis(str)
+          str = Values.utf8(str)
+          return nil if str.nil?
+
           m = DATE_TIME.match(str)
           return nil unless m
 

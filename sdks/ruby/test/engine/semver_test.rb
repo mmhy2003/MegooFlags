@@ -22,6 +22,17 @@ class SemverTest < Minitest::Test
     INVALID.each { |s| assert_nil Semver.parse_semver(s), s.inspect }
   end
 
+  def test_invalid_utf8_is_not_a_version
+    ["\xFF", "1.2.3\xFF", "1.2.3-\xFF", "1.2.3+\xFF", "\xC3"].each do |s|
+      assert_nil Semver.parse_semver((+s).force_encoding(Encoding::UTF_8)), s.inspect
+    end
+  end
+
+  def test_other_encodings_are_transcoded
+    refute_nil Semver.parse_semver("1.2.3-rc.1".encode(Encoding::UTF_16LE))
+    assert_nil Semver.parse_semver((+"1.2.3\xFF").force_encoding(Encoding::BINARY))
+  end
+
   def test_parts_are_digit_strings
     v = Semver.parse_semver("1.20.300-rc.1+b")
 

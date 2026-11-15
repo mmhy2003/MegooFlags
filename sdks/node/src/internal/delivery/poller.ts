@@ -1,6 +1,7 @@
 // One download of GET /sdk/v1/ruleset. The poll loop and its interval
 // belong to Sync.
 
+import { timerDelay } from "../transport/backoff.js";
 import {
   buildHeaders,
   HttpError,
@@ -53,7 +54,7 @@ export class Poller {
     const timer = setTimeout(() => {
       timedOut = true;
       req.abort();
-    }, this.timeoutMs);
+    }, timerDelay(this.timeoutMs));
     timer.unref();
     try {
       if (signal.aborted) {

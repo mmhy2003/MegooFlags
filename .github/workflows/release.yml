@@ -214,16 +214,44 @@ jobs:
           echo "::error::proxy.golang.org did not resolve github.com/mmhy2003/MegooFlags/sdks/go@v${v}"
           exit 1
 
-  # SDK releases (sdks/RELEASING.md): each job checks the tag against the SDK's manifest, runs the
-  # checks, builds and uploads the package, and publishes only when the repository variable
-  # SDK_PUBLISH_<LANG> is "true" and the tag is not a release candidate.
+  # SDK releases (sdks/RELEASING.md): sdk-tag checks that the tag is on main, then each
+  # sdk-<lang>-release job checks the tag against the SDK's manifest, runs the checks, and builds and
+  # uploads the package. Publishing happens only when the repository variable SDK_PUBLISH_<LANG> is
+  # "true" and the tag is not a release candidate. For the registries with trusted publishing, a
+  # separate sdk-<lang>-publish job holds id-token: write and only downloads the built artifact, so
+  # no third-party install or build code runs with it.
 
-  sdk-node-release:
-    if: startsWith(github.ref_name, 'sdk-node/v')
+  sdk-tag:
+    if: startsWith(github.ref_name, 'sdk-')
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag is on main
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *-rc.*)
+              echo "$GITHUB_REF_NAME is a release candidate; the main-branch check is skipped."
+              ;;
+            *)
+              if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+                echo "::error::$GITHUB_REF_NAME must point to a commit on main"
+                exit 1
+              fi
+              echo "$GITHUB_REF_NAME is on main."
+              ;;
+          esac
+
+  sdk-node-release:
+    if: startsWith(github.ref_name, 'sdk-node/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: sdks/node
@@ -252,8 +280,23 @@ jobs:
           name: sdk-node
           path: sdks/node/out/*.tgz
           if-no-files-found: error
+
+  sdk-node-publish:
+    needs: sdk-node-release
+    if: vars.SDK_PUBLISH_NODE == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-node
+          path: out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
       - name: Publish to npm
-        if: vars.SDK_PUBLISH_NODE == 'true' && !contains(github.ref_name, '-rc.')
         # Trusted publishing (OIDC) needs npm 11.5.1 or later; no token.
         run: |
           npm install -g npm@^11.5.1
@@ -261,10 +304,10 @@ jobs:
 
   sdk-python-release:
     if: startsWith(github.ref_name, 'sdk-python/v')
+    needs: sdk-tag
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      id-token: write
     defaults:
       run:
         working-directory: sdks/python
@@ -289,14 +332,26 @@ jobs:
           name: sdk-python
           path: sdks/python/dist/*
           if-no-files-found: error
+
+  sdk-python-publish:
+    needs: sdk-python-release
+    if: vars.SDK_PUBLISH_PYTHON == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-python
+          path: dist
       - name: Publish to PyPI
-        if: vars.SDK_PUBLISH_PYTHON == 'true' && !contains(github.ref_name, '-rc.')
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: sdks/python/dist/
+          packages-dir: dist/
 
   sdk-java-release:
     if: startsWith(github.ref_name, 'sdk-java/v')
+    needs: sdk-tag
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -336,10 +391,10 @@ jobs:
 
   sdk-dotnet-release:
     if: startsWith(github.ref_name, 'sdk-dotnet/v')
+    needs: sdk-tag
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      id-token: write
     defaults:
       run:
         working-directory: sdks/dotnet
@@ -360,24 +415,37 @@ jobs:
           name: sdk-dotnet
           path: sdks/dotnet/out/*.nupkg
           if-no-files-found: error
+
+  sdk-dotnet-publish:
+    needs: sdk-dotnet-release
+    if: vars.SDK_PUBLISH_DOTNET == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-dotnet
+          path: out
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
       - id: nuget
         name: NuGet login (trusted publishing)
-        if: vars.SDK_PUBLISH_DOTNET == 'true' && !contains(github.ref_name, '-rc.')
         uses: NuGet/login@v1
         with:
           user: ${{ vars.NUGET_USER }}
       - name: Publish to NuGet
-        if: vars.SDK_PUBLISH_DOTNET == 'true' && !contains(github.ref_name, '-rc.')
         env:
           NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
         run: dotnet nuget push out/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json
 
   sdk-ruby-release:
     if: startsWith(github.ref_name, 'sdk-ruby/v')
+    needs: sdk-tag
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      id-token: write
     defaults:
       run:
         working-directory: sdks/ruby
@@ -399,15 +467,29 @@ jobs:
           name: sdk-ruby
           path: sdks/ruby/*.gem
           if-no-files-found: error
+
+  sdk-ruby-publish:
+    needs: sdk-ruby-release
+    if: vars.SDK_PUBLISH_RUBY == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-ruby
+          path: out
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
       - name: RubyGems credentials (trusted publishing)
-        if: vars.SDK_PUBLISH_RUBY == 'true' && !contains(github.ref_name, '-rc.')
         uses: rubygems/configure-rubygems-credentials@v2.1.0
       - name: Publish to RubyGems
-        if: vars.SDK_PUBLISH_RUBY == 'true' && !contains(github.ref_name, '-rc.')
-        run: gem push megooflags-*.gem
+        run: gem push out/megooflags-*.gem
 
   sdk-php-release:
     if: startsWith(github.ref_name, 'sdk-php/v')
+    needs: sdk-tag
     runs-on: ubuntu-24.04
     permissions:
       contents: read

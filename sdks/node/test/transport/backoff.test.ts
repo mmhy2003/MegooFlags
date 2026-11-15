@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { Backoff, sleep } from "../../src/internal/transport/backoff.js";
+import {
+  Backoff,
+  MAX_TIMER_MS,
+  sleep,
+  timerDelay,
+} from "../../src/internal/transport/backoff.js";
 
 describe("Backoff", () => {
   it("doubles from base up to max", () => {
@@ -61,5 +66,37 @@ describe("sleep", () => {
     const ac = new AbortController();
     ac.abort();
     expect(await sleep(3_600_000, ac.signal)).toBe(false);
+  });
+});
+
+describe("timerDelay", () => {
+  it("keeps delays a timer can wait", () => {
+    expect(MAX_TIMER_MS).toBe(2_147_483_647);
+    expect(timerDelay(1)).toBe(1);
+    expect(timerDelay(30_000)).toBe(30_000);
+    expect(timerDelay(MAX_TIMER_MS)).toBe(MAX_TIMER_MS);
+  });
+
+  it("clamps longer delays instead of letting them wrap to 1 ms", () => {
+    expect(timerDelay(MAX_TIMER_MS + 1)).toBe(MAX_TIMER_MS);
+    expect(timerDelay(1e15)).toBe(MAX_TIMER_MS);
+    expect(timerDelay(Infinity)).toBe(MAX_TIMER_MS);
+  });
+
+  it("makes negative and NaN delays 0", () => {
+    expect(timerDelay(-5)).toBe(0);
+    expect(timerDelay(NaN)).toBe(0);
+  });
+});
+
+describe("sleep with a huge wait", () => {
+  it("does not end early", async () => {
+    const ac = new AbortController();
+    let ended: boolean | undefined;
+    const p = sleep(2 ** 40, ac.signal).then((v) => (ended = v));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(ended).toBeUndefined();
+    ac.abort();
+    expect(await p).toBe(false);
   });
 });

@@ -162,13 +162,67 @@ def to_millis(v: Any) -> int | None:
     return parse_rfc3339_millis(v)
 
 
+_NON_PORTABLE_GROUPS = (
+    ("(?=", "lookahead is not portable"),
+    ("(?!", "lookahead is not portable"),
+    ("(?<=", "lookbehind is not portable"),
+    ("(?<!", "lookbehind is not portable"),
+    ("(?>", "atomic groups are not portable"),
+    ("(?(", "conditionals are not portable"),
+    ("(?P=", "backreferences are not portable"),
+)
+
+
+def regex_portability_error(pattern: str) -> str | None:
+    """Why `pattern` is outside the RE2/Python common subset (evaluation.md 6.3), or None.
+
+    The same check the API applies when a rule is saved; such a pattern never compiles in RE2.
+    """
+    i, in_class = 0, False
+    while i < len(pattern):
+        c = pattern[i]
+        if c == "\\":
+            nxt = pattern[i + 1 : i + 2]
+            if not in_class and nxt and nxt in "123456789":
+                return "backreferences are not portable"
+            i += 2
+            continue
+        if in_class:
+            in_class = c != "]"
+            i += 1
+            continue
+        if c == "[":
+            in_class = True
+            i += 1
+            if pattern[i : i + 1] == "^":
+                i += 1
+            if pattern[i : i + 1] == "]":  # a leading ] is literal
+                i += 1
+            continue
+        for prefix, message in _NON_PORTABLE_GROUPS:
+            if pattern.startswith(prefix, i):
+                return message
+        if c in "*+?}" and pattern[i + 1 : i + 2] == "+":
+            return "possessive quantifiers are not portable"
+        i += 1
+    return None
+
+
+def compile_regex(pattern: str) -> tuple[re.Pattern[str] | None, str | None]:
+    """The compiled pattern, or None and why it does not compile in the portable subset."""
+    reason = regex_portability_error(pattern)
+    if reason is not None:
+        return None, reason
+    try:
+        return re.compile(pattern, re.ASCII), None
+    except re.error as e:
+        return None, str(e)
+
+
 def _compile(v: Any) -> re.Pattern[str] | None:
     if not isinstance(v, str):
         return None
-    try:
-        return re.compile(v, re.ASCII)
-    except re.error:
-        return None
+    return compile_regex(v)[0]
 
 
 def prepare(operator: str, values: Sequence[Any]) -> tuple[Any, ...]:

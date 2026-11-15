@@ -114,6 +114,20 @@ public sealed class SyncTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task OfflineBuildsNoUrlsAndStartDoesNothing()
+    {
+        // "http://[" makes new Uri throw: an offline Sync must not build the ruleset or stream URL.
+        var s = new Sync(new Sync.Options("http://[", Key, _store) { Offline = true, Tuning = Fast() });
+        _syncs.Add(s);
+        Assert.Null(s.Apply(Raw("bootstrap"), "", SnapshotSource.Bootstrap));
+        Assert.Equal("bootstrap", _store.Load()!.Ruleset.Environment);
+        s.Start();
+        await Task.Delay(100);
+        await s.StopAsync();
+        Assert.Empty(_server.Requests());
+    }
+
+    [Fact]
     public async Task AStreamPutUpdatesTheStoreAndTheCache()
     {
         _server.Script(StreamPath, FakeServer.Reply.Stream());

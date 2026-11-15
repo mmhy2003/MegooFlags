@@ -282,36 +282,66 @@ final class Provider extends AbstractProvider
     /**
      * loadCached returns the compiled file (read again past OPcache when the
      * state's etag says it changed), else compiles the JSON cache and writes
-     * the compiled file.
+     * the compiled file. A compiled file whose etag is not the state's while
+     * the JSON cache has the state's etag was overwritten by an older write
+     * (a bootstrap or JSON-cache compile racing upkeep or the daemon): the
+     * JSON cache is served and compiled again, since the conditional fetch
+     * sends the state's etag and would never replace it.
+     *
+     * $held is the lock when the caller holds it already.
      *
      * @return Ruleset|null
      */
-    private function loadCached(State $state): ?array
+    private function loadCached(State $state, ?Lock $held = null): ?array
     {
         $compiled = $this->files->loadCompiled();
         if ($compiled !== null && $compiled['etag'] !== $state->etag) {
             $compiled = $this->files->loadCompiled(true);
         }
-        if ($compiled !== null) {
+        if ($compiled !== null && $compiled['etag'] === $state->etag && $compiled['source'] === CacheFiles::SOURCE_NETWORK) {
+            return $compiled['ruleset'];
+        }
+        // No compiled file, one older than the state, or the bootstrap one:
+        // the JSON cache wins when there is no compiled file or when it is
+        // the version the state names (else upkeep is between writing the
+        // compiled file and the state, and the compiled file is newer).
+        if ($compiled !== null && !is_file($this->files->jsonPath())) {
             return $compiled['ruleset'];
         }
         $json = $this->files->loadJson();
-        if ($json === null) {
-            return null;
+        if ($json === null || ($compiled !== null && $json['etag'] !== $state->etag)) {
+            return $compiled['ruleset'] ?? null;
         }
         try {
             $ruleset = Compiler::compile($json['ruleset']);
         } catch (RuntimeException $e) {
             $this->logger?->warning('megooflags: ignoring the cached ruleset: ' . $e->getMessage());
 
-            return null;
+            return $compiled['ruleset'] ?? null;
         }
-        $this->save(fn() => $this->files->saveCompiledFromJson($json['etag'], $ruleset));
+        $etag = $json['etag'];
+        $this->underLock($held, function () use ($etag, $ruleset): void {
+            // Write only while the JSON cache still holds this version and
+            // the compiled file is not already a network copy of it.
+            $current = $this->files->loadCompiled(true);
+            if (($this->files->loadJson()['etag'] ?? null) !== $etag
+                || ($current !== null && $current['etag'] === $etag && $current['source'] === CacheFiles::SOURCE_NETWORK)) {
+                return;
+            }
+            $this->save(fn() => $this->files->saveCompiledFromJson($etag, $ruleset));
+        });
 
         return $ruleset;
     }
 
-    /** @return Ruleset|null */
+    /**
+     * loadBootstrap compiles the bootstrap file. It writes the compiled file
+     * only under the lock and only when, looking again under the lock, there
+     * is still no cache: another process may have written one since. In that
+     * case the cached ruleset is served instead.
+     *
+     * @return Ruleset|null
+     */
     private function loadBootstrap(): ?array
     {
         $path = $this->config->bootstrapFile;
@@ -331,9 +361,41 @@ final class Provider extends AbstractProvider
 
             return null;
         }
-        $this->save(fn() => $this->files->saveBootstrap($ruleset));
+        $this->underLock(null, function (Lock $lock) use (&$ruleset): void {
+            $cached = $this->loadCached(State::load($this->files->statePath()), $lock);
+            if ($cached !== null) {
+                $ruleset = $cached;
+
+                return;
+            }
+            $bootstrap = $ruleset;
+            $this->save(fn() => $this->files->saveBootstrap($bootstrap));
+        });
 
         return $ruleset;
+    }
+
+    /**
+     * underLock runs $write holding the lock upkeep and the cold start use,
+     * so that a compiled file is never written over one they just wrote. When
+     * another process holds the lock, nothing is written: that process is
+     * writing the cache, and the ruleset in memory is served anyway.
+     *
+     * @param \Closure(Lock): void $write
+     */
+    private function underLock(?Lock $held, \Closure $write): void
+    {
+        $lock = $held ?? new Lock($this->files->lockPath());
+        if (!$lock->tryAcquire()) {
+            return;
+        }
+        try {
+            $write($lock);
+        } finally {
+            if ($held === null) {
+                $lock->release();
+            }
+        }
     }
 
     /**
@@ -358,7 +420,7 @@ final class Provider extends AbstractProvider
         }
         try {
             $state = State::load($this->files->statePath());
-            $cached = $this->loadCached($state);
+            $cached = $this->loadCached($state, $lock);
             if ($cached !== null) {
                 return $cached;
             }

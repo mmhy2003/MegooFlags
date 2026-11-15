@@ -136,6 +136,8 @@ def m(operator: str, element: Any, *values: Any) -> bool:
         ("matches", "٣", ["\\d"], False),
         ("matches", "3", ["\\d"], True),
         ("matches", "abc", ["("], False),
+        ("matches", "a", ["(?=a)a"], False),
+        ("matches", "aa", ["(a)\\1"], False),
         ("matches", 1, ["1"], False),
         ("lt", 1, [2], True),
         ("lt", 2, [2], False),

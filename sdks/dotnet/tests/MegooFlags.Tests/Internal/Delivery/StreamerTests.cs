@@ -152,15 +152,34 @@ public sealed class StreamerTests : IDisposable
     [Fact]
     public async Task StaysConnectedWhilePingsArrive()
     {
+        // The pings come from a dedicated thread every 50 ms: pinging from awaited Task.Delay calls stalled for
+        // 700 ms on a busy thread pool, a real 300 ms silence the streamer rightly dropped as dead. The connection
+        // must outlive three dead timeouts.
+        var deadTimeout = TimeSpan.FromSeconds(1);
         _server.Script(StreamPath, FakeServer.Reply.Stream());
-        Start(deadTimeout: TimeSpan.FromMilliseconds(300));
+        Start(deadTimeout: deadTimeout);
         var conn = await _server.NextStreamAsync(Await.Timeout);
-        for (var i = 0; i < 8; i++)
+        // Completed with when the client closed the stream, or null after three dead timeouts of pings.
+        var pinged = new TaskCompletionSource<TimeSpan?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        new Thread(() =>
         {
-            await Task.Delay(100);
-            conn.Write(":ping\n");
-        }
+            var sw = Stopwatch.StartNew();
+            while (sw.Elapsed < 3 * deadTimeout)
+            {
+                Thread.Sleep(50);
+                if (!conn.TryWrite(":ping\n"))
+                {
+                    pinged.SetResult(sw.Elapsed);
+                    return;
+                }
+            }
+            pinged.SetResult(null);
+        })
+        { IsBackground = true }.Start();
+        var dropped = await pinged.Task.WaitAsync(3 * deadTimeout + Await.Timeout);
+        Assert.True(dropped == null, "the client closed the stream after " + dropped);
         Assert.Empty(_rec.Disconnects);
+        Assert.Equal(1, _rec.Connected);
         Assert.Single(_server.ReceivedFor(StreamPath));
     }
 

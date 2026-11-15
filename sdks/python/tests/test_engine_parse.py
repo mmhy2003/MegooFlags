@@ -201,6 +201,46 @@ def test_bad_regex_is_a_warning() -> None:
     assert all(len(w.split(": regex does not compile: ")[1]) > 0 for w in rs.warnings)
 
 
+@pytest.mark.parametrize(
+    ("pattern", "reason"),
+    [
+        ("(?=a)a", "lookahead is not portable"),
+        ("(?!b)a", "lookahead is not portable"),
+        ("(?<=a)b", "lookbehind is not portable"),
+        ("(?<!b)a", "lookbehind is not portable"),
+        ("(a)\\1", "backreferences are not portable"),
+        ("(?P<x>a)(?P=x)", "backreferences are not portable"),
+        ("(a)?(?(1)b|c)", "conditionals are not portable"),
+        ("(?>a)", "atomic groups are not portable"),
+        ("a*+", "possessive quantifiers are not portable"),
+        ("a++", "possessive quantifiers are not portable"),
+        ("a?+", "possessive quantifiers are not portable"),
+        ("a{2}+", "possessive quantifiers are not portable"),
+    ],
+)
+def test_non_portable_regex_never_matches_and_is_a_warning(pattern: str, reason: str) -> None:
+    data = ruleset()
+    data["flags"]["b"]["rules"][0]["clauses"][0]["operator"] = "matches"
+    data["flags"]["b"]["rules"][0]["clauses"][0]["values"] = [pattern]
+    rs = parse_ruleset(data)
+    assert rs.flags["b"].rules[0].clauses[0].prepared == (None,)
+    assert rs.warnings == (
+        f"flags.b.rules[0].clauses[0].values[0]: regex does not compile: {reason}",
+    )
+
+
+@pytest.mark.parametrize(
+    "pattern", ["[(?=]", "[\\1]", "\\(?=a", "a{2}?", "a+?", "[*+]", "\\++", "[]+]+"]
+)
+def test_portable_lookalikes_are_accepted(pattern: str) -> None:
+    data = ruleset()
+    data["flags"]["b"]["rules"][0]["clauses"][0]["operator"] = "matches"
+    data["flags"]["b"]["rules"][0]["clauses"][0]["values"] = [pattern]
+    rs = parse_ruleset(data)
+    assert rs.warnings == ()
+    assert rs.flags["b"].rules[0].clauses[0].prepared[0] is not None
+
+
 def test_no_warnings_for_a_valid_ruleset() -> None:
     assert parse_ruleset(ruleset()).warnings == ()
 

@@ -236,13 +236,33 @@ public final class Sync {
      * error is only logged. Each ruleset warning is logged once.
      */
     public ParseException apply(String raw, String etag, Source source) {
+        return install(() -> RulesetParser.parse(raw), raw, etag, source);
+    }
+
+    /**
+     * applyTree is apply for a ruleset already decoded as a JSON tree (see {@link
+     * io.github.mmhy2003.megooflags.internal.json.Json#parse}), such as the cache entry. It never
+     * writes the cache, so it is for the bootstrap and cache sources only.
+     */
+    public ParseException applyTree(Object tree, String etag, Source source) {
+        if (source == Source.STREAM || source == Source.POLL) {
+            throw new IllegalArgumentException("applyTree is not for " + source);
+        }
+        return install(() -> RulesetParser.parse(tree), null, etag, source);
+    }
+
+    private interface RulesetSource {
+        Ruleset parse() throws ParseException;
+    }
+
+    private ParseException install(RulesetSource parser, String raw, String etag, Source source) {
         boolean live = source == Source.STREAM || source == Source.POLL;
         if (live && halted()) {
             return null;
         }
         Ruleset ruleset;
         try {
-            ruleset = RulesetParser.parse(raw);
+            ruleset = parser.parse();
         } catch (ParseException e) {
             logger.log(
                     Level.WARNING,

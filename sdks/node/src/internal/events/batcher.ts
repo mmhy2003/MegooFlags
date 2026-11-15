@@ -2,7 +2,7 @@
 // background: on an interval, when a list reaches 1000 items, and on
 // shutdown.
 
-import { Backoff, sleep } from "../transport/backoff.js";
+import { Backoff, sleep, timerDelay } from "../transport/backoff.js";
 import {
   buildHeaders,
   FatalError,
@@ -28,7 +28,6 @@ export interface BatcherOptions {
   flushIntervalMs?: number;
   dedupSize?: number;
   maxPending?: number;
-  maxBuckets?: number;
   /** maxItems is the most items of each list in one batch (1000). */
   maxItems?: number;
   sendContext?: boolean;
@@ -91,7 +90,6 @@ export class Batcher {
     this.agg = new Aggregator({
       ...(opts.dedupSize === undefined ? {} : { dedupSize: opts.dedupSize }),
       ...(opts.maxPending === undefined ? {} : { maxPending: opts.maxPending }),
-      ...(opts.maxBuckets === undefined ? {} : { maxBuckets: opts.maxBuckets }),
       sendContext: opts.sendContext ?? false,
     });
     this.backoff = new Backoff(
@@ -110,7 +108,10 @@ export class Batcher {
     if (this.timer !== undefined || this.closed) {
       return;
     }
-    this.timer = setInterval(() => void this.flush(), this.flushIntervalMs);
+    this.timer = setInterval(
+      () => void this.flush(),
+      timerDelay(this.flushIntervalMs),
+    );
     this.timer.unref();
   }
 
@@ -178,8 +179,9 @@ export class Batcher {
 
   private async drain(deadlineMs: number): Promise<boolean> {
     const deadline = Date.now() + deadlineMs;
-    const timer = setTimeout(() => this.halt(), deadlineMs);
-    timer.unref();
+    // The drain timers are not unref'd: the caller is waiting for shutdown,
+    // so they keep the process alive until it settles (B7).
+    const timer = setTimeout(() => this.halt(), timerDelay(deadlineMs));
     try {
       await this.flushing;
       while (!this.stopped && this.hasPending()) {
@@ -189,7 +191,7 @@ export class Batcher {
             this.halt();
             break;
           }
-          await sleep(wait, this.controller.signal);
+          await sleep(wait, this.controller.signal, true);
         }
         await this.flush();
       }
@@ -232,7 +234,7 @@ export class Batcher {
     let err: Error | undefined;
     const signal = AbortSignal.any([
       this.controller.signal,
-      AbortSignal.timeout(this.timeoutMs),
+      AbortSignal.timeout(timerDelay(this.timeoutMs)),
     ]);
     try {
       const res = await this.fetch(this.url, {

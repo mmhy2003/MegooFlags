@@ -482,7 +482,10 @@ module MegooFlags
               elsif node.min == node.max then "{#{node.min}}"
               else "{#{node.min},#{node.max}}"
               end
-            operand + q + (node.lazy ? "?" : "")
+            # Onigmo reads x{n}? as (?:x{n})?, not as a lazy x{n}; a lazy exact
+            # repeat matches the same as the greedy one, so drop the ?.
+            lazy = node.lazy && node.min != node.max
+            operand + q + (lazy ? "?" : "")
           end
 
           START = "\\A"

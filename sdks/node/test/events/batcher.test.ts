@@ -195,11 +195,13 @@ describe("Batcher", () => {
     expect(sent()).toHaveLength(0);
   });
 
-  it("drops and counts records over the bucket cap without waiting", () => {
-    const b = newBatcher({ maxBuckets: 1 });
-    expect(b.record(ev("f", "u1"))).toBeUndefined();
-    b.record(ev("g", "u1"));
-    expect(b.dropped).toBe(1);
+  it("records without waiting and keeps counts beyond 10 000 buckets", () => {
+    const b = newBatcher({ flushIntervalMs: 3_600_000, maxItems: 100_000 });
+    for (let i = 0; i < 10_001; i++) {
+      // A default served makes a count and no exposure.
+      expect(b.record({ ...ev(`f${i}`, "u1"), served: false })).toBeUndefined();
+    }
+    expect(b.dropped).toBe(0);
   });
 
   it("drops records after shutdown or stop", async () => {

@@ -135,6 +135,16 @@
         "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}], "off_variation": "off",
         "prerequisites": [], "targets": [],
         "rules": [{"description": "", "clauses": [{"attribute": "attr", "operator": "matches", "values": ["(?i)^[j-l]$"], "negate": false}], "serve": {"variation": "on"}}],
+        "fallthrough": {"variation": "off"}},
+      "lazy-exact-repeat": {"key": "lazy-exact-repeat", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}], "off_variation": "off",
+        "prerequisites": [], "targets": [],
+        "rules": [{"description": "", "clauses": [{"attribute": "attr", "operator": "matches", "values": ["^a{2}?$"], "negate": false}], "serve": {"variation": "on"}}],
+        "fallthrough": {"variation": "off"}},
+      "lazy-exact-repeat-then": {"key": "lazy-exact-repeat-then", "type": "boolean", "enabled": true, "version": 1,
+        "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}], "off_variation": "off",
+        "prerequisites": [], "targets": [],
+        "rules": [{"description": "", "clauses": [{"attribute": "attr", "operator": "matches", "values": ["^a{2}?b$"], "negate": false}], "serve": {"variation": "on"}}],
         "fallthrough": {"variation": "off"}}
     },
     "segments": {}
@@ -233,6 +243,14 @@
     {"name": "fold-range-ascii", "flag": "fold-class-range", "context": {"key": "u", "attr": "K"}, "default": false,
      "expected": {"value": true, "variant": "on", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 0}}},
     {"name": "fold-range-no-kelvin-sign", "flag": "fold-class-range", "context": {"key": "u", "attr": "\u212a"}, "default": false,
-     "expected": {"value": false, "variant": "off", "reason": "DEFAULT", "error_code": null, "metadata": {}}}
+     "expected": {"value": false, "variant": "off", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "lazy-exact-repeat-exact", "flag": "lazy-exact-repeat", "context": {"key": "u", "attr": "aa"}, "default": false,
+     "expected": {"value": true, "variant": "on", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 0}}},
+    {"name": "lazy-exact-repeat-not-optional", "flag": "lazy-exact-repeat", "context": {"key": "u", "attr": ""}, "default": false,
+     "expected": {"value": false, "variant": "off", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "lazy-exact-repeat-then-not-optional", "flag": "lazy-exact-repeat-then", "context": {"key": "u", "attr": "b"}, "default": false,
+     "expected": {"value": false, "variant": "off", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "lazy-exact-repeat-then-exact", "flag": "lazy-exact-repeat-then", "context": {"key": "u", "attr": "aab"}, "default": false,
+     "expected": {"value": true, "variant": "on", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 0}}}
   ]
 }

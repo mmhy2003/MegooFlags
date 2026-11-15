@@ -24,6 +24,7 @@ import io.github.mmhy2003.megooflags.internal.delivery.Cache;
 import io.github.mmhy2003.megooflags.internal.delivery.Sync;
 import io.github.mmhy2003.megooflags.internal.json.Json;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -209,6 +210,15 @@ class LifecycleTest {
         Registration first = register(config().cacheDir(dir).build());
         server.nextStream(WAIT).write(put("e2", RulesetGen.changedProviderRuleset()));
         first.awaitReady();
+        // Ready follows the store update; the cache write lands just after it.
+        Cache cache = new Cache(dir, KEY);
+        Await.until(() -> {
+            try {
+                return cache.load() != null;
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
         api.shutdown();
         int before = server.requests().size();
 
@@ -237,6 +247,25 @@ class LifecycleTest {
                 .build());
         missing.awaitReady();
         assertEquals("red", missing.client.getStringValue("string-flag", "x"));
+    }
+
+    @Test
+    void startsFromACacheWithAnOutOfRangeNumber() throws Exception {
+        // 1e400 is valid JSON that reads as +Infinity, which cannot be written back as JSON.
+        Map<String, Object> flag = RulesetGen.flagJson(
+                "huge",
+                "type",
+                "number",
+                "variations",
+                RulesetGen.list(RulesetGen.obj("key", "on", "value", 1.25), RulesetGen.obj("key", "off", "value", 0L)));
+        String raw = Json.write(RulesetGen.rulesetJson(List.of(flag), RulesetGen.obj()))
+                .replace("1.25", "1e400");
+        new Cache(dir, KEY).save(raw, "e1");
+        RecordingLogger log = new RecordingLogger();
+        Registration r =
+                register(config().cacheDir(dir).offline(true).logger(log).build());
+        r.awaitReady();
+        assertEquals(Double.POSITIVE_INFINITY, r.client.getDoubleValue("huge", 0.0));
     }
 
     @Test

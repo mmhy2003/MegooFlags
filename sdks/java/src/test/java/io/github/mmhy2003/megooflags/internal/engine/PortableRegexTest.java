@@ -190,6 +190,15 @@ class PortableRegexTest {
     }
 
     @Test
+    void aStackOverflowInTheHostMatcherIsNoMatch() throws RegexSyntaxException {
+        // java.util.regex recurses once per repetition of a group with an alternation, so a long
+        // subject overflows the thread stack.
+        PortableRegex re = PortableRegex.compile("^(a|b)*$");
+        assertFalse(re.test("a".repeat(100_000)));
+        assertTrue(re.test("abba"));
+    }
+
+    @Test
     void repeatsAnEmptySetWithoutAHostError() throws RegexSyntaxException {
         PortableRegex re = PortableRegex.compile("^[^\\s\\S]*$");
         assertTrue(re.test(""));

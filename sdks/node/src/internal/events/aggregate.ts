@@ -86,11 +86,6 @@ export interface AggregatorOptions {
   dedupSize?: number;
   /** maxPending caps the exposures waiting to be sent (10 000). */
   maxPending?: number;
-  /**
-   * maxBuckets caps the count buckets waiting to be sent (10 000). It stands
-   * in for the bounded queue of multi-threaded runtimes.
-   */
-  maxBuckets?: number;
   sendContext?: boolean;
 }
 
@@ -105,12 +100,11 @@ const hourString = (hour: number) =>
  * and does no I/O, so recording an evaluation never waits.
  */
 export class Aggregator {
-  /** dropped counts the evaluations and exposures that did not fit. */
+  /** dropped counts the exposures that did not fit; counts never drop. */
   dropped = 0;
 
   private readonly dedup: Lru;
   private readonly maxPending: number;
-  private readonly maxBuckets: number;
   private readonly sendContext: boolean;
   private exposures: Exposure[] = [];
   /** buckets keeps the order in which the buckets were first seen. */
@@ -119,15 +113,14 @@ export class Aggregator {
   constructor(opts: AggregatorOptions = {}) {
     this.dedup = new Lru(opts.dedupSize ?? 10_000);
     this.maxPending = opts.maxPending ?? 10_000;
-    this.maxBuckets = opts.maxBuckets ?? 10_000;
     this.sendContext = opts.sendContext ?? false;
   }
 
   /**
    * add counts ev and, the first time a served variant is seen for its
-   * context key, flag and hour, queues an exposure. An evaluation that needs
-   * a new bucket beyond maxBuckets is dropped whole; an exposure beyond
-   * maxPending is dropped alone. Both are counted in dropped.
+   * context key, flag and hour, queues an exposure. An exposure beyond
+   * maxPending is dropped and counted in dropped; counts are never dropped
+   * (there is one bucket per flag, variant and hour, as in the Go SDK).
    */
   add(ev: Evaluation): void {
     const hour = Math.floor(ev.at / HOUR_MS) * HOUR_MS;
@@ -136,9 +129,6 @@ export class Aggregator {
     const bucket = this.buckets.get(key);
     if (bucket !== undefined) {
       bucket.count++;
-    } else if (this.buckets.size >= this.maxBuckets) {
-      this.dropped++;
-      return;
     } else {
       this.buckets.set(key, { flag: ev.flagKey, variant, hour, count: 1 });
     }

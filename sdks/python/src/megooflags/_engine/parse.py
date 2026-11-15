@@ -6,7 +6,6 @@ flag fails the prerequisite and a missing segment is not matched. Cycles are not
 
 import json
 import math
-import re
 from typing import Any
 
 from megooflags._engine import operators
@@ -270,10 +269,9 @@ def _clause(value: Any, path: str, warnings: list[str], *, segment: bool) -> Cla
     if operator == "matches":
         for i, v in enumerate(values):
             if isinstance(v, str):
-                try:
-                    re.compile(v, re.ASCII)
-                except re.error as e:
-                    warnings.append(f"{values_path}[{i}]: regex does not compile: {e}")
+                _, reason = operators.compile_regex(v)
+                if reason is not None:
+                    warnings.append(f"{values_path}[{i}]: regex does not compile: {reason}")
     return Clause(
         attribute=attribute,
         operator=operator,

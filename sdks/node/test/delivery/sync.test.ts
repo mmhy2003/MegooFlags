@@ -210,6 +210,38 @@ describe("Sync", () => {
     expect(second!.at - first!.at).toBeGreaterThanOrEqual(950);
   });
 
+  it("does not let a Retry-After beyond the timer limit wrap to 1 ms", async () => {
+    server.reply(
+      RULESET,
+      { status: 429, headers: { "Retry-After": "3000000" } },
+      { status: 304 },
+    );
+    newSync({ disableStream: true }).start();
+    await vi.waitFor(() => expect(server.received(RULESET)).toHaveLength(1));
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    await sleep(200);
+    // A wrapped delay fires every 1 ms and the poll loop spins.
+    expect(timers.mock.calls.length).toBeLessThan(10);
+    timers.mockRestore();
+    expect(server.received(RULESET)).toHaveLength(1);
+  });
+
+  it("does not let a poll interval beyond the timer limit wrap to 1 ms", async () => {
+    server.reply(RULESET, { status: 304 });
+    newSync({
+      disableStream: true,
+      pollIntervalMs: 2 ** 40,
+      tuning: { retryBaseMs: 10, retryMaxMs: 50 },
+    }).start();
+    await vi.waitFor(() => expect(server.received(RULESET)).toHaveLength(1));
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    await sleep(200);
+    // A wrapped delay fires every 1 ms and the poll loop spins.
+    expect(timers.mock.calls.length).toBeLessThan(10);
+    timers.mockRestore();
+    expect(server.received(RULESET)).toHaveLength(1);
+  });
+
   it("with disableStream polls only and reports stale then ready", async () => {
     server.reply(
       RULESET,

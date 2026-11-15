@@ -154,6 +154,19 @@ describe("Streamer", () => {
     expect(seen.disconnects[0]?.err).toBeInstanceOf(RetryAfterError);
   });
 
+  it("does not let a Retry-After beyond the timer limit wrap to 1 ms", async () => {
+    server.reply(
+      STREAM,
+      { status: 429, headers: { "Retry-After": "3000000" } },
+      { stream: true },
+    );
+    const seen = startStreamer();
+    await vi.waitFor(() => expect(seen.disconnects).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 200));
+    expect(server.received(STREAM)).toHaveLength(1);
+    expect(seen.connected).toBe(0);
+  });
+
   it("backs off with growing waits on 5xx", async () => {
     server.reply(
       STREAM,

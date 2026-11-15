@@ -113,9 +113,11 @@ public sealed class MegooFlagsProvider : FeatureProvider
             return;
         }
         var cache = new Cache(options.CacheDir, options.SdkKey);
-        // Offline uses Sync only to apply the bootstrap file and the cache; InitializeAsync never starts it.
+        // Offline uses Sync only to apply the bootstrap file and the cache: it builds no URL (BaseUrl is optional
+        // and unchecked offline) and InitializeAsync never starts it.
         _sync = new Sync(new Sync.Options(options.BaseUrl, options.SdkKey, _store)
         {
+            Offline = options.Offline,
             HttpClient = options.HttpClient,
             Warn = Warn,
             Debug = m => _logger.LogDebug("{Message}", m),

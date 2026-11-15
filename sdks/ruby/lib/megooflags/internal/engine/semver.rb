@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "values"
+
 module MegooFlags
   module Internal
     module Engine
@@ -20,8 +22,11 @@ module MegooFlags
 
         # parse_semver parses a strict SemVer 2.0.0 string: ASCII only, no "v"
         # prefix, no surrounding whitespace, no leading zeros in numeric parts.
-        # Returns nil for anything else.
+        # Returns nil for anything else, invalid UTF-8 included.
         def parse_semver(str)
+          str = Values.utf8(str)
+          return nil if str.nil?
+
           rest, build = str.split("+", 2)
           return nil if build && !identifiers(build)
 

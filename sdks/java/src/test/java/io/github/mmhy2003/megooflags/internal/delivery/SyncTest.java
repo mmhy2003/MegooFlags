@@ -20,6 +20,7 @@ import io.github.mmhy2003.megooflags.internal.engine.ParseException;
 import io.github.mmhy2003.megooflags.internal.json.Json;
 import io.github.mmhy2003.megooflags.internal.transport.FatalException;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.System.Logger.Level;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -121,6 +122,15 @@ class SyncTest {
         }
     }
 
+    /** cached is the cache entry, or null when the cache file is not written yet. */
+    private Cache.Entry cached() {
+        try {
+            return cache.load();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     private List<Status> statuses() {
         synchronized (statuses) {
             return new ArrayList<>(statuses);
@@ -211,6 +221,9 @@ class SyncTest {
                 .start();
         server.nextStream(WAIT);
         Await.until(() -> statuses().contains(Status.READY));
+        // READY comes from the stream reconnect, so the poll that preceded it may still be
+        // installing its ruleset and writing the cache.
+        Await.until(() -> cached() != null);
         List<Received> polls = server.received(RULESET);
         assertTrue(polls.size() >= 1);
         // The first poll came after the second stream failure.

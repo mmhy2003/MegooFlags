@@ -162,6 +162,15 @@ describe("initialize", () => {
     expect(await r.client.getStringValue("string-flag", "x")).toBe("blue");
   });
 
+  it("does not let an initTimeoutMs beyond the timer limit wrap to 1 ms", async () => {
+    const r = register(provider({ initTimeoutMs: 2 ** 40 }));
+    const conn = await server.nextStream();
+    expect(await settled(r.ready, 100)).toBe(false);
+    conn.write(put("e1", providerRuleset()));
+    await r.ready;
+    expect(await r.client.getStringValue("string-flag", "x")).toBe("blue");
+  });
+
   it("is ready from the bootstrap file, then refreshed by the stream", async () => {
     const bootstrapFile = join(dir, "ruleset.json");
     writeFileSync(bootstrapFile, providerRuleset());

@@ -1,7 +1,7 @@
 // The SSE client for GET /sdk/v1/stream: reconnects with backoff until it is
 // stopped or the server refuses the key.
 
-import { Backoff, sleep } from "../transport/backoff.js";
+import { Backoff, sleep, timerDelay } from "../transport/backoff.js";
 import {
   buildHeaders,
   FatalError,
@@ -153,7 +153,7 @@ export class Streamer {
       timer = setTimeout(() => {
         dead = true;
         conn.abort();
-      }, this.deadTimeoutMs);
+      }, timerDelay(this.deadTimeoutMs));
       timer.unref();
       const t = timer;
       await readSse(res.body, {

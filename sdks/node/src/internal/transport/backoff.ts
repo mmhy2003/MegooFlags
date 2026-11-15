@@ -1,4 +1,20 @@
-// Jittered exponential backoff and a cancellable sleep.
+// Jittered exponential backoff, a cancellable sleep and the timer delay
+// clamp.
+
+/**
+ * MAX_TIMER_MS is the longest delay setTimeout and setInterval honour: a
+ * longer one (or NaN) fires after 1 ms instead.
+ */
+export const MAX_TIMER_MS = 2 ** 31 - 1;
+
+/**
+ * timerDelay clamps ms to what a timer can wait, so a huge Retry-After or
+ * configured interval waits about 24.8 days instead of firing at once. A
+ * value below 0 or NaN becomes 0.
+ */
+export function timerDelay(ms: number): number {
+  return ms > 0 ? Math.min(ms, MAX_TIMER_MS) : 0;
+}
 
 /**
  * Backoff computes waits in milliseconds. The first wait is min(base, max);
@@ -34,11 +50,15 @@ export class Backoff {
 }
 
 /**
- * sleep waits ms milliseconds and resolves true, or resolves false as soon
- * as signal aborts. Its timer is unref'd, so it never keeps the process
- * alive, and it never rejects.
+ * sleep waits ms milliseconds (clamped by timerDelay) and resolves true, or
+ * resolves false as soon as signal aborts. Its timer is unref'd, so it
+ * never keeps the process alive, unless ref is true. It never rejects.
  */
-export function sleep(ms: number, signal?: AbortSignal): Promise<boolean> {
+export function sleep(
+  ms: number,
+  signal?: AbortSignal,
+  ref = false,
+): Promise<boolean> {
   if (signal?.aborted) {
     return Promise.resolve(false);
   }
@@ -50,8 +70,10 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<boolean> {
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
       resolve(true);
-    }, ms);
-    timer.unref();
+    }, timerDelay(ms));
+    if (!ref) {
+      timer.unref();
+    }
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 }

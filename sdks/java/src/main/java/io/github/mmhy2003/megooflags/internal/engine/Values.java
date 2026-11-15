@@ -27,7 +27,7 @@ public final class Values {
             return a instanceof Boolean && a.equals(b);
         }
         if (isNumber(a)) {
-            return isNumber(b) && compareNumbers(a, b) == 0;
+            return isNumber(b) && !isNaN(a) && !isNaN(b) && compareNumbers(a, b) == 0;
         }
         if (a instanceof String) {
             return a.equals(b);
@@ -36,8 +36,16 @@ public final class Values {
     }
 
     /**
-     * compareNumbers returns -1, 0 or 1. Both arguments must be numbers (see {@link #isNumber}).
-     * Two integers compare exactly; otherwise as doubles.
+     * isNaN reports whether v is a NaN Double or Float. NaN equals nothing, itself included, and is
+     * unordered: every comparison with it is false.
+     */
+    public static boolean isNaN(Object v) {
+        return (v instanceof Double || v instanceof Float) && Double.isNaN(((Number) v).doubleValue());
+    }
+
+    /**
+     * compareNumbers returns -1, 0 or 1. Both arguments must be numbers (see {@link #isNumber}) and
+     * neither may be NaN (see {@link #isNaN}). Two integers compare exactly; otherwise as doubles.
      */
     public static int compareNumbers(Object a, Object b) {
         if (isInteger(a) && isInteger(b)) {

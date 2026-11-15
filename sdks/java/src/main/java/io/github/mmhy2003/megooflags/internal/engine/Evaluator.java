@@ -202,10 +202,13 @@ public final class Evaluator {
             case LTE:
             case GT:
             case GTE:
-                if (!Values.isNumber(e)) {
+                if (!Values.isNumber(e) || Values.isNaN(e)) {
                     return false;
                 }
                 for (Object p : c.prepared) {
+                    if (Values.isNaN(p)) {
+                        continue;
+                    }
                     int d = Values.compareNumbers(e, p);
                     if (c.op == Ruleset.Operator.LT
                             ? d < 0

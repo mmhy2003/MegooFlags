@@ -67,6 +67,12 @@ internal sealed class Sync
 
         public bool DisableStream { get; init; }
 
+        /// <summary>
+        /// No network: Sync only applies rulesets (the bootstrap file and the cache). It builds no URL, so BaseUrl
+        /// may be anything, creates no client, and Start does nothing.
+        /// </summary>
+        public bool Offline { get; init; }
+
         /// <summary>Used as given (the provider clamps it).</summary>
         public TimeSpan PollInterval { get; init; } = TimeSpan.FromSeconds(30);
 
@@ -91,10 +97,14 @@ internal sealed class Sync
     private readonly bool _disableStream;
     private readonly TimeSpan _pollInterval;
     private readonly int _pollAfterFailures;
-    private readonly HttpClient _client;
+    private readonly bool _offline;
+
+    /// <summary>Null offline, like the streamer and the poller.</summary>
+    private readonly HttpClient? _client;
+
     private readonly bool _ownsClient;
-    private readonly Streamer _streamer;
-    private readonly Poller _poller;
+    private readonly Streamer? _streamer;
+    private readonly Poller? _poller;
 
     /// <summary>Cancelled by StopAsync and by a fatal status: every worker ends.</summary>
     private readonly CancellationTokenSource _halt = new();
@@ -126,6 +136,11 @@ internal sealed class Sync
         _disableStream = o.DisableStream;
         _pollInterval = o.Tuning.PollInterval ?? o.PollInterval;
         _pollAfterFailures = o.Tuning.PollAfterFailures;
+        _offline = o.Offline;
+        if (_offline)
+        {
+            return;
+        }
         _ownsClient = o.HttpClient == null;
         _client = o.HttpClient ?? new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         _poller = new Poller(
@@ -210,13 +225,13 @@ internal sealed class Sync
 
     /// <summary>
     /// Starts the stream, or only the poll loop with DisableStream, and returns at once. Only the first call does
-    /// anything, and none after StopAsync.
+    /// anything, and none after StopAsync or offline.
     /// </summary>
     public void Start()
     {
         lock (_lock)
         {
-            if (_started || Halted)
+            if (_started || Halted || _offline)
             {
                 return;
             }
@@ -228,7 +243,7 @@ internal sealed class Sync
             }
             Spawn(async () =>
             {
-                var err = await _streamer.RunAsync(_halt.Token).ConfigureAwait(false);
+                var err = await _streamer!.RunAsync(_halt.Token).ConfigureAwait(false);
                 if (err != null)
                 {
                     Fail(err);
@@ -265,7 +280,7 @@ internal sealed class Sync
         await Task.WhenAll(workers).ConfigureAwait(false);
         if (_ownsClient)
         {
-            _client.Dispose();
+            _client!.Dispose();
         }
     }
 
@@ -387,7 +402,7 @@ internal sealed class Sync
                 Exception? err = null;
                 try
                 {
-                    await _poller.PollAsync(loop.Token).ConfigureAwait(false);
+                    await _poller!.PollAsync(loop.Token).ConfigureAwait(false);
                 }
                 catch (Exception e)
                 {

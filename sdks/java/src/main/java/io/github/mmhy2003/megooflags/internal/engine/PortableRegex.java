@@ -16,6 +16,8 @@ import java.util.regex.PatternSyntaxException;
  * code point ranges, and the emitter. The Pattern is compiled with no flags.
  */
 public final class PortableRegex {
+    private static final System.Logger LOGGER = System.getLogger("io.github.mmhy2003.megooflags");
+
     private final Pattern pattern;
 
     private PortableRegex(Pattern pattern) {
@@ -37,9 +39,20 @@ public final class PortableRegex {
         }
     }
 
-    /** test is an unanchored search of subject. */
+    /**
+     * test is an unanchored search of subject. java.util.regex recurses per repetition of some
+     * groups, so a long subject can overflow the stack; that search is logged and does not match.
+     */
     public boolean test(String subject) {
-        return pattern.matcher(subject).find();
+        try {
+            return pattern.matcher(subject).find();
+        } catch (StackOverflowError e) {
+            LOGGER.log(
+                    System.Logger.Level.WARNING,
+                    "megooflags: regex search overflowed the stack on a {0}-char subject; treating it as no match",
+                    subject.length());
+            return false;
+        }
     }
 
     /** source is the emitted java.util.regex source. */

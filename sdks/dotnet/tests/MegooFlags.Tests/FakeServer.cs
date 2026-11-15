@@ -113,6 +113,23 @@ public sealed class FakeServer : IDisposable
             }
         }
 
+        /// <summary>
+        /// Sends text as is and flushes it, returning false instead of throwing once the client has gone, so a test
+        /// can assert on that rather than fail on a broken pipe.
+        /// </summary>
+        public bool TryWrite(string text)
+        {
+            try
+            {
+                Write(text);
+                return true;
+            }
+            catch (Exception e) when (e is HttpListenerException or IOException or ObjectDisposedException or InvalidOperationException)
+            {
+                return false;
+            }
+        }
+
         /// <summary>Finishes the response cleanly.</summary>
         public void End()
         {

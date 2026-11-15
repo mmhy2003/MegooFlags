@@ -11,6 +11,7 @@ use MegooFlags\Internal\Cache\State;
 use MegooFlags\Internal\Engine\Compiler;
 use MegooFlags\Provider;
 use MegooFlags\Tests\Support\FakeServer;
+use MegooFlags\Tests\Support\HookStream;
 use MegooFlags\Tests\Support\RulesetGen as G;
 use OpenFeature\implementation\flags\Attributes;
 use OpenFeature\implementation\flags\EvaluationContext;
@@ -360,6 +361,79 @@ final class ProviderTest extends TestCase
         self::assertSame(['etag' => '', 'source' => 'bootstrap'], array_slice((array) $this->files()->loadCompiled(), 0, 2));
         self::assertFileDoesNotExist($this->files()->jsonPath());
         self::assertSame([], $this->requests());
+    }
+
+    public function testBootstrapDoesNotOverwriteACacheWrittenAfterItWasChosen(): void
+    {
+        // The provider finds no cache and reads the bootstrap file; while it
+        // does, another process's upkeep writes both cache files and the state.
+        $bootstrap = HookStream::register(self::raw(self::tree('boot')), function (): void {
+            $this->cacheNetwork('network', '"e1"');
+        });
+        try {
+            $value = self::client(new Provider($this->config(['bootstrapFile' => $bootstrap])))->getStringValue('str', 'default');
+        } finally {
+            HookStream::unregister();
+        }
+
+        self::assertSame('network', $value);
+        $compiled = $this->files()->loadCompiled(true);
+        self::assertSame(['etag' => '"e1"', 'source' => 'network'], array_slice((array) $compiled, 0, 2));
+        self::assertSame('network', self::client(new Provider($this->config()))->getStringValue('str', 'default'));
+        self::assertSame([], $this->requests());
+    }
+
+    public function testCompiledFileOlderThanTheStateIsRebuiltFromTheJsonCache(): void
+    {
+        // A bootstrap write landed over the compiled file of etag e1: the
+        // state and the JSON cache say e1, so the conditional fetch would
+        // get 304 and never repair it.
+        $this->cacheNetwork('network', '"e1"');
+        $this->files()->saveBootstrap(Compiler::compile(self::tree('boot')));
+
+        $value = self::client(new Provider($this->config(['bootstrapFile' => $this->bootstrapFile()])))->getStringValue('str', 'default');
+
+        self::assertSame('network', $value);
+        self::assertSame(['etag' => '"e1"', 'source' => 'network'], array_slice((array) $this->files()->loadCompiled(true), 0, 2));
+        self::assertSame([], $this->requests());
+    }
+
+    public function testCompiledFileNewerThanTheStateIsServed(): void
+    {
+        // Upkeep wrote both cache files of e2 and has not written the state yet.
+        $this->cacheNetwork('one', '"e1"');
+        $raw = self::raw(self::tree('two'));
+        $this->files()->saveNetwork($raw, '"e2"', Compiler::compileJson($raw));
+
+        self::assertSame('two', self::client(new Provider($this->config()))->getStringValue('str', 'default'));
+        self::assertSame('"e2"', $this->files()->loadCompiled()['etag'] ?? null);
+    }
+
+    public function testBootstrapIsNotWrittenWhileAnotherProcessHoldsTheLock(): void
+    {
+        $lock = new Lock($this->files()->lockPath());
+        self::assertTrue($lock->tryAcquire());
+
+        $value = self::client(new Provider($this->config(['bootstrapFile' => $this->bootstrapFile()])))->getStringValue('str', 'default');
+
+        $lock->release();
+        self::assertSame('boot', $value);
+        self::assertFileDoesNotExist($this->files()->compiledPath());
+        self::assertSame([], $this->requests());
+    }
+
+    public function testJsonCacheIsNotCompiledToDiskWhileAnotherProcessHoldsTheLock(): void
+    {
+        $this->cacheNetwork('json');
+        unlink($this->files()->compiledPath());
+        $lock = new Lock($this->files()->lockPath());
+        self::assertTrue($lock->tryAcquire());
+
+        $value = self::client(new Provider($this->config()))->getStringValue('str', 'default');
+
+        $lock->release();
+        self::assertSame('json', $value);
+        self::assertFileDoesNotExist($this->files()->compiledPath());
     }
 
     public function testInvalidBootstrapFileLeavesTheProviderNotReady(): void

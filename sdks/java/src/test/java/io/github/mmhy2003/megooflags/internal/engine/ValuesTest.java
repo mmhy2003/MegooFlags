@@ -60,4 +60,14 @@ class ValuesTest {
         assertEquals(1, Values.compareNumbers(-0.5, -1L));
         assertEquals(0, Values.compareNumbers(0.0, -0.0));
     }
+
+    @Test
+    void nanEqualsNothing() {
+        assertFalse(Values.jsonEqual(Double.NaN, 5L));
+        assertFalse(Values.jsonEqual(5L, Double.NaN));
+        assertFalse(Values.jsonEqual(Double.NaN, 5.0));
+        assertFalse(Values.jsonEqual(Double.NaN, Double.NaN));
+        assertFalse(Values.jsonEqual(Float.NaN, 0L));
+        assertTrue(Values.jsonEqual(Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY));
+    }
 }

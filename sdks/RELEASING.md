@@ -28,13 +28,17 @@ Each SDK has its own version and its own tag, `sdk-<lang>/vX.Y.Z`, where `<lang>
 4. Merge the pull request once CI is green.
 5. Open the release pull request from `develop` into `main` and merge it with a merge commit.
 6. Push the tag `sdk-<lang>/vX.Y.Z` on that merge commit on `main`.
-7. The `sdk-<lang>-release` job in `.github/workflows/release.yml` checks that the tag matches the
-   manifest, runs the checks, builds the package and uploads it as the workflow artifact `sdk-<lang>`.
-8. The job publishes the package only when the repository variable `SDK_PUBLISH_<LANG>` is `true`
+7. The `sdk-tag` job in `.github/workflows/release.yml` checks that the tag points to a commit on
+   `main`. The `sdk-<lang>-release` job then checks that the tag matches the manifest, runs the
+   checks, builds the package and uploads it as the workflow artifact `sdk-<lang>`.
+8. The package is published only when the repository variable `SDK_PUBLISH_<LANG>` is `true`
    (section 3). Otherwise, download the artifact from the workflow run if you want to inspect it.
+   npm, PyPI, NuGet and RubyGems are published by a separate `sdk-<lang>-publish` job: it is the only
+   job with `id-token: write`, and it only downloads the artifact and uploads it, so no dependency
+   install or build runs with that permission.
 
-A test release `sdk-<lang>/vX.Y.Z-rc.N` runs the same checks and builds the artifact, but never
-publishes, whatever the variable says.
+A test release `sdk-<lang>/vX.Y.Z-rc.N` runs the same checks (except the `main` check) and builds the
+artifact, but never publishes, whatever the variable says.
 
 ## 2. One-time setup per registry
 

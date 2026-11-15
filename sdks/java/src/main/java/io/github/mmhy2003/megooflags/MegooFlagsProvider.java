@@ -23,7 +23,6 @@ import io.github.mmhy2003.megooflags.internal.engine.Result;
 import io.github.mmhy2003.megooflags.internal.engine.Ruleset;
 import io.github.mmhy2003.megooflags.internal.events.Batcher;
 import io.github.mmhy2003.megooflags.internal.events.Evaluation;
-import io.github.mmhy2003.megooflags.internal.json.Json;
 import io.github.mmhy2003.megooflags.internal.transport.Transport;
 import java.io.IOException;
 import java.lang.System.Logger.Level;
@@ -153,7 +152,9 @@ public final class MegooFlagsProvider extends EventProvider {
             try {
                 Cache.Entry entry = cache.load();
                 if (entry != null) {
-                    sync.apply(Json.write(entry.ruleset()), entry.etag(), Source.CACHE);
+                    // The decoded tree, not rewritten as JSON: a number such as 1e400 reads as
+                    // Infinity, which JSON cannot hold.
+                    sync.applyTree(entry.ruleset(), entry.etag(), Source.CACHE);
                 }
             } catch (IOException e) {
                 logger.log(Level.WARNING, "megooflags: could not read the ruleset cache: {0}", e.getMessage());

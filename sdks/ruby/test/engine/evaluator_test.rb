@@ -143,6 +143,28 @@ class EvaluatorTest < Minitest::Test
     refute matches?(G.clause("t", "after", "1970-01-01T00:00:00Z"), { "t" => "garbage" })
   end
 
+  INVALID_UTF8 = (+"\xFF").force_encoding(Encoding::UTF_8)
+
+  def test_invalid_utf8_strings_never_match
+    [
+      G.clause("a", "semver_eq", "1.2.3"), G.clause("a", "semver_lt", "1.2.3"), G.clause("a", "semver_gt", "1.2.3"),
+      G.clause("a", "before", "2025-01-01T00:00:00Z"), G.clause("a", "after", "1970-01-01T00:00:00Z"),
+      G.clause("a", "matches", ""), G.clause("a", "contains", "x"), G.clause("a", "starts_with", "x"),
+      G.clause("a", "ends_with", "x")
+    ].each do |clause|
+      refute matches?(clause, { "a" => INVALID_UTF8 }), clause["operator"]
+      refute matches?(clause, { "a" => (+"1.2.3\xFF").force_encoding(Encoding::UTF_8) }), clause["operator"]
+    end
+  end
+
+  def test_invalid_utf8_element_is_skipped
+    assert matches?(G.clause("a", "semver_eq", "1.2.3"), { "a" => [INVALID_UTF8, "1.2.3"] })
+    assert matches?(G.clause("a", "before", "2025-01-01T00:00:00Z"), { "a" => [INVALID_UTF8, "2024-01-01T00:00:00Z"] })
+    assert matches?(G.clause("a", "after", "1970-01-01T00:00:00Z"), { "a" => [INVALID_UTF8, "2024-01-01T00:00:00Z"] })
+    assert matches?(G.clause("a", "matches", "^b$"), { "a" => [INVALID_UTF8, "b"] })
+    assert matches?(G.clause("a", "semver_eq", "1.2.3", negate: true), { "a" => INVALID_UTF8 })
+  end
+
   def segments
     { "s" => { "included" => %w[in both], "excluded" => %w[out both],
                "rules" => [{ "clauses" => [G.clause("org", "in", "acme")] }] } }

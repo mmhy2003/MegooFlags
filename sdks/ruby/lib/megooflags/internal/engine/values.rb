@@ -30,6 +30,16 @@ module MegooFlags
           left.to_f == right.to_f # rubocop:disable Lint/FloatComparison
         end
 
+        # utf8 is str as valid UTF-8 (transcoded from another encoding), or nil
+        # when it is not valid text. A string op on invalid UTF-8 raises, so
+        # such a string matches as no version, date or pattern.
+        def utf8(str)
+          text = str.encoding == Encoding::UTF_8 ? str : str.encode(Encoding::UTF_8)
+          text.valid_encoding? ? text : nil
+        rescue EncodingError
+          nil
+        end
+
         def boolean?(value)
           [true, false].include?(value)
         end
