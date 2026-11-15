@@ -220,6 +220,12 @@ class TransportTest < Minitest::Test
     assert_equal "/", Transport.connection("http://example.com", timeout: nil).last
   end
 
+  # Net::HTTP retries an idempotent request once on a fresh connection after an IOError, which
+  # is what closing the socket to cancel a stream raises; that connection would outlive stop.
+  def test_connection_never_retries_on_its_own
+    assert_equal 0, Transport.connection("http://example.com", timeout: 1).first.max_retries
+  end
+
   def test_connection_refuses_other_schemes
     assert_raises(ArgumentError) { Transport.connection("ftp://example.com/x", timeout: 1) }
     assert_raises(ArgumentError) { Transport.connection("http:///x", timeout: 1) }

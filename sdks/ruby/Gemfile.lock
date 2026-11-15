@@ -2,6 +2,7 @@ PATH
   remote: .
   specs:
     megooflags (0.1.0)
+      openfeature-sdk (~> 0.8)
 
 GEM
   remote: https://rubygems.org/
@@ -14,6 +15,7 @@ GEM
     minitest (6.1.0)
       drb (~> 2.0)
       prism (>= 1.5, < 3)
+    openfeature-sdk (0.8.1)
     parallel (2.3.0)
     parser (3.3.13.0)
       ast (~> 2.4.1)

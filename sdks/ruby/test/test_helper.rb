@@ -4,6 +4,18 @@ $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 
 require "minitest/autorun"
 
+# The tests run with warnings on (ruby -w), and the openfeature-sdk gem is not warning-clean
+# (a circular require, an unused variable, a redefined method). Drop the warnings about its own
+# files so the SDK's stay visible.
+module QuietOpenFeatureWarnings
+  def warn(message, *, **)
+    return if message.include?("/openfeature-sdk-")
+
+    super
+  end
+end
+Warning.singleton_class.prepend(QuietOpenFeatureWarnings)
+
 # Helpers for the tests that run background threads.
 module ThreadTestHelpers
   def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)

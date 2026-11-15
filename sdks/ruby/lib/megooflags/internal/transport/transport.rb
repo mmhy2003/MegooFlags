@@ -165,7 +165,9 @@ module MegooFlags
       end
 
       # connection returns an unstarted Net::HTTP for url (TLS by scheme) and the path with its
-      # query to request. timeout is the open and read timeout in seconds (nil: none).
+      # query to request. timeout is the open and read timeout in seconds (nil: none). It never
+      # retries on its own: Net::HTTP would resend a GET on a fresh connection after the IOError
+      # that cancelling raises, and the callers have their own retry rules.
       def connection(url, timeout:)
         uri = URI(url)
         unless %w[http https].include?(uri.scheme) && !uri.host.to_s.empty?
@@ -177,6 +179,7 @@ module MegooFlags
         http.open_timeout = timeout
         http.read_timeout = timeout
         http.write_timeout = timeout
+        http.max_retries = 0
         [http, uri.request_uri]
       end
 
