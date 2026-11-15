@@ -216,6 +216,17 @@ class StreamerTest {
         }
 
     @Test
+    fun theRetryFieldNeverSetsAWaitUnder1Second() =
+        streamTest {
+            streamer.start()
+            hooks(1)
+            server.last.send("retry: 0\n\n")
+            server.last.end()
+            connections(2)
+            assertEquals(listOf(1_000L), sleeps)
+        }
+
+    @Test
     fun theServerEndingTheStreamIsAFailureAndReconnects() =
         streamTest {
             streamer.start()

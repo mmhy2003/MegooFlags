@@ -16,6 +16,10 @@ const _deadTimeout = Duration(seconds: 45);
 /// A connection that lasted this long resets the backoff.
 const _stableAfter = Duration(seconds: 60);
 
+/// The shortest reconnect wait, in milliseconds, a server retry: field may
+/// set.
+const _minRetryMs = 1000;
+
 /// The stream sent nothing, not even a comment, for 45 s.
 final class DeadConnectionException implements Exception {
   const DeadConnectionException();
@@ -189,7 +193,18 @@ class Streamer {
             lastEventId: _lastEventId,
           ),
         );
-      final res = await client.send(req);
+      // The dead timeout also bounds the wait for the response headers;
+      // closing the owned client in finally drops the half-open socket.
+      final res = await client
+          .send(req)
+          .timeout(
+            _deadTimeout,
+            onTimeout: () => throw TimeoutException(
+              'megooflags: no stream response within '
+              '${_deadTimeout.inSeconds}s',
+              _deadTimeout,
+            ),
+          );
       final bad = s.cancelled
           ? const _Cancelled()
           : statusError(
@@ -222,7 +237,9 @@ class Streamer {
       if (s.cancelled) end(const _Cancelled());
       final parser = SseParser(
         onLine: arm,
-        onRetry: (ms) => _backoff.base = Duration(milliseconds: ms),
+        onRetry: (ms) => _backoff.base = Duration(
+          milliseconds: ms < _minRetryMs ? _minRetryMs : ms,
+        ),
         onEvent: (event) => _onEvent(s, event),
       );
       arm();

@@ -163,6 +163,15 @@ final class StreamerTests: XCTestCase {
         XCTAssertEqual(clock.sleeps, [5])
     }
 
+    func testTheRetryFieldNeverSetsAWaitUnder1Second() async {
+        await streamer.start()
+        await hooks(1)
+        transport.last.send("retry: 0\n\n")
+        transport.last.complete()
+        await connections(2)
+        XCTAssertEqual(clock.sleeps, [1])
+    }
+
     func testATimedOutReadIsAFailureAndReconnects() async {
         // URLSessionTransport's 45 s request timeout is the dead timer.
         await streamer.start()

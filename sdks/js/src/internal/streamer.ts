@@ -15,6 +15,8 @@ import {
 
 /** The longest silence before the connection counts as dead. */
 const DEAD_TIMEOUT_MS = 45_000;
+/** The shortest reconnect wait a server retry: field may set. */
+const MIN_RETRY_MS = 1_000;
 /** A connection that lasted this long resets the backoff. */
 const STABLE_AFTER_MS = 60_000;
 
@@ -172,6 +174,8 @@ export class Streamer {
         conn.abort();
       }, DEAD_TIMEOUT_MS);
     };
+    // The dead timer also bounds the wait for the response headers.
+    arm();
     try {
       const res = await this.#open(
         this.#url,
@@ -197,7 +201,7 @@ export class Streamer {
       await readSse(abortable(res.body, conn.signal), {
         onLine: arm,
         onRetry: (ms) => {
-          this.#backoff.base = ms;
+          this.#backoff.base = Math.max(ms, MIN_RETRY_MS);
         },
         onEvent: (ev) => this.#onEvent(ev),
       });

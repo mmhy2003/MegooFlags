@@ -64,6 +64,15 @@ export class HttpError extends Error {
   }
 }
 
+/** TimeoutError reports a request the server did not answer in time. */
+export class TimeoutError extends Error {
+  override readonly name = "TimeoutError";
+
+  constructor(what: string, ms: number) {
+    super(`megooflags: ${what} timed out after ${ms / 1000}s`);
+  }
+}
+
 export interface HeaderOptions {
   sdkKey: string;
   accept: "application/json" | "text/event-stream";

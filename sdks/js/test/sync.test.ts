@@ -511,6 +511,46 @@ describe("Sync.setContext", () => {
     expect(t.store.get()?.results.has("late")).toBe(false);
   });
 
+  it("clears the store and the cache entry on a key change offline", async () => {
+    const storage = new MemoryStorage();
+    await saveCacheFor(storage, USER1, [result()], '"e1"');
+    const t = setup({ offline: true }, { storage });
+    await t.sync.start(USER1);
+    expect(t.read().value).toBe(true);
+
+    await t.sync.setContext({ targetingKey: "user-2" });
+    await flush();
+
+    expect(t.read().errorCode).toBe("PROVIDER_NOT_READY");
+    expect(t.storage.items.has(t.cache.key)).toBe(false);
+    expect(t.sync.body).toEqual({ key: "user-2" });
+  });
+
+  it("clears the store and the cache entry on a key change after a fatal stop", async () => {
+    const t = await started();
+    t.sync.streamerHooks.onFatal(401);
+
+    await expect(
+      t.sync.setContext({ targetingKey: "user-2" }),
+    ).rejects.toBeInstanceOf(FatalError);
+    await flush();
+
+    expect(t.read().errorCode).toBe("PROVIDER_NOT_READY");
+    expect(t.storage.items.has(t.cache.key)).toBe(false);
+    expect(t.evaluator.calls).toHaveLength(1);
+  });
+
+  it("keeps the values on an attribute change after a fatal stop", async () => {
+    const t = await started();
+    t.sync.streamerHooks.onFatal(401);
+
+    await expect(
+      t.sync.setContext({ targetingKey: "user-1", plan: "pro" }),
+    ).rejects.toBeInstanceOf(FatalError);
+
+    expect(t.read().value).toBe(true);
+  });
+
   it("rejects when the evaluate for the new context fails, and keeps retrying", async () => {
     const t = await started();
 
@@ -591,6 +631,21 @@ describe("Sync stream fallback", () => {
 
     expect(t.streamer.resumes).toBe(1);
     expect(t.evaluator.calls).toHaveLength(2);
+  });
+
+  it("resume before the first evaluate settles waits for it to start the stream", async () => {
+    const t = setup({ bootstrap: { results: [result()] } });
+    await t.sync.start(USER1);
+
+    t.sync.pause();
+    t.sync.resume();
+    await flush();
+    expect(t.streamer.starts).toBe(0);
+
+    t.evaluator.last().answer(ok([result()]));
+    await flush();
+
+    expect(t.streamer.starts).toBe(1);
   });
 
   it("stop ends the stream, the poller and the retries", async () => {

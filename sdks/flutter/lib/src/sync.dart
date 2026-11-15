@@ -220,24 +220,22 @@ class Sync {
   /// setContext switches to [ctx]. A new targeting key clears the store and
   /// the cache entry at once; other changes keep serving the old values
   /// until the new ones arrive. It completes or fails as refresh() does for
-  /// the new context. Offline it only records the context.
+  /// the new context. Offline or stopped it fetches nothing, but a new
+  /// targeting key still clears the store and the cache entry.
   Future<void> setContext(EvaluationContext ctx) {
     final body = toRequestContext(ctx);
-    if (_evaluator == null || _halted != null) {
-      _setBody(body);
-      return refresh();
-    }
     final keyChanged = targetingKeyOf(body) != targetingKeyOf(_body);
-    _gen++;
     _setBody(body);
-    // The evaluate in flight cannot be aborted; its answer is dropped and
-    // it no longer holds the slot, so the new context runs at once.
-    _inFlight = false;
-    _queued = false;
     if (keyChanged) {
       _store.current = null;
       _cacheOp(_cache.remove);
     }
+    if (_evaluator == null || _halted != null) return refresh();
+    _gen++;
+    // The evaluate in flight cannot be aborted; its answer is dropped and
+    // it no longer holds the slot, so the new context runs at once.
+    _inFlight = false;
+    _queued = false;
     return refresh();
   }
 

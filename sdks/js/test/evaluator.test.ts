@@ -131,4 +131,19 @@ describe("Evaluator", () => {
 
     expect((err as Error).name).toBe("AbortError");
   });
+
+  it("gives up with a TimeoutError when the server does not answer in time", async () => {
+    server.reply(EVALUATE, evaluated([RESULT], { delayMs: 5000 }));
+    const slow = new Evaluator({
+      baseUrl: server.url,
+      sdkKey: KEY,
+      fetch,
+      timeoutMs: 50,
+    });
+
+    const err = await slow.evaluate({}, null).catch((e: unknown) => e);
+
+    expect((err as Error).name).toBe("TimeoutError");
+    expect((err as Error).message).toMatch(/^megooflags: /);
+  });
 });

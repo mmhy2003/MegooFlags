@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -194,6 +195,27 @@ void main() {
       expect(message, isNot(contains(key)));
     });
   }
+
+  test('gives up with a TimeoutException when the server does not answer '
+      'in time', () async {
+    final answer = Completer<void>();
+    server.handle(evaluatePath, (req) async {
+      await answer.future;
+      await req.response.close();
+    });
+    final slow = Evaluator(
+      client,
+      baseUrl: server.url,
+      sdkKey: key,
+      timeout: const Duration(milliseconds: 50),
+    );
+
+    final err = await failure(slow.evaluate({}, null));
+    answer.complete();
+
+    expect(err, isA<TimeoutException>());
+    expect((err as TimeoutException).message, startsWith('megooflags: '));
+  });
 
   test('passes a network failure through', () async {
     await server.stop();

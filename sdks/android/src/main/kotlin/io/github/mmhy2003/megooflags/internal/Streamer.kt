@@ -18,6 +18,9 @@ import java.io.IOException
 /** A connection that lasted this long, in milliseconds, resets the backoff. */
 private const val STABLE_AFTER_MS = 60_000L
 
+/** The shortest reconnect wait a server retry: field may set. */
+private const val MIN_RETRY_MS = 1_000L
+
 /** The size of one read of the stream body. */
 private const val CHUNK_BYTES = 8 * 1024
 
@@ -181,7 +184,7 @@ internal class Streamer(
             val parser =
                 SseParser(
                     onLine = {},
-                    onRetry = { backoff.base = it.toLong() },
+                    onRetry = { backoff.base = maxOf(it.toLong(), MIN_RETRY_MS) },
                     onEvent = { event ->
                         when (event.name) {
                             "changed" -> {

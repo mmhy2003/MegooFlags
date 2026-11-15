@@ -544,6 +544,48 @@ class SyncTest {
         }
 
     @Test
+    fun clearsTheStoreAndTheCacheEntryOnAKeyChangeOffline() =
+        syncTest({ offline() }) {
+            saveCacheFor(USER1, "\"e1\"", result())
+            val start = begin { sync.start(USER1) }
+            assertNull(start.error())
+            assertEquals(true, read().value)
+
+            val change = begin { sync.setContext(ImmutableContext("user-2")) }
+
+            assertNull(change.error())
+            assertEquals(ErrorCode.PROVIDER_NOT_READY, read().errorCode)
+            assertFalse(cache.file!!.exists())
+            assertEquals(mapOf("key" to "user-2"), sync.body)
+        }
+
+    @Test
+    fun clearsTheStoreAndTheCacheEntryOnAKeyChangeAfterAFatalStop() =
+        syncTest(withBootstrap(result())) {
+            started()
+            hooks.onFatal(SdkException.Revoked())
+
+            val change = begin { sync.setContext(ImmutableContext("user-2")) }
+
+            assertTrue(change.error() is SdkException.Revoked)
+            assertEquals(ErrorCode.PROVIDER_NOT_READY, read().errorCode)
+            assertFalse(cache.file!!.exists())
+            assertEquals(1, evaluator.calls.size)
+        }
+
+    @Test
+    fun keepsTheValuesOnAnAttributeChangeAfterAFatalStop() =
+        syncTest(withBootstrap(result())) {
+            started()
+            hooks.onFatal(SdkException.Revoked())
+
+            val change = begin { sync.setContext(ImmutableContext("user-1", mapOf("plan" to Value.String("pro")))) }
+
+            assertTrue(change.error() is SdkException.Revoked)
+            assertEquals(true, read().value)
+        }
+
+    @Test
     fun keepsServingTheOldValuesWhenOnlyAttributesChange() =
         syncTest(withBootstrap(result())) {
             started()

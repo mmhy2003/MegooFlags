@@ -86,8 +86,11 @@ internal class Sync(
     /** Incremented by every context change; older answers are dropped. */
     private val generation = AtomicLong()
 
-    // Everything below is guarded by lock.
+    /** Written under lock; read without it by [body], so flag reads never wait on cache I/O. */
+    @Volatile
     private var currentBody: Map<String, Any?> = emptyMap()
+
+    // Everything below is guarded by lock.
     private var hash = contextHash(emptyMap())
 
     /** The number of evaluate runs started. */
@@ -110,7 +113,7 @@ internal class Sync(
     private var pollerWasRunning = false
 
     /** body is the request context of the current evaluation context. */
-    val body: Map<String, Any?> get() = synchronized(lock) { currentBody }
+    val body: Map<String, Any?> get() = currentBody
 
     /**
      * start serves bootstrap values, then a cache entry for [context]. With values it returns at once and refreshes
@@ -179,23 +182,23 @@ internal class Sync(
     /**
      * setContext switches to [context]. A new targeting key clears the store and the cache entry at once; other
      * changes keep serving the old values until the new ones arrive. It returns when the new context's values are
-     * stored and throws when that evaluate fails, while retries continue. Offline it only records the context.
+     * stored and throws when that evaluate fails, while retries continue. Offline or stopped it fetches nothing,
+     * but a new targeting key still clears the store and the cache entry.
      */
     suspend fun setContext(context: EvaluationContext?) {
         val done =
             synchronized(lock) {
                 val next = toRequestContext(context)
+                if (targetingKeyOf(next) != targetingKeyOf(currentBody)) {
+                    store.set(null)
+                    cache?.remove()
+                }
                 if (evaluator != null && halted == null) {
-                    val keyChanged = targetingKeyOf(next) != targetingKeyOf(currentBody)
                     generation.incrementAndGet()
                     // The answer in flight is for the old context: drop it and evaluate the new one at once.
                     inFlight?.cancel()
                     inFlight = null
                     queued = false
-                    if (keyChanged) {
-                        store.set(null)
-                        cache?.remove()
-                    }
                 }
                 setBody(next)
                 refresh()

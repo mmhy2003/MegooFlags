@@ -507,6 +507,36 @@ final class SyncTests: XCTestCase {
         XCTAssertEqual(transport.held.count, 3)
     }
 
+    func testSetContextClearsTheStoreAndTheCacheEntryOnAKeyChangeOffline() async throws {
+        try make(offline: true)
+        try saveCache(for: user("user-1"), body(result()), etag: #""e1""#)
+        try await sync.start(context: user("user-1"))
+        XCTAssertEqual(read().value, true)
+
+        try await sync.setContext(user("user-2"))
+
+        XCTAssertEqual(read().errorCode, .providerNotReady)
+        XCTAssertFalse(cacheExists)
+    }
+
+    func testSetContextClearsTheStoreAndTheCacheEntryOnAKeyChangeAfterAFatalStop() async throws {
+        try await started()
+        streamer.hooks.onFatal(.revoked)
+        let events = events!
+        await waitUntil("fatal") { events.lines.count == 1 }
+
+        do {
+            try await sync.setContext(user("user-2"))
+            XCTFail("setContext succeeded")
+        } catch {
+            XCTAssertEqual(error as? SDKError, .revoked)
+        }
+
+        XCTAssertEqual(read().errorCode, .providerNotReady)
+        XCTAssertFalse(cacheExists)
+        XCTAssertEqual(transport.held.count, 1)
+    }
+
     func testSetContextFailsWhenTheEvaluateForTheNewContextFailsAndKeepsRetrying() async throws {
         try await started()
         let sync = sync!

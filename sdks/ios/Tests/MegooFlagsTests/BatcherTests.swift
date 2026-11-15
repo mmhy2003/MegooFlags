@@ -53,10 +53,19 @@ final class BatcherTests: XCTestCase {
     }
 
     override func tearDown() async throws {
-        // A close already running may wait out its 5 s deadline.
+        // A close already running may wait out its 5 s deadline, whose sleep
+        // may not be registered yet: advance until the close returns.
         if let b = batcher {
-            let closed = Task { await b.close(timeout: 0) }
-            await clock.advance(5)
+            let finished = Finished()
+            let closed = Task {
+                await b.close(timeout: 0)
+                finished.set()
+            }
+            let clock = clock!
+            await waitUntil("close") {
+                await clock.advance(5)
+                return finished.isSet
+            }
             await closed.value
         }
         batcher = nil

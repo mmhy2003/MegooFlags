@@ -8,6 +8,8 @@ import Foundation
 
 /// A connection that lasted this long, in seconds, resets the backoff.
 private let stableAfter: TimeInterval = 60
+/// The shortest reconnect wait, in seconds, a server retry: field may set.
+private let minRetry: TimeInterval = 1
 
 /// What the streamer reports. The hooks run on the streamer's actor and must
 /// return quickly.
@@ -219,7 +221,7 @@ actor Streamer {
                 for item in parsed.take() {
                     switch item {
                     case .retry(let ms):
-                        backoff.base = Double(ms) / 1000
+                        backoff.base = max(Double(ms) / 1000, minRetry)
                     case .event(let event) where event.name == "changed":
                         if !event.id.isEmpty {
                             lastEventID = event.id

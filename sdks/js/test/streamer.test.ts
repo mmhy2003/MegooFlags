@@ -198,6 +198,17 @@ describe("Streamer", () => {
     expect(opener.calls).toHaveLength(2);
   });
 
+  it("retry: never waits less than 1 s", async () => {
+    streamer.start();
+    await tick();
+    last().body.write("retry: 0\n\n");
+    last().body.end();
+    await advance(999);
+    expect(opener.calls).toHaveLength(1);
+    await advance(1);
+    expect(opener.calls).toHaveLength(2);
+  });
+
   it("reconnects after 45 s without a line", async () => {
     streamer.start();
     await tick();
@@ -307,6 +318,35 @@ describe("Streamer", () => {
     await tick();
     expect(hooks.log[1]?.slice(0, 2)).toEqual(["failure", 1]);
     expect(hooks.log[1]?.[2]).toBeInstanceOf(TypeError);
+  });
+
+  it("an open that gets no response headers in 45 s is a failure", async () => {
+    streamer.stop();
+    const signals: AbortSignal[] = [];
+    streamer = new Streamer({
+      baseUrl: BASE,
+      sdkKey: KEY,
+      open: (...args) => {
+        const signal = args[2];
+        if (signals.push(signal) > 1) return opener.open(...args);
+        // A half-open socket: nothing until the SDK aborts.
+        return new Promise((_, reject) =>
+          signal.addEventListener("abort", () => reject(signal.reason)),
+        );
+      },
+      logger: logs.logger,
+      hooks: hooks.hooks,
+      rand: () => 1,
+    });
+    streamer.start();
+    await advance(44_999);
+    expect(signals[0]?.aborted).toBe(false);
+    await advance(1);
+
+    expect(signals[0]?.aborted).toBe(true);
+    expect(hooks.log[0]?.slice(0, 2)).toEqual(["failure", 1]);
+    await advance(3000);
+    expect(names()).toEqual(["failure", "connected"]);
   });
 
   it("an opener that throws is a failure", async () => {

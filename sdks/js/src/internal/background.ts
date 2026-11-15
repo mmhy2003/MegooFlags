@@ -1,6 +1,7 @@
-// Follows the app to the background and back: flushes the exposures when it
-// is hidden, pauses the stream and the poller 30 s later (at once when the
-// page is going away) and resumes them when it is visible again.
+// Follows the app to the background and back: flushes the exposures (with
+// keepalive) when it is hidden, pauses the stream and the poller 30 s later
+// (at once when the page is going away) and resumes them when it is visible
+// again.
 import type { BackgroundSignal, BackgroundState } from "../platform.js";
 import { timerDelay } from "./backoff.js";
 import type { Batcher } from "./batcher.js";
@@ -47,7 +48,9 @@ export class BackgroundController {
   #on(state: BackgroundState): void {
     switch (state) {
       case "hidden":
-        void this.#batcher?.flush().catch(noop);
+        // keepalive: browsers fire hidden, then pagehide, on unload; the
+        // terminated flush joins this one, so it must outlive the page too.
+        void this.#batcher?.flush({ keepalive: true }).catch(noop);
         if (!this.#paused && this.#timer === undefined) {
           this.#timer = setTimeout(() => {
             this.#timer = undefined;

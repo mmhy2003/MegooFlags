@@ -160,7 +160,11 @@ public final class MegooFlagsProvider: FeatureProvider, @unchecked Sendable {
         oldContext: (any EvaluationContext)?, newContext: any EvaluationContext
     ) -> Future<Void, Never> {
         let body = toRequestContext(newContext)
-        setBody(body)
+        if setBody(body) {
+            // A new targeting key: no read may serve the old user's values,
+            // not even before the sync clears them.
+            store.set(nil)
+        }
         return Future { promise in
             let done = Completion(promise: promise)
             self.tracker.send(.reconciling(nil))
@@ -237,10 +241,15 @@ public final class MegooFlagsProvider: FeatureProvider, @unchecked Sendable {
         return body
     }
 
-    private func setBody(_ b: [String: JSONValue]) {
+    /// setBody keeps b as the current context and returns whether its
+    /// targeting key differs from the previous one.
+    @discardableResult
+    private func setBody(_ b: [String: JSONValue]) -> Bool {
         lock.lock()
         defer { lock.unlock() }
+        let keyChanged = targetingKey(of: b) != targetingKey(of: body)
         body = b
+        return keyChanged
     }
 
     /// stopDelivery stops the exposures and the background signal for a

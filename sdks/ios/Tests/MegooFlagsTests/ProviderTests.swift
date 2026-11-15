@@ -186,6 +186,23 @@ final class ProviderTests: XCTestCase {
         await waitUntil("events") { events.lines == ["ready", "reconciling", "contextChanged"] }
     }
 
+    func testAnotherTargetingKeyStopsServingTheOldValuesAtOnce() async throws {
+        transport.replyData(200, body())
+        let p = try make()
+        await api.setProviderAndWait(provider: p, initialContext: user("user-1"))
+        XCTAssertEqual(try p.getBooleanEvaluation(key: "f", defaultValue: false, context: nil).value, true)
+        transport.holdData = true
+
+        let change = p.onContextSet(oldContext: user("user-1"), newContext: user("user-2"))
+        let pending = try p.getBooleanEvaluation(key: "f", defaultValue: false, context: nil)
+
+        XCTAssertEqual(pending.value, false)
+        XCTAssertEqual(pending.errorCode, .providerNotReady)
+        await transport.heldCount(1)
+        transport.held[0].answer(200, body(value: "false", variant: "off"))
+        await change.value
+    }
+
     func testAFailedContextChangeEmitsError() async throws {
         transport.replyData(200, body())
         transport.replyData(500)

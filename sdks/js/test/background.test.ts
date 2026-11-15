@@ -92,12 +92,13 @@ afterEach(() => {
 });
 
 describe("BackgroundController", () => {
-  it("hidden flushes at once and pauses after 30 s, not before", async () => {
+  it("hidden flushes at once with keepalive and pauses after 30 s, not before", async () => {
     const t = await setup();
 
     t.signal.emit("hidden");
     expect(t.batcher.flush).toHaveBeenCalledTimes(1);
-    expect(t.batcher.flush).toHaveBeenCalledWith();
+    // keepalive: a page that unloads next (hidden, then pagehide) keeps the request.
+    expect(t.batcher.flush).toHaveBeenCalledWith({ keepalive: true });
 
     await vi.advanceTimersByTimeAsync(29_999);
     expect(t.streamer.pauses).toBe(0);

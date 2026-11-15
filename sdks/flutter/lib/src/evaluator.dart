@@ -1,6 +1,7 @@
 // Remote evaluation: posts the request context to /sdk/v1/evaluate and
 // returns the evaluated results, or EvaluateNotModified when the ETag still
 // matches.
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -28,35 +29,53 @@ final class EvaluateNotModified extends EvaluateOutcome {
   final String? etag;
 }
 
+/// The longest one evaluate may take, body included.
+const evaluateTimeout = Duration(seconds: 30);
+
 /// Evaluator sends evaluate requests through [client], which it never
 /// closes.
 class Evaluator {
-  Evaluator(this._client, {required String baseUrl, required String sdkKey})
-    : _url = Uri.parse('$baseUrl/sdk/v1/evaluate'),
-      _sdkKey = sdkKey;
+  Evaluator(
+    this._client, {
+    required String baseUrl,
+    required String sdkKey,
+    Duration timeout = evaluateTimeout,
+  }) : _url = Uri.parse('$baseUrl/sdk/v1/evaluate'),
+       _sdkKey = sdkKey,
+       _timeout = timeout;
 
   final http.Client _client;
   final Uri _url;
   final String _sdkKey;
+  final Duration _timeout;
 
   /// evaluate sends [body] as the context, with If-None-Match when [etag] is
   /// set. It throws the statusError of an unexpected status,
-  /// InvalidResponseException for an unreadable 200 body, and the client's
-  /// exception on a network failure.
+  /// InvalidResponseException for an unreadable 200 body, a TimeoutException
+  /// after 30 s without the whole answer, and the client's exception on a
+  /// network failure.
   Future<EvaluateOutcome> evaluate(
     Map<String, Object?> body,
     String? etag,
   ) async {
-    final res = await _client.post(
-      _url,
-      headers: buildHeaders(
-        sdkKey: _sdkKey,
-        accept: 'application/json',
-        etag: etag,
-        json: true,
-      ),
-      body: jsonEncode({'context': body}),
-    );
+    final res = await _client
+        .post(
+          _url,
+          headers: buildHeaders(
+            sdkKey: _sdkKey,
+            accept: 'application/json',
+            etag: etag,
+            json: true,
+          ),
+          body: jsonEncode({'context': body}),
+        )
+        .timeout(
+          _timeout,
+          onTimeout: () => throw TimeoutException(
+            'megooflags: evaluate timed out after ${_timeout.inSeconds}s',
+            _timeout,
+          ),
+        );
     // The http package lowercases response header names.
     String? header(String name) => res.headers[name.toLowerCase()];
     final err = statusError(res.statusCode, header);

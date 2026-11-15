@@ -220,24 +220,22 @@ actor Sync {
     /// and the cache entry at once; other changes keep serving the old
     /// values until the new ones arrive. It returns when the new context's
     /// values are stored and throws when that evaluate fails, while retries
-    /// continue. Offline it only records the context.
+    /// continue. Offline or stopped it fetches nothing, but a new targeting
+    /// key still clears the store and the cache entry.
     nonisolated func setContext(_ context: (any EvaluationContext)?) async throws {
         try await setContext(body: toRequestContext(context))
     }
 
     func setContext(body: [String: JSONValue]) async throws {
-        if evaluator == nil || halted != nil {
-            setBody(body)
-            try await request()
-            return
-        }
         let keyChanged = targetingKey(of: body) != targetingKey(of: self.body)
-        generation += 1
         setBody(body)
-        inFlight?.cancel()
         if keyChanged {
             store.set(nil)
             cache?.remove()
+        }
+        if evaluator != nil, halted == nil {
+            generation += 1
+            inFlight?.cancel()
         }
         try await request()
     }

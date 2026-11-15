@@ -83,6 +83,8 @@ export class Sync {
   /** start failed without a fatal error: emit ready when values arrive. */
   #readyPending = false;
   #deliveryStarted = false;
+  /** The first evaluate settled: delivery may start. */
+  #firstSettled = false;
   #connected = false;
   #stale = false;
   #paused = false;
@@ -158,7 +160,10 @@ export class Sync {
       return;
     }
     const first = this.refresh();
-    const deliver = () => this.#startDelivery();
+    const deliver = () => {
+      this.#firstSettled = true;
+      this.#startDelivery();
+    };
     first.then(deliver, deliver);
     if (this.#store.get() !== undefined) {
       first.catch(noop);
@@ -203,22 +208,22 @@ export class Sync {
    * setContext switches to context. A new targeting key clears the store
    * and the cache entry at once; other changes keep serving the old values
    * until the new ones arrive. It resolves or rejects as refresh() does for
-   * the new context. Offline it only records the context.
+   * the new context. Offline or stopped it fetches nothing, but a new
+   * targeting key still clears the store and the cache entry.
    */
   setContext(context: EvaluationContext): Promise<void> {
     const body = toRequestContext(context);
-    if (this.#evaluator === null || this.#halted !== null) {
-      this.#setBody(body);
-      return this.refresh();
-    }
     const keyChanged = targetingKeyOf(body) !== targetingKeyOf(this.#body);
-    this.#gen++;
     this.#setBody(body);
-    this.#inFlight?.abort();
     if (keyChanged) {
       this.#store.set(undefined);
       this.#cacheOp(() => this.#cache.remove());
     }
+    if (this.#evaluator === null || this.#halted !== null) {
+      return this.refresh();
+    }
+    this.#gen++;
+    this.#inFlight?.abort();
     return this.refresh();
   }
 
@@ -236,7 +241,8 @@ export class Sync {
     if (this.#halted !== null || !this.#paused) return;
     this.#paused = false;
     if (!this.#deliveryStarted) {
-      this.#startDelivery();
+      // Before the first evaluate settles, its settling starts delivery.
+      if (this.#firstSettled) this.#startDelivery();
       return;
     }
     this.#streamer?.resume();

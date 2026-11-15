@@ -579,6 +579,67 @@ void main() {
       });
     });
 
+    test('clears the store and the cache entry on a key change offline', () {
+      run((async) {
+        final storage = MemoryStore();
+        saveCacheFor(storage, user1, [result()], '"e1"');
+        async.flushMicrotasks();
+        final t = Harness(offline: true, storage: storage);
+        final start = watch(t.sync.start(user1));
+        async.flushMicrotasks();
+        expect(start.done, isTrue);
+        expect(t.read().value, true);
+
+        final change = watch(
+          t.sync.setContext(EvaluationContext(targetingKey: 'user-2')),
+        );
+        async.flushMicrotasks();
+
+        expect(change.done, isTrue);
+        expect(t.read().errorCode, ErrorCode.providerNotReady);
+        expect(t.storage.values.containsKey(t.cache.key), isFalse);
+        expect(t.sync.body, {'key': 'user-2'});
+      });
+    });
+
+    test('clears the store and the cache entry on a key change after a '
+        'fatal stop', () {
+      run((async) {
+        final t = started(async);
+        t.hooks.onFatal(const RevokedException());
+
+        final change = watch(
+          t.sync.setContext(EvaluationContext(targetingKey: 'user-2')),
+        );
+        async.flushMicrotasks();
+
+        expect(change.error, isA<RevokedException>());
+        expect(t.read().errorCode, ErrorCode.providerNotReady);
+        expect(t.storage.values.containsKey(t.cache.key), isFalse);
+        expect(t.evaluator.calls, hasLength(1));
+      });
+    });
+
+    test('keeps the values on an attribute change after a fatal stop', () {
+      run((async) {
+        final t = started(async);
+        t.hooks.onFatal(const RevokedException());
+
+        final change = watch(
+          t.sync.setContext(
+            EvaluationContext(
+              targetingKey: 'user-1',
+              attributes: {'plan': 'pro'},
+            ),
+          ),
+        );
+        async.flushMicrotasks();
+
+        expect(change.error, isA<RevokedException>());
+        expect(t.read().value, true);
+      });
+    });
+
     test('keeps serving the old values when only attributes change', () {
       run((async) {
         final t = started(async);

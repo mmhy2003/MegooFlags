@@ -225,6 +225,19 @@ void main() {
       });
     });
 
+    test('retry: never waits less than 1 s', () {
+      run((async) {
+        streamer.start();
+        async.flushMicrotasks();
+        streams.last.write('retry: 0\n\n');
+        streams.last.end();
+        async.elapse(const Duration(milliseconds: 999));
+        expect(streams.calls, hasLength(1));
+        async.elapse(const Duration(milliseconds: 1));
+        expect(streams.calls, hasLength(2));
+      });
+    });
+
     test('reconnects after 45 s without a line', () {
       run((async) {
         streamer.start();
@@ -357,6 +370,23 @@ void main() {
           lines,
           contains('debug megooflags: stream failed: SocketException'),
         );
+      });
+    });
+
+    test('a send that gets no response headers in 45 s is a failure', () {
+      run((async) {
+        streams.gate = Completer<void>();
+        streamer.start();
+        async.elapse(const Duration(milliseconds: 44999));
+        expect(hooks.log, isEmpty);
+        async.elapse(const Duration(milliseconds: 1));
+
+        expect(hooks.log[0].sublist(0, 2), ['failure', 1]);
+        expect(hooks.log[0][2], isA<TimeoutException>());
+        expect(streams.clients.single.closed, isTrue);
+        streams.gate = null;
+        async.elapse(const Duration(seconds: 3));
+        expect(hooks.names, ['failure', 'connected']);
       });
     });
 
