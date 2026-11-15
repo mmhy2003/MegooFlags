@@ -2,3 +2,7 @@
 /phpunit.xml.dist export-ignore
 /phpstan.neon.dist export-ignore
 /.php-cs-fixer.dist.php export-ignore
+/vendor export-ignore
+/out export-ignore
+/.phpunit.cache export-ignore
+/.php-cs-fixer.cache export-ignore

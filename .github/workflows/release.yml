@@ -418,6 +418,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # No GITHUB_TOKEN header in .git/config: it would override the split token on the push,
+          # and composer install runs third-party code.
+          persist-credentials: false
       - name: Tag matches Version.php
         working-directory: .
         run: python3 scripts/check_sdk_version.py --sdk php --tag "$GITHUB_REF_NAME"
