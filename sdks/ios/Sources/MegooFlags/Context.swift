@@ -31,7 +31,7 @@ private func toJSON(_ v: Value) -> JSONValue {
 }
 
 /// formatDate writes d as UTC RFC 3339 with exactly three fraction digits.
-private func formatDate(_ d: Date) -> String {
+func formatDate(_ d: Date) -> String {
     let f = DateFormatter()
     f.calendar = Calendar(identifier: .gregorian)
     f.locale = Locale(identifier: "en_US_POSIX")

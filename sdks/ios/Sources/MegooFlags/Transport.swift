@@ -148,3 +148,134 @@ private func utc(year: String, month: String, day: String, hour: String, minute:
     let back = cal.dateComponents([.month, .day], from: date)
     return back.month == mon + 1 && back.day == d ? date : nil
 }
+
+/// Stops a stream opened with HTTPTransport.stream.
+protocol CancelHandle: Sendable {
+    func cancel()
+}
+
+/// The HTTP seam: URLSessionTransport in the SDK, a fake in tests.
+protocol HTTPTransport: Sendable {
+    /// data sends request and returns the whole body and the response.
+    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse)
+
+    /// stream sends request and delivers the response, then each body chunk,
+    /// then the end (nil) or the error, once. After cancel, nothing more is
+    /// delivered except, possibly, the end.
+    func stream(
+        for request: URLRequest, onResponse: @escaping @Sendable (HTTPURLResponse) -> Void,
+        onData: @escaping @Sendable (Data) -> Void, onComplete: @escaping @Sendable ((any Error)?) -> Void
+    ) -> any CancelHandle
+}
+
+/// The silence, in seconds, after which a stream counts as dead.
+let streamIdleTimeout: TimeInterval = 45
+
+/// HTTPTransport over URLSession. Streams use their own session: a copy of
+/// the configuration whose request timeout (the longest wait between two
+/// packets) is the dead timer, without the URL cache.
+final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
+    let streamConfiguration: URLSessionConfiguration
+    private let session: URLSession
+    private let streamSession: URLSession
+    private let streams = StreamDelegate()
+
+    init(configuration: URLSessionConfiguration) {
+        session = URLSession(configuration: configuration)
+        // copy() of a URLSessionConfiguration is a URLSessionConfiguration.
+        let config = configuration.copy() as! URLSessionConfiguration
+        config.timeoutIntervalForRequest = streamIdleTimeout
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        streamConfiguration = config
+        streamSession = URLSession(configuration: config, delegate: streams, delegateQueue: nil)
+    }
+
+    deinit {
+        session.finishTasksAndInvalidate()
+        streamSession.invalidateAndCancel()
+    }
+
+    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw SDKError.invalidResponse("not an HTTP response")
+        }
+        return (data, http)
+    }
+
+    func stream(
+        for request: URLRequest, onResponse: @escaping @Sendable (HTTPURLResponse) -> Void,
+        onData: @escaping @Sendable (Data) -> Void, onComplete: @escaping @Sendable ((any Error)?) -> Void
+    ) -> any CancelHandle {
+        let task = streamSession.dataTask(with: request)
+        streams.add(task, StreamDelegate.Handlers(onResponse: onResponse, onData: onData, onComplete: onComplete))
+        task.resume()
+        return TaskHandle(task: task)
+    }
+}
+
+private struct TaskHandle: CancelHandle, @unchecked Sendable {
+    let task: URLSessionDataTask
+
+    func cancel() {
+        task.cancel()
+    }
+}
+
+/// Forwards each stream task's delegate calls to its handlers. The response
+/// is delivered once, before the first chunk or at the end (the server
+/// writes a retry field at once), so the response delegate method, whose
+/// signature differs between SDKs, is not needed: URLSession allows the
+/// response without it.
+private final class StreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    struct Handlers {
+        let onResponse: @Sendable (HTTPURLResponse) -> Void
+        let onData: @Sendable (Data) -> Void
+        let onComplete: @Sendable ((any Error)?) -> Void
+    }
+
+    private struct Entry {
+        let handlers: Handlers
+        var responded = false
+    }
+
+    private let lock = NSLock()
+    private var entries: [Int: Entry] = [:]
+
+    func add(_ task: URLSessionTask, _ h: Handlers) {
+        lock.lock()
+        defer { lock.unlock() }
+        entries[task.taskIdentifier] = Entry(handlers: h)
+    }
+
+    /// next returns task's handlers and, the first time it is available,
+    /// its response; ending removes the task.
+    private func next(_ task: URLSessionTask, ending: Bool) -> (Handlers, HTTPURLResponse?)? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard var entry = entries[task.taskIdentifier] else { return nil }
+        var response: HTTPURLResponse?
+        if !entry.responded, let http = task.response as? HTTPURLResponse {
+            response = http
+            entry.responded = true
+        }
+        entries[task.taskIdentifier] = ending ? nil : entry
+        return (entry.handlers, response)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard let (h, response) = next(dataTask, ending: false) else { return }
+        if let response {
+            h.onResponse(response)
+        }
+        h.onData(data)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
+        guard let (h, response) = next(task, ending: true) else { return }
+        if let response {
+            h.onResponse(response)
+        }
+        h.onComplete(error)
+    }
+}
