@@ -171,6 +171,17 @@ final class CacheFiles
     }
 
     /**
+     * saveCompiledFromJson writes the compiled file of a ruleset read from
+     * the JSON cache (source network), leaving the JSON cache as it is.
+     *
+     * @param Ruleset $compiled
+     */
+    public function saveCompiledFromJson(string $etag, array $compiled): void
+    {
+        $this->writeCompiled($etag, self::SOURCE_NETWORK, $compiled);
+    }
+
+    /**
      * writeAtomic writes $content to a temp file next to $path (mode 0600)
      * and renames it over $path, creating the directory (mode 0700). It
      * leaves no temp file behind and throws RuntimeException on failure.

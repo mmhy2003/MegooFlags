@@ -116,6 +116,19 @@ final class CacheFilesTest extends TestCase
         self::assertSame(['etag' => '', 'source' => 'bootstrap', 'ruleset' => $compiled], $this->files()->loadCompiled());
     }
 
+    public function testCompiledSaveFromTheJsonCacheKeepsTheJsonFile(): void
+    {
+        $compiled = Compiler::compileJson(self::rawRuleset());
+        $this->files()->saveNetwork(self::rawRuleset(), '"v1"', $compiled);
+        $json = (string) file_get_contents($this->files()->jsonPath());
+        unlink($this->files()->compiledPath());
+
+        $this->files()->saveCompiledFromJson('"v1"', $compiled);
+
+        self::assertSame($json, file_get_contents($this->files()->jsonPath()));
+        self::assertSame(['etag' => '"v1"', 'source' => 'network', 'ruleset' => $compiled], $this->files()->loadCompiled());
+    }
+
     public function testMissingFilesReturnNull(): void
     {
         self::assertNull($this->files()->loadJson());
