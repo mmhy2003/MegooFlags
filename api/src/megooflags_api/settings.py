@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # Off in tests that drive `scheduler.tick()` by hand.
     scheduler_enabled: bool = True
     scheduler_interval_seconds: float = Field(5, gt=0)
+    # Integrations may only reach public addresses over https unless this is set.
+    webhook_allow_private: bool = False
+    webhook_timeout_seconds: float = Field(10, gt=0, le=60)
+    webhook_retention_days: int = Field(7, ge=1)
 
     @field_validator("public_url", "secret_key", mode="before")
     @classmethod

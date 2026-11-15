@@ -130,3 +130,9 @@ class UserTheme(StrEnum):
     LIGHT = "light"
     DARK = "dark"
     SYSTEM = "system"
+
+
+class IntegrationKind(StrEnum):
+    WEBHOOK = "webhook"
+    SLACK = "slack"
+    TEAMS = "teams"
