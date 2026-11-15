@@ -272,9 +272,10 @@ public sealed class SyncTests : IAsyncLifetime
         t.PollInterval = TimeSpan.FromMilliseconds(500);
         New(tuning: t).Start();
         var conn = await _server.NextStreamAsync(Await.Timeout);
-        await Await.UntilAsync(() => _server.ReceivedFor(RulesetPath).Count == 1);
+        // At least, not exactly: on a slow run the next poll can land between two checks of the count.
+        await Await.UntilAsync(() => _server.ReceivedFor(RulesetPath).Count >= 1);
         conn.End();
-        await Await.UntilAsync(() => _server.ReceivedFor(RulesetPath).Count == 2);
+        await Await.UntilAsync(() => _server.ReceivedFor(RulesetPath).Count >= 2);
         var at = _server.ReceivedFor(RulesetPath).Select(r => r.At).ToList();
         Assert.True(at[1] - at[0] >= TimeSpan.FromMilliseconds(480), "polls " + (at[1] - at[0]) + " apart");
     }
@@ -287,7 +288,8 @@ public sealed class SyncTests : IAsyncLifetime
             FakeServer.Reply.Of(429, new Dictionary<string, string> { ["Retry-After"] = "1" }, ""),
             FakeServer.Reply.Status(304));
         New(disableStream: true).Start();
-        await Await.UntilAsync(() => _server.ReceivedFor(RulesetPath).Count == 2);
+        // At least, not exactly: the polls after the 429 are 20 ms apart and can land between two checks.
+        await Await.UntilAsync(() => _server.ReceivedFor(RulesetPath).Count >= 2);
         var at = _server.ReceivedFor(RulesetPath).Select(r => r.At).ToList();
         Assert.True(at[1] - at[0] >= TimeSpan.FromMilliseconds(900), "polled again after " + (at[1] - at[0]));
     }

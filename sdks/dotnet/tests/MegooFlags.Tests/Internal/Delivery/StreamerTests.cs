@@ -24,6 +24,10 @@ public sealed class StreamerTests : IDisposable
     private readonly Recorder _rec = new();
     private Task<FatalException?>? _run;
 
+    // How soon a stop must end the streamer. Without the cancellation it would wait out the 5 s dead timeout, the
+    // 30 s backoff or the 5 s held reply; the slack is for a busy CI thread pool.
+    private static readonly TimeSpan _prompt = TimeSpan.FromSeconds(2);
+
     public void Dispose()
     {
         _stop.Cancel();
@@ -190,10 +194,12 @@ public sealed class StreamerTests : IDisposable
         Start(deadTimeout: TimeSpan.FromMilliseconds(200));
         await _server.NextStreamAsync(Await.Timeout);
         await _server.NextStreamAsync(Await.Timeout);
+        // The server has the second request before the streamer has read its headers and counted it. The second
+        // connection sends nothing either, so a slow run may already be on its third.
+        await Await.UntilAsync(() => _rec.Connected >= 2 && _rec.Disconnects.Count >= 1);
         var d = _rec.Disconnects[0];
         Assert.IsType<DeadConnectionException>(d.Error);
         Assert.Equal(1, d.Failures);
-        Assert.Equal(2, _rec.Connected);
     }
 
     [Fact]
@@ -298,15 +304,19 @@ public sealed class StreamerTests : IDisposable
             FakeServer.Reply.Stream());
         Start(
             stableAfter: TimeSpan.FromMilliseconds(100),
-            backoff: new Backoff(TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(10), () => 1));
+            backoff: new Backoff(TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(10), () => 1));
         var conn = await _server.NextStreamAsync(Await.Timeout);
+        // The connection is stable from when the streamer reads the headers, which can be well after the server
+        // has the request.
+        await Await.UntilAsync(() => _rec.Connected == 1);
         await Task.Delay(200);
+        var ended = DateTimeOffset.UtcNow;
         conn.End();
         await _server.NextStreamAsync(Await.Timeout);
         Assert.Equal([1, 2, 3, 1], _rec.Disconnects.Select(d => d.Failures));
         var at = Arrivals();
-        // Without the reset the fourth wait would be 400 ms.
-        Assert.True(at[4] - at[3] < TimeSpan.FromMilliseconds(300), "wait after a stable connection " + (at[4] - at[3]));
+        // The reset wait is 100 ms; without the reset it would be 800 ms.
+        Assert.True(at[4] - ended < TimeSpan.FromMilliseconds(600), "reconnected after a stable connection in " + (at[4] - ended));
     }
 
     [Fact]
@@ -318,7 +328,7 @@ public sealed class StreamerTests : IDisposable
         var sw = Stopwatch.StartNew();
         _stop.Cancel();
         Assert.Null(await _run!.WaitAsync(Await.Timeout));
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(1), "stopped after " + sw.Elapsed);
+        Assert.True(sw.Elapsed < _prompt, "stopped after " + sw.Elapsed);
         await conn.AwaitClosedAsync(Await.Timeout);
         Assert.Empty(_rec.Disconnects);
     }
@@ -332,7 +342,7 @@ public sealed class StreamerTests : IDisposable
         var sw = Stopwatch.StartNew();
         _stop.Cancel();
         Assert.Null(await _run!.WaitAsync(Await.Timeout));
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(1), "stopped after " + sw.Elapsed);
+        Assert.True(sw.Elapsed < _prompt, "stopped after " + sw.Elapsed);
     }
 
     [Fact]
@@ -349,7 +359,7 @@ public sealed class StreamerTests : IDisposable
         var sw = Stopwatch.StartNew();
         _stop.Cancel();
         Assert.Null(await _run!.WaitAsync(Await.Timeout));
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(1), "stopped after " + sw.Elapsed);
+        Assert.True(sw.Elapsed < _prompt, "stopped after " + sw.Elapsed);
         release.Set();
         Assert.Empty(_rec.Disconnects);
     }

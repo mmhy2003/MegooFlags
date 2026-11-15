@@ -200,7 +200,9 @@ public sealed class BatcherTests : IDisposable
         var sw = Stopwatch.StartNew();
         var sent = await b.ShutdownAsync(TimeSpan.FromMilliseconds(200));
         Assert.False(sent);
-        Assert.InRange(sw.Elapsed, TimeSpan.FromMilliseconds(150), TimeSpan.FromSeconds(1));
+        // The POST is held until the test ends, so any bound catches a shutdown that waits for it; the slack is for
+        // a busy CI thread pool.
+        Assert.InRange(sw.Elapsed, TimeSpan.FromMilliseconds(150), TimeSpan.FromSeconds(2));
     }
 
     [Fact]

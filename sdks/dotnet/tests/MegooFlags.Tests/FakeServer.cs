@@ -308,13 +308,14 @@ public sealed class FakeServer : IDisposable
             {
                 return;
             }
-            _ = Task.Run(() => Handle(ctx));
+            // Stamped here, not in Handle: the hop to a pool thread would shift it on a busy pool.
+            var at = DateTimeOffset.UtcNow;
+            _ = Task.Run(() => Handle(ctx, at));
         }
     }
 
-    private void Handle(HttpListenerContext ctx)
+    private void Handle(HttpListenerContext ctx, DateTimeOffset at)
     {
-        var at = DateTimeOffset.UtcNow;
         var request = ctx.Request;
         string body;
         using (var reader = new StreamReader(request.InputStream, Encoding.UTF8))
@@ -336,9 +337,21 @@ public sealed class FakeServer : IDisposable
                 reply = queue.Count > 1 ? queue.Dequeue() : queue.Peek();
             }
         }
+        if (reply is Responder)
+        {
+            // A Respond function may block to hold its reply back. On a dedicated thread it does not take a pool
+            // thread the client under test needs to react in time.
+            new Thread(() => AnswerQuietly(received, ctx.Response, reply)) { IsBackground = true }.Start();
+            return;
+        }
+        AnswerQuietly(received, ctx.Response, reply);
+    }
+
+    private void AnswerQuietly(Received received, HttpListenerResponse response, Reply? reply)
+    {
         try
         {
-            Answer(received, ctx.Response, reply);
+            Answer(received, response, reply);
         }
         catch (Exception e) when (e is HttpListenerException or IOException or ObjectDisposedException or InvalidOperationException)
         {
