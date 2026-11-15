@@ -1,0 +1,42 @@
+{
+    "name": "megooflags/megooflags",
+    "description": "MegooFlags server SDK for PHP: an OpenFeature provider that evaluates flags locally.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "keywords": ["feature-flags", "openfeature", "megooflags"],
+    "homepage": "https://github.com/mmhy2003/MegooFlags",
+    "require": {
+        "php": ">=8.3",
+        "ext-curl": "*",
+        "ext-json": "*"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3",
+        "phpstan/phpstan": "^2",
+        "phpunit/phpunit": "^12.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "MegooFlags\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "MegooFlags\\Tests\\": "tests/"
+        }
+    },
+    "bin": ["bin/megooflags-sync"],
+    "config": {
+        "platform": {
+            "php": "8.3.0"
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "test": "phpunit --testsuite unit",
+        "p99": "phpunit --testsuite p99",
+        "e2e": "phpunit --testsuite e2e",
+        "stan": "phpstan analyse",
+        "cs": "php-cs-fixer fix --dry-run --diff"
+    }
+}

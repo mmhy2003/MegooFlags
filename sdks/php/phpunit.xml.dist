@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         cacheDirectory=".phpunit.cache"
+         colors="true"
+         failOnWarning="true"
+         failOnRisky="true"
+         failOnDeprecation="true"
+         failOnNotice="true"
+         displayDetailsOnTestsThatTriggerWarnings="true"
+         displayDetailsOnTestsThatTriggerDeprecations="true"
+         displayDetailsOnTestsThatTriggerNotices="true"
+         displayDetailsOnTestsThatTriggerErrors="true">
+    <testsuites>
+        <testsuite name="unit">
+            <directory>tests</directory>
+            <exclude>tests/Perf</exclude>
+            <exclude>tests/E2E</exclude>
+        </testsuite>
+        <testsuite name="p99">
+            <directory>tests/Perf</directory>
+        </testsuite>
+        <testsuite name="e2e">
+            <directory>tests/E2E</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>src</directory>
+        </include>
+    </source>
+</phpunit>
