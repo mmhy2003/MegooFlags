@@ -15,6 +15,9 @@ TAG_VERSION = r"v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(?:-rc\.[1-9]\d
 POM_NS = "{http://maven.apache.org/POM/4.0.0}"
 RUBY_RE = re.compile(r"""^\s*VERSION\s*=\s*"([^"]*)"\s*$""", re.MULTILINE)
 PHP_RE = re.compile(r"""\bconst\s+VERSION\s*=\s*'([^']*)'\s*;""")
+SWIFT_RE = re.compile(r'\bpublic\s+let\s+megooFlagsVersion\s*=\s*"([^"]*)"')
+GRADLE_RE = re.compile(r"^VERSION_NAME=(\S*)\s*$", re.MULTILINE)
+PUBSPEC_RE = re.compile(r"^version:\s*['\"]?([^'\"\s]+)['\"]?\s*$", re.MULTILINE)
 
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -59,6 +62,12 @@ MANIFESTS: dict[str, tuple[str, Callable[[str], str | None]]] = {
     "dotnet": ("sdks/dotnet/src/MegooFlags/MegooFlags.csproj", from_csproj),
     "ruby": ("sdks/ruby/lib/megooflags/version.rb", from_pattern(RUBY_RE)),
     "php": ("sdks/php/src/Version.php", from_pattern(PHP_RE)),
+    "js": ("sdks/js/package.json", from_package_json),
+    "react": ("sdks/react/package.json", from_package_json),
+    "react-native": ("sdks/react-native/package.json", from_package_json),
+    "ios": ("sdks/ios/Sources/MegooFlags/Version.swift", from_pattern(SWIFT_RE)),
+    "android": ("sdks/android/gradle.properties", from_pattern(GRADLE_RE)),
+    "flutter": ("sdks/flutter/pubspec.yaml", from_pattern(PUBSPEC_RE)),
 }
 
 
@@ -88,7 +97,7 @@ def check(root: Path, sdk: str, tag: str | None = None) -> list[str]:
         errors.append(f"{manifest} has {version}, expected X.Y.Z")
 
     if tag is not None:
-        match = re.fullmatch(rf"sdk-{sdk}/{TAG_VERSION}", tag)
+        match = re.fullmatch(rf"sdk-{re.escape(sdk)}/{TAG_VERSION}", tag)
         if match is None:
             errors.append(
                 f"invalid tag {tag!r}: expected sdk-{sdk}/vX.Y.Z or sdk-{sdk}/vX.Y.Z-rc.N"

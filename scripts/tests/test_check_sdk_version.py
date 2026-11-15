@@ -5,7 +5,20 @@ from pathlib import Path
 import pytest
 from check_sdk_version import main
 
-SDKS = ["node", "python", "java", "dotnet", "ruby", "php"]
+SDKS = [
+    "node",
+    "python",
+    "java",
+    "dotnet",
+    "ruby",
+    "php",
+    "js",
+    "react",
+    "react-native",
+    "ios",
+    "android",
+    "flutter",
+]
 
 MakeSdkRepo = Callable[..., Path]
 
@@ -61,6 +74,29 @@ def make_sdk_repo(tmp_path: Path) -> MakeSdkRepo:
             tmp_path / "sdks/php/src/Version.php",
             "<?php\n\nnamespace MegooFlags;\n\nfinal class Version\n{\n"
             f"    public const VERSION = '{version}';\n}}\n",
+        )
+        for name in ["js", "react", "react-native"]:
+            write(
+                tmp_path / f"sdks/{name}/package.json",
+                json.dumps({"name": f"@megooflags/{name}", "version": version}),
+            )
+        write(
+            tmp_path / "sdks/ios/Sources/MegooFlags/Version.swift",
+            f'/// The SDK version.\npublic let megooFlagsVersion = "{version}"\n',
+        )
+        # The Android SDK level must not be mistaken for the version.
+        write(
+            tmp_path / "sdks/android/gradle.properties",
+            "android.compileSdk=35\n"
+            "GROUP=io.github.mmhy2003\n"
+            "POM_ARTIFACT_ID=megooflags-android\n"
+            f"VERSION_NAME={version}\n",
+        )
+        # The SDK constraint and dependency versions must not be mistaken for the package's own.
+        write(
+            tmp_path / "sdks/flutter/pubspec.yaml",
+            f"name: megooflags\nversion: {version}\n"
+            "environment:\n  sdk: ^3.10.0\ndependencies:\n  http: ^1.4.0\n",
         )
         return tmp_path
 
@@ -131,6 +167,12 @@ def test_tag_with_wrong_form_fails(make_sdk_repo, capsys, tag):
         ("dotnet", "sdks/dotnet/src/MegooFlags/MegooFlags.csproj"),
         ("ruby", "sdks/ruby/lib/megooflags/version.rb"),
         ("php", "sdks/php/src/Version.php"),
+        ("js", "sdks/js/package.json"),
+        ("react", "sdks/react/package.json"),
+        ("react-native", "sdks/react-native/package.json"),
+        ("ios", "sdks/ios/Sources/MegooFlags/Version.swift"),
+        ("android", "sdks/android/gradle.properties"),
+        ("flutter", "sdks/flutter/pubspec.yaml"),
     ],
 )
 def test_missing_manifest_fails(make_sdk_repo, capsys, sdk, manifest):
@@ -151,6 +193,14 @@ def test_missing_manifest_fails(make_sdk_repo, capsys, sdk, manifest):
         ("dotnet", "sdks/dotnet/src/MegooFlags/MegooFlags.csproj", "<Project/>"),
         ("ruby", "sdks/ruby/lib/megooflags/version.rb", "module MegooFlags\nend\n"),
         ("php", "sdks/php/src/Version.php", "<?php\n"),
+        ("js", "sdks/js/package.json", '{"name": "x"}'),
+        ("ios", "sdks/ios/Sources/MegooFlags/Version.swift", 'public let other = "1.0.0"\n'),
+        ("android", "sdks/android/gradle.properties", "GROUP=x\nandroid.compileSdk=35\n"),
+        (
+            "flutter",
+            "sdks/flutter/pubspec.yaml",
+            "name: megooflags\nenvironment:\n  sdk: ^3.10.0\ndependencies:\n  http: ^1.4.0\n",
+        ),
     ],
 )
 def test_manifest_without_version_fails(make_sdk_repo, capsys, sdk, manifest, text):
@@ -174,6 +224,17 @@ def test_unreadable_manifest_fails(make_sdk_repo, capsys, sdk, manifest, text):
     (root / manifest).write_text(text, encoding="utf-8")
     assert run(root, "--sdk", sdk) == 1
     assert capsys.readouterr().err.startswith(f"{manifest} cannot be read: ")
+
+
+@pytest.mark.parametrize(
+    ("sdk", "tag"),
+    [("react-native", "sdk-react/v0.1.0"), ("react", "sdk-react-native/v0.1.0")],
+)
+def test_tag_for_another_react_sdk_fails(make_sdk_repo, capsys, sdk, tag):
+    assert run(make_sdk_repo(), "--sdk", sdk, "--tag", tag) == 1
+    out = capsys.readouterr()
+    assert out.out == ""
+    assert out.err == (f"invalid tag {tag!r}: expected sdk-{sdk}/vX.Y.Z or sdk-{sdk}/vX.Y.Z-rc.N\n")
 
 
 @pytest.mark.parametrize("sdk", SDKS)
