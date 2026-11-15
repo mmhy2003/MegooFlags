@@ -15,7 +15,10 @@ let package = Package(
             name: "MegooFlags",
             dependencies: [.product(name: "OpenFeature", package: "swift-sdk")]
         ),
-        .testTarget(name: "MegooFlagsTests", dependencies: ["MegooFlags"]),
+        .testTarget(
+            name: "MegooFlagsTests",
+            dependencies: ["MegooFlags", .product(name: "OpenFeature", package: "swift-sdk")]
+        ),
         .testTarget(name: "MegooFlagsE2ETests", dependencies: ["MegooFlags"]),
     ]
 )
