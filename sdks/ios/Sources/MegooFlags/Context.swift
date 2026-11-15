@@ -32,12 +32,18 @@ private func toJSON(_ v: Value) -> JSONValue {
 
 /// formatDate writes d as UTC RFC 3339 with exactly three fraction digits.
 func formatDate(_ d: Date) -> String {
+    rfc3339Formatter().string(from: d)
+}
+
+/// rfc3339Formatter is the formatter of formatDate, for callers that keep
+/// one.
+func rfc3339Formatter() -> DateFormatter {
     let f = DateFormatter()
     f.calendar = Calendar(identifier: .gregorian)
     f.locale = Locale(identifier: "en_US_POSIX")
     f.timeZone = TimeZone(identifier: "UTC")
     f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
-    return f.string(from: d)
+    return f
 }
 
 /// contextHash is the lowercase hex SHA-256 of canonicalJSON(body).

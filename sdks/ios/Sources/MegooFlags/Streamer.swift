@@ -247,9 +247,9 @@ extension SDKError {
     }
 }
 
-/// failureReason describes a stream failure for the debug log: an SDK
+/// failureReason describes a request failure for the debug log: an SDK
 /// error's message without the prefix, else the error's domain and code.
-private func failureReason(_ error: any Error) -> String {
+func failureReason(_ error: any Error) -> String {
     let text: String
     switch error {
     case let e as SDKError: text = e.description

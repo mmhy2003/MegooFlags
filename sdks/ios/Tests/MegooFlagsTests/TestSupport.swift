@@ -117,9 +117,154 @@ final class FakeConnection: CancelHandle, @unchecked Sendable {
     }
 }
 
+/// A data request held by FakeTransport until the test answers or fails it;
+/// a cancelled request fails with URLError(.cancelled), as with URLSession.
+final class HeldRequest: @unchecked Sendable {
+    typealias Reply = Result<(Data, HTTPURLResponse), any Error>
+
+    let request: URLRequest
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<(Data, HTTPURLResponse), any Error>?
+    private var reply: Reply?
+    private var done = false
+
+    init(request: URLRequest) {
+        self.request = request
+    }
+
+    /// The If-None-Match header.
+    var etag: String? { request.value(forHTTPHeaderField: "If-None-Match") }
+
+    /// The body as JSON.
+    var body: JSONValue? {
+        request.httpBody.flatMap { try? JSONDecoder().decode(JSONValue.self, from: $0) }
+    }
+
+    /// The body's context member.
+    var context: JSONValue? {
+        guard case .object(let o)? = body else { return nil }
+        return o["context"]
+    }
+
+    func answer(_ status: Int, _ body: String = "", headers: [String: String] = [:]) {
+        complete(.success((Data(body.utf8), httpResponse(request, status, headers))))
+    }
+
+    func fail(_ error: any Error) {
+        complete(.failure(error))
+    }
+
+    func attach(_ c: CheckedContinuation<(Data, HTTPURLResponse), any Error>) {
+        let ready: Reply? = lock.locked {
+            if reply == nil { continuation = c }
+            return reply
+        }
+        if let ready {
+            c.resume(with: ready)
+        }
+    }
+
+    /// complete delivers the first reply only.
+    private func complete(_ r: Reply) {
+        let c: CheckedContinuation<(Data, HTTPURLResponse), any Error>? = lock.locked {
+            guard !done else { return nil }
+            done = true
+            let c = continuation
+            continuation = nil
+            if c == nil {
+                reply = r
+            }
+            return c
+        }
+        c?.resume(with: r)
+    }
+}
+
+/// Simulated time for code with an injected sleep. It starts at
+/// 2026-11-10T09:15:02Z; a sleep waits until the test advances the clock past
+/// its deadline, or until its task is cancelled.
+final class ManualClock: @unchecked Sendable {
+    private struct Sleeper {
+        let id: Int
+        let deadline: Double
+        let continuation: CheckedContinuation<Void, any Error>
+    }
+
+    private let origin = Date(timeIntervalSince1970: 1_794_302_102)
+    private let lock = NSLock()
+    private var elapsed: Double = 0
+    private var sleepers: [Sleeper] = []
+    private var cancelled = Set<Int>()
+    private var nextID = 0
+    private var waits: [Double] = []
+
+    var now: Date { lock.locked { origin + elapsed } }
+    /// Every wait asked for, in order.
+    var sleeps: [Double] { lock.locked { waits } }
+    /// The sleeps still waiting.
+    var pending: Int { lock.locked { sleepers.count } }
+
+    func sleep(_ seconds: Double) async throws {
+        let id = lock.locked {
+            nextID += 1
+            waits.append(seconds)
+            return nextID
+        }
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, any Error>) in
+                let now: Result<Void, any Error>? = lock.locked {
+                    if cancelled.remove(id) != nil { return .failure(CancellationError()) }
+                    if seconds <= 0 { return .success(()) }
+                    sleepers.append(Sleeper(id: id, deadline: elapsed + seconds, continuation: c))
+                    return nil
+                }
+                if let now {
+                    c.resume(with: now)
+                }
+            }
+        } onCancel: {
+            let c: CheckedContinuation<Void, any Error>? = lock.locked {
+                if let i = sleepers.firstIndex(where: { $0.id == id }) {
+                    return sleepers.remove(at: i).continuation
+                }
+                cancelled.insert(id)
+                return nil
+            }
+            c?.resume(throwing: CancellationError())
+        }
+    }
+
+    /// advance moves time forward, waking the sleeps whose deadline passes in
+    /// deadline order and giving each woken task time to run before the next.
+    func advance(_ seconds: Double) async {
+        let target = lock.locked { elapsed + seconds }
+        while true {
+            let due: Sleeper? = lock.locked {
+                guard let i = sleepers.indices.min(by: { sleepers[$0].deadline < sleepers[$1].deadline }),
+                    sleepers[i].deadline <= target + 1e-9
+                else { return nil }
+                let s = sleepers.remove(at: i)
+                elapsed = max(elapsed, s.deadline)
+                return s
+            }
+            guard let due else { break }
+            due.continuation.resume()
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        lock.locked { elapsed = target }
+        await settle()
+    }
+
+    /// sleepers waits until n sleeps are waiting.
+    func sleepers(_ n: Int, file: StaticString = #filePath, line: UInt = #line) async {
+        await waitUntil("\(n) sleeps", file: file, line: line) { self.pending >= n }
+    }
+}
+
 /// A scripted HTTPTransport: data(for:) answers from dataReplies (or
-/// throws), stream(for:...) answers from streamReplies, 200 when empty,
-/// unless autoRespond is false.
+/// throws), or holds each request until the test answers it (holdData);
+/// stream(for:...) answers from streamReplies, 200 when empty, unless
+/// autoRespond is false.
 final class FakeTransport: HTTPTransport, @unchecked Sendable {
     enum DataReply {
         case response(Int, [String: String], String)
@@ -133,13 +278,30 @@ final class FakeTransport: HTTPTransport, @unchecked Sendable {
     private var opened: [FakeConnection] = []
     private var answers = true
     private var cancels = true
+    private var holding = false
+    private var heldRequests: [HeldRequest] = []
+
+    /// When true, data(for:) waits for the test to answer each request.
+    var holdData: Bool {
+        get { lock.locked { holding } }
+        set { lock.locked { holding = newValue } }
+    }
+
+    /// The requests held so far, answered or not, in order.
+    var held: [HeldRequest] { lock.locked { heldRequests } }
+
+    /// heldCount waits until n requests were held.
+    func heldCount(_ n: Int, file: StaticString = #filePath, line: UInt = #line) async {
+        await waitUntil("\(n) requests", file: file, line: line) { self.held.count >= n }
+    }
 
     var autoRespond: Bool {
         get { lock.locked { answers } }
         set { lock.locked { answers = newValue } }
     }
 
-    /// When false, a cancelled connection still delivers what the test sends.
+    /// When false, a cancelled connection or held request still delivers
+    /// what the test sends.
     var honorsCancel: Bool {
         get { lock.locked { cancels } }
         set { lock.locked { cancels = newValue } }
@@ -162,6 +324,22 @@ final class FakeTransport: HTTPTransport, @unchecked Sendable {
     var last: FakeConnection { connections.last! }
 
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let hold: (HeldRequest, Bool)? = lock.locked {
+            guard holding else { return nil }
+            let h = HeldRequest(request: request)
+            dataRequests.append(request)
+            heldRequests.append(h)
+            return (h, cancels)
+        }
+        if case (let h, let cancels)? = hold {
+            return try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { h.attach($0) }
+            } onCancel: {
+                if cancels {
+                    h.fail(URLError(.cancelled))
+                }
+            }
+        }
         let reply = lock.locked {
             dataRequests.append(request)
             return dataReplies.isEmpty ? .response(200, [:], #"{"results":[]}"#) : dataReplies.removeFirst()
