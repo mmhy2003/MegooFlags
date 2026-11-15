@@ -59,61 +59,110 @@ public final class MegooFlagsConfig {
         return a.compareTo(b) <= 0 ? a : b;
     }
 
+    /**
+     * Starts a config.
+     *
+     * @return a new builder with every option unset
+     */
     public static Builder builder() {
         return new Builder();
     }
 
-    /** The SDK key (mf_server_…). */
+    /**
+     * The SDK key (mf_server_…).
+     *
+     * @return the SDK key (mf_server_…)
+     */
     public String sdkKey() {
         return sdkKey;
     }
 
-    /** The base URL without trailing slashes, for example https://flags.example.com. */
+    /**
+     * The base URL without trailing slashes, for example https://flags.example.com.
+     *
+     * @return the base URL without trailing slashes, for example https://flags.example.com
+     */
     public String baseUrl() {
         return baseUrl;
     }
 
-    /** A ruleset JSON file read at construction, or null. */
+    /**
+     * A ruleset JSON file read at construction, or null.
+     *
+     * @return a ruleset JSON file read at construction, or null
+     */
     public Path bootstrapFile() {
         return bootstrapFile;
     }
 
-    /** Where the last-known ruleset is kept, or null for no cache. */
+    /**
+     * Where the last-known ruleset is kept, or null for no cache.
+     *
+     * @return where the last-known ruleset is kept, or null for no cache
+     */
     public Path cacheDir() {
         return cacheDir;
     }
 
-    /** No network: the bootstrap file and the cache only. */
+    /**
+     * No network: the bootstrap file and the cache only.
+     *
+     * @return no network: the bootstrap file and the cache only
+     */
     public boolean offline() {
         return offline;
     }
 
-    /** How long initialisation waits for the first ruleset (5 s). */
+    /**
+     * How long initialisation waits for the first ruleset (5 s).
+     *
+     * @return how long initialisation waits for the first ruleset (5 s)
+     */
     public Duration initTimeout() {
         return initTimeout;
     }
 
-    /** Poll only, without the stream. */
+    /**
+     * Poll only, without the stream.
+     *
+     * @return poll only, without the stream
+     */
     public boolean disableStream() {
         return disableStream;
     }
 
-    /** The time between polls (30 s, at least 15 s). */
+    /**
+     * The time between polls (30 s, at least 15 s).
+     *
+     * @return the time between polls (30 s, at least 15 s)
+     */
     public Duration pollInterval() {
         return pollInterval;
     }
 
-    /** The time between event batches (30 s, from 10 s to 60 s). */
+    /**
+     * The time between event batches (30 s, from 10 s to 60 s).
+     *
+     * @return the time between event batches (30 s, from 10 s to 60 s)
+     */
     public Duration flushInterval() {
         return flushInterval;
     }
 
-    /** Whether exposures carry the evaluation context. */
+    /**
+     * Whether exposures carry the evaluation context.
+     *
+     * @return whether exposures carry the evaluation context
+     */
     public boolean sendContext() {
         return sendContext;
     }
 
-    /** The logger (System.getLogger("io.github.mmhy2003.megooflags")). */
+    /**
+     * The logger (System.getLogger("io.github.mmhy2003.megooflags")).
+     *
+     * @return the logger (System.getLogger("io.github.mmhy2003.megooflags"))
+     */
     public System.Logger logger() {
         return logger;
     }
@@ -122,6 +171,8 @@ public final class MegooFlagsConfig {
      * The client for every request, or null for a default HTTP/1.1 client. It must not set a
      * request timeout: the stream is long-lived. Over plain http, give it HTTP/1.1: the JDK's
      * default h2c upgrade is refused by servers such as uvicorn.
+     *
+     * @return the HTTP client, or null
      */
     public HttpClient httpClient() {
         return httpClient;
@@ -171,66 +222,143 @@ public final class MegooFlagsConfig {
 
         private Builder() {}
 
+        /**
+         * Sets the server SDK key (mf_server_…); required.
+         *
+         * @param key the SDK key
+         * @return this builder
+         */
         public Builder sdkKey(String key) {
             sdkKey = key;
             return this;
         }
 
+        /**
+         * Sets the base URL of the MegooFlags server, for example https://flags.example.com; required unless offline.
+         *
+         * @param url the base URL
+         * @return this builder
+         */
         public Builder baseUrl(String url) {
             baseUrl = url;
             return this;
         }
 
+        /**
+         * Sets a ruleset JSON file read at construction.
+         *
+         * @param file the file, or null for none
+         * @return this builder
+         */
         public Builder bootstrapFile(Path file) {
             bootstrapFile = file;
             return this;
         }
 
+        /**
+         * Sets the directory that keeps the last-known ruleset.
+         *
+         * @param dir the directory, or null for no cache
+         * @return this builder
+         */
         public Builder cacheDir(Path dir) {
             cacheDir = dir;
             return this;
         }
 
+        /**
+         * Sets whether the provider runs without the network (default false).
+         *
+         * @param b true for the bootstrap file and the cache only
+         * @return this builder
+         */
         public Builder offline(boolean b) {
             offline = b;
             return this;
         }
 
+        /**
+         * Sets how long initialisation waits for the first ruleset (default 5 s).
+         *
+         * @param d the timeout
+         * @return this builder
+         */
         public Builder initTimeout(Duration d) {
             initTimeout = d;
             return this;
         }
 
+        /**
+         * Sets whether to poll only, without the stream (default false).
+         *
+         * @param b true to poll only
+         * @return this builder
+         */
         public Builder disableStream(boolean b) {
             disableStream = b;
             return this;
         }
 
+        /**
+         * Sets the time between polls (default 30 s, at least 15 s).
+         *
+         * @param d the interval
+         * @return this builder
+         */
         public Builder pollInterval(Duration d) {
             pollInterval = d;
             return this;
         }
 
+        /**
+         * Sets the time between event batches (default 30 s, from 10 s to 60 s).
+         *
+         * @param d the interval
+         * @return this builder
+         */
         public Builder flushInterval(Duration d) {
             flushInterval = d;
             return this;
         }
 
+        /**
+         * Sets whether exposures carry the evaluation context (default false).
+         *
+         * @param b true to send the context
+         * @return this builder
+         */
         public Builder sendContext(boolean b) {
             sendContext = b;
             return this;
         }
 
+        /**
+         * Sets the logger (default System.getLogger("io.github.mmhy2003.megooflags")).
+         *
+         * @param l the logger, or null for the default
+         * @return this builder
+         */
         public Builder logger(System.Logger l) {
             logger = l;
             return this;
         }
 
+        /**
+         * Sets the client for every request; see {@link MegooFlagsConfig#httpClient()}.
+         *
+         * @param c the client, or null for a default HTTP/1.1 client
+         * @return this builder
+         */
         public Builder httpClient(HttpClient c) {
             httpClient = c;
             return this;
         }
 
+        /**
+         * Builds the config. It is validated by the provider, not here.
+         *
+         * @return the immutable config
+         */
         public MegooFlagsConfig build() {
             return new MegooFlagsConfig(this);
         }

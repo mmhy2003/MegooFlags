@@ -96,6 +96,8 @@ public final class MegooFlagsProvider extends EventProvider {
      * Validates cfg and loads the bootstrap file, then (when that gave no ruleset) the cache. It never
      * touches the network. An invalid config is logged, and every evaluation then returns the
      * default with PROVIDER_FATAL.
+     *
+     * @param cfg the provider's settings
      */
     public MegooFlagsProvider(MegooFlagsConfig cfg) {
         this.cfg = cfg;
