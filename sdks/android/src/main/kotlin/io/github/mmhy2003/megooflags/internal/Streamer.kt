@@ -33,6 +33,17 @@ internal class StreamerHooks(
     val onFailure: (Int, Throwable) -> Unit,
 )
 
+/** The part of Streamer that Sync drives. */
+internal interface StreamControl {
+    fun start()
+
+    fun pause()
+
+    fun resume()
+
+    fun stop()
+}
+
 /** StreamEndedException is a stream the server closed. */
 internal class StreamEndedException : IOException("megooflags: stream ended")
 
@@ -52,7 +63,7 @@ internal class Streamer(
     private val now: () -> Long = System::currentTimeMillis,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val delayFn: suspend (Long) -> Unit = ::delay,
-) {
+) : StreamControl {
     private enum class State { IDLE, RUNNING, PAUSED, DONE }
 
     private val url = sdkUrl(baseUrl, "stream").toString()
@@ -70,13 +81,13 @@ internal class Streamer(
         private set
 
     /** start opens the stream; only the first call does anything. */
-    fun start() =
+    override fun start() =
         synchronized(lock) {
             if (state == State.IDLE) run()
         }
 
     /** pause closes the connection and stops reconnecting until resume. */
-    fun pause() =
+    override fun pause() =
         synchronized(lock) {
             if (state == State.RUNNING) {
                 state = State.PAUSED
@@ -85,13 +96,13 @@ internal class Streamer(
         }
 
     /** resume reconnects at once after pause, with Last-Event-ID. */
-    fun resume() =
+    override fun resume() =
         synchronized(lock) {
             if (state == State.PAUSED) run()
         }
 
     /** stop closes the connection for good. */
-    fun stop() =
+    override fun stop() =
         synchronized(lock) {
             state = State.DONE
             cancel()

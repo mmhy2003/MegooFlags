@@ -17,13 +17,21 @@ internal sealed class EvaluateOutcome {
     ) : EvaluateOutcome()
 }
 
+/** The evaluate call Sync makes; Evaluator is the network one. */
+internal interface Evaluates {
+    suspend fun evaluate(
+        body: Map<String, Any?>,
+        etag: String?,
+    ): EvaluateOutcome
+}
+
 /** Evaluator runs the blocking request of [client] on [io]. */
 internal class Evaluator(
     baseUrl: String,
     private val sdkKey: String,
     private val client: HttpClient,
     private val io: CoroutineDispatcher = Dispatchers.IO,
-) {
+) : Evaluates {
     private val url = sdkUrl(baseUrl, "evaluate").toString()
 
     /**
@@ -31,7 +39,7 @@ internal class Evaluator(
      * unexpected status, SdkException.InvalidResponse for an unreadable 200 body, and the client's IOException on a
      * network failure.
      */
-    suspend fun evaluate(
+    override suspend fun evaluate(
         body: Map<String, Any?>,
         etag: String?,
     ): EvaluateOutcome {
