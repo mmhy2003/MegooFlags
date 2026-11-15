@@ -49,12 +49,18 @@ export class RetryAfterError extends Error {
   }
 }
 
-/** HttpError reports any other unexpected status. */
+/**
+ * HttpError reports any other unexpected status; status 0 is a response the
+ * SDK could not read, described by message.
+ */
 export class HttpError extends Error {
   override readonly name = "HttpError";
 
-  constructor(readonly status: number) {
-    super(`megooflags: HTTP ${status}`);
+  constructor(
+    readonly status: number,
+    message = `megooflags: HTTP ${status}`,
+  ) {
+    super(message);
   }
 }
 
