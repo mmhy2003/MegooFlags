@@ -9,14 +9,17 @@ import XCTest
 
 /// Answers every request with status 200, header X-Test: 1 and the chunks
 /// "one" and "two"; the path /body sends the single chunk "body", and /open
-/// never finishes.
+/// never finishes. The Content-Type matters: without one, Darwin's URLSession
+/// holds back the first bytes to sniff the MIME type, so a short chunk on a
+/// connection that stays open would never be delivered.
 private final class StubProtocol: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         let response = HTTPURLResponse(
-            url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["X-Test": "1"])!
+            url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
+            headerFields: ["X-Test": "1", "Content-Type": "text/event-stream"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         if request.url?.path == "/body" {
             client?.urlProtocol(self, didLoad: Data("body".utf8))

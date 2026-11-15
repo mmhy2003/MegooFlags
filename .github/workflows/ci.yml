@@ -937,7 +937,8 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: ${{ matrix.flutter }}
+          # An empty version gives the latest release on the channel.
+          flutter-version: ${{ matrix.flutter != 'stable' && matrix.flutter || '' }}
           cache: true
       - run: flutter pub get
       - run: dart format --output=none --set-exit-if-changed .
