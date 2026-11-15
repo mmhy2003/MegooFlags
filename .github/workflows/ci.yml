@@ -660,3 +660,37 @@ jobs:
         run: docker compose -p megooflags-sdk-js -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
       - if: always()
         run: docker compose -p megooflags-sdk-js -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
+
+  sdk-react:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        react: ["18", "19"]
+    defaults:
+      run:
+        working-directory: sdks/react
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/react/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: |
+            sdks/js/pnpm-lock.yaml
+            sdks/react/pnpm-lock.yaml
+      - name: Build @megooflags/js
+        run: pnpm --dir ../js install --frozen-lockfile && pnpm --dir ../js build
+      - run: pnpm install --frozen-lockfile
+      - name: Use React 18
+        if: matrix.react == '18'
+        run: pnpm add -D react@^18.3.1 react-dom@^18.3.1 @types/react@^18 @types/react-dom@^18
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack

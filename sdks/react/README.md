@@ -1,0 +1,3 @@
+# MegooFlags React SDK
+
+`@megooflags/react` is the MegooFlags client SDK for React (18 and later). `<MegooFlagsProvider sdkKey baseUrl context options domain>` registers a [`@megooflags/js`](../js) OpenFeature web provider while it is mounted (never during server rendering, where children render with their defaults), calls `OpenFeature.setContext` when the `context` prop changes by value, and closes the provider on unmount; `options` are read when the provider is created, that is on mount and when `sdkKey`, `baseUrl` or `domain` change. Read flags with the re-exported OpenFeature hooks (`useBooleanFlagValue`, `useFlag` and the others) and use `OpenFeatureTestProvider` in your tests. Status: 0.1.0, Alpha. Licensed under the [Apache License 2.0](LICENSE).

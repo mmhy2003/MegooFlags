@@ -1,0 +1,71 @@
+{
+  "name": "@megooflags/react",
+  "version": "0.1.0",
+  "description": "MegooFlags client SDK for React: a component that registers the MegooFlags OpenFeature provider, and the OpenFeature React hooks",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mmhy2003/MegooFlags.git",
+    "directory": "sdks/react"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./platform": {
+      "types": "./dist/platform.d.ts",
+      "default": "./dist/platform.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run test/"
+  },
+  "dependencies": {
+    "@megooflags/js": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@openfeature/react-sdk": "^1.4.1",
+    "@openfeature/web-sdk": "^1.10.0",
+    "react": ">=18"
+  },
+  "packageManager": "pnpm@10.34.9",
+  "pnpm": {
+    "overrides": {
+      "@megooflags/js": "link:../js"
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@openfeature/core": "^1.12.0",
+    "@openfeature/react-sdk": "^1.4.1",
+    "@openfeature/web-sdk": "^1.10.0",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^9.39.5",
+    "jsdom": "^31.0.1",
+    "prettier": "^3.10.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^5.1.0"
+  }
+}
