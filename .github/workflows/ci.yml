@@ -559,3 +559,52 @@ jobs:
         run: docker compose -p megooflags-sdk-ruby -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
       - if: always()
         run: docker compose -p megooflags-sdk-ruby -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
+
+  sdk-php:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.3", "8.4", "8.5"]
+    defaults:
+      run:
+        working-directory: sdks/php
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: curl, json
+          coverage: none
+          tools: composer
+      - run: composer install --no-interaction --no-progress
+      - run: composer validate --strict
+      - if: matrix.php == '8.3'
+        run: composer cs
+      - run: composer stan
+      - run: composer test
+      - name: p99 guard
+        run: composer p99
+      - run: composer archive --format=zip --dir=out
+
+  sdk-php-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-sdk-php
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: curl, json
+          coverage: none
+          tools: composer
+      - name: E2E
+        working-directory: sdks/php
+        run: composer install --no-interaction --no-progress && composer e2e
+      - if: failure()
+        run: docker compose -p megooflags-sdk-php -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: always()
+        run: docker compose -p megooflags-sdk-php -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v

@@ -33,4 +33,4 @@ Each SDK is an [OpenFeature](https://openfeature.dev) provider and must pass the
 | Java | [`sdks/java`](java/README.md) | 0.1.0 (Alpha) | OpenFeature provider | 100 % | `sdk-java`, `sdk-java-e2e` |
 | .NET | [`sdks/dotnet`](dotnet/README.md) | 0.1.0 (Alpha) | OpenFeature provider | 100 % | `sdk-dotnet`, `sdk-dotnet-e2e` |
 | Ruby | [`sdks/ruby`](ruby/README.md) | 0.1.0 (Alpha) | OpenFeature provider | 100 % | `sdk-ruby`, `sdk-ruby-e2e` |
-| PHP | `sdks/php` | planned | | | |
+| PHP | [`sdks/php`](php/README.md) | 0.1.0 (Alpha) | OpenFeature provider | 100 % | `sdk-php`, `sdk-php-e2e` |
