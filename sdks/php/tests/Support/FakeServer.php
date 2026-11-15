@@ -24,11 +24,16 @@ final class FakeServer
     /** @var array<string, list<array<string, mixed>>> */
     private array $scenario = [];
 
-    private function __construct(private readonly string $dir, private readonly int $port)
+    private function __construct(private readonly string $dir, private readonly int $port, int $workers)
     {
         $this->writeScenario();
         $env = getenv();
         $env['MEGOOFLAGS_FAKE_DIR'] = $dir;
+        unset($env['PHP_CLI_SERVER_WORKERS']);
+        if ($workers > 1) {
+            // Concurrent requests, such as a held stream and a poll.
+            $env['PHP_CLI_SERVER_WORKERS'] = (string) $workers;
+        }
         $process = proc_open(
             [PHP_BINARY, '-S', '127.0.0.1:' . $port, __DIR__ . '/router.php'],
             [0 => ['file', '/dev/null', 'r'], 1 => ['file', $dir . '/server.log', 'a'], 2 => ['file', $dir . '/server.log', 'a']],
@@ -42,12 +47,13 @@ final class FakeServer
         $this->process = $process;
     }
 
-    public static function start(): self
+    /** start runs the server; with $workers > 1 it serves that many requests at once. */
+    public static function start(int $workers = 1): self
     {
         $dir = sys_get_temp_dir() . '/megooflags-fake-' . bin2hex(random_bytes(6));
         mkdir($dir, 0o700);
         for ($attempt = 0; $attempt < 5; $attempt++) {
-            $server = new self($dir, self::freePort());
+            $server = new self($dir, self::freePort(), $workers);
             if ($server->waitUntilUp()) {
                 return $server;
             }
