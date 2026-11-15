@@ -199,6 +199,66 @@ docker build -t megooflags-api:ci api && docker build -t megooflags-web:ci web &
 
 If you change a workflow, also run `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest`.
 
+### SDK checks
+
+When you change an SDK, run its group (the `sdk-<lang>` and `sdk-<lang>-e2e` jobs in `ci.yml`). When you
+change `spec/`, run the check of every SDK. From the repository root:
+
+```bash
+# Go (sdks/go)
+(cd sdks/go && gofmt -l . && go vet ./... && go test -race ./...)     # gofmt prints nothing
+(cd sdks/go && go test -run 'TestConformance|TestEvaluateP99' -v ./...)
+(cd sdks/go && go test -tags e2e -count=1 -v ./e2e)
+
+# Node.js (sdks/node)
+(cd sdks/node && pnpm install --frozen-lockfile && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test \
+  && pnpm build)
+(cd sdks/node && pnpm test:p99)
+(cd sdks/node && pnpm e2e)
+
+# Python (sdks/python)
+(cd sdks/python && uv sync --frozen && uv run ruff check . && uv run ruff format --check . && uv run mypy \
+  && uv run pytest && uv build)
+(cd sdks/python && uv run pytest perf -s)
+(cd sdks/python && uv run pytest e2e -v)
+
+# Java (sdks/java); formatting is checked on Java 17 or later, fix it with mvn spotless:apply
+(cd sdks/java && mvn -B -ntp verify)
+(cd sdks/java && mvn -B -ntp test -Pp99)
+(cd sdks/java && mvn -B -ntp test -Pe2e)
+
+# .NET (sdks/dotnet)
+(cd sdks/dotnet && dotnet format --verify-no-changes && dotnet build -c Release \
+  && dotnet test -c Release --no-build --filter "Category!=P99&Category!=E2E" \
+  && dotnet pack src/MegooFlags -c Release --no-build -o out)
+(cd sdks/dotnet && dotnet test -c Release --filter "Category=P99")
+(cd sdks/dotnet && dotnet test -c Release --filter "Category=E2E")
+
+# Ruby (sdks/ruby)
+(cd sdks/ruby && bundle install && bundle exec rubocop && bundle exec rake test && gem build megooflags.gemspec)
+(cd sdks/ruby && bundle exec rake p99)
+(cd sdks/ruby && bundle exec rake e2e)
+
+# PHP (sdks/php)
+(cd sdks/php && composer install && composer validate --strict && composer cs && composer stan && composer test)
+(cd sdks/php && composer p99)
+(cd sdks/php && composer e2e)
+```
+
+The e2e tests are skipped unless `MEGOOFLAGS_E2E_URL` and `MEGOOFLAGS_API_TOKEN` are set (Go needs only
+the URL). Start the compose
+stack for them, in the same shell (the stack does not need the Postgres and Valkey above):
+
+```bash
+docker build -t megooflags-api:ci api && docker build -t megooflags-web:ci web
+export MEGOOFLAGS_SITE_ADDRESS= MEGOOFLAGS_SECRET_KEY=$(openssl rand -hex 32)
+docker compose -p megooflags-sdk-e2e -f deploy/docker-compose.yml -f deploy/compose.ci.yml up -d --wait --wait-timeout 180 caddy
+export MEGOOFLAGS_E2E_URL=http://localhost:8080
+export MEGOOFLAGS_API_TOKEN=$(bash scripts/sdk_e2e_token.sh "$MEGOOFLAGS_E2E_URL")
+# ... run the e2e commands above, then:
+docker compose -p megooflags-sdk-e2e -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
+```
+
 ## 10. Releases
 
 Agents prepare release commits and pull requests. Agents **never**:
@@ -236,3 +296,8 @@ SDKs live in this repository under `sdks/<lang>/`, each with its own version, in
 Their tags are `sdk-<lang>/vX.Y.Z` (for example `sdk-node/v1.2.0`), except Go, which must use
 `sdks/go/vX.Y.Z` because Go modules in a subdirectory are tagged with their path. The rules in section 10
 apply: agents never push SDK tags. See `sdks/README.md` and `spec/README.md`.
+
+The Node.js, Python, Java, .NET, Ruby and PHP SDKs are released with the tags `sdk-node/vX.Y.Z`,
+`sdk-python/vX.Y.Z`, `sdk-java/vX.Y.Z`, `sdk-dotnet/vX.Y.Z`, `sdk-ruby/vX.Y.Z` and `sdk-php/vX.Y.Z`.
+How an SDK release works, the one-time registry setup and the `SDK_PUBLISH_<LANG>` switches are described
+in `sdks/RELEASING.md`.

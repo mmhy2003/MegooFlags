@@ -18,6 +18,9 @@ Go is the exception because Go modules in a repository subdirectory must be tagg
 subdirectory path. Server releases keep the plain `vX.Y.Z` tags. As with server releases, only a
 maintainer pushes SDK tags.
 
+The release steps, the one-time registry setup and the publishing switches are in
+[RELEASING.md](RELEASING.md).
+
 ## Requirements
 
 Each SDK is an [OpenFeature](https://openfeature.dev) provider and must pass the conformance suite in
