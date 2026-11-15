@@ -1,0 +1,22 @@
+[versions]
+agp = "8.13.2"
+kotlin = "2.2.21"
+spotless = "8.11.0"
+vanniktech = "0.37.0"
+openfeature = "0.9.0"
+coroutines = "1.7.3"
+junit = "4.13.2"
+json = "20250517"
+
+[libraries]
+openfeature-kotlin-sdk = { module = "dev.openfeature:kotlin-sdk", version.ref = "openfeature" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+junit = { module = "junit:junit", version.ref = "junit" }
+json = { module = "org.json:json", version.ref = "json" }
+
+[plugins]
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+vanniktech-publish = { id = "com.vanniktech.maven.publish", version.ref = "vanniktech" }
