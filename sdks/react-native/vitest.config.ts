@@ -9,5 +9,14 @@ export default defineConfig({
         new URL("./test/stubs/react-native.ts", import.meta.url),
       ),
     },
+    // The linked @megooflags packages have their own node_modules: one copy
+    // of React and OpenFeature for the whole test.
+    dedupe: [
+      "react",
+      "react-dom",
+      "@openfeature/react-sdk",
+      "@openfeature/web-sdk",
+      "@openfeature/core",
+    ],
   },
 });
