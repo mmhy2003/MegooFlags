@@ -631,3 +631,32 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       - run: pnpm pack
+
+  sdk-js-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-sdk-js
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/js/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: sdks/js/pnpm-lock.yaml
+      - name: E2E
+        working-directory: sdks/js
+        run: pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium && pnpm e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-js-e2e-results
+          path: sdks/js/test-results
+      - if: failure()
+        run: docker compose -p megooflags-sdk-js -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: always()
+        run: docker compose -p megooflags-sdk-js -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
