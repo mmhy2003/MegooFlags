@@ -1,6 +1,8 @@
 // The provider's configuration, its validation and defaults. Messages never contain the SDK key.
 package io.github.mmhy2003.megooflags
 
+import android.app.Application
+import io.github.mmhy2003.megooflags.internal.ActivityLifecycleSource
 import io.github.mmhy2003.megooflags.internal.EvaluateResult
 import io.github.mmhy2003.megooflags.internal.LifecycleSource
 import io.github.mmhy2003.megooflags.internal.parseResults
@@ -49,9 +51,16 @@ public class MegooFlagsConfig private constructor(
         private var sendContext = false
         private var logger: MegooFlagsLogger = LogcatLogger
 
-        /** A client SDK key (mf_client_…); the cache lives in the app's files directory under megooflags. */
+        /**
+         * A client SDK key (mf_client_…); the cache lives in the app's files directory under megooflags, and the
+         * app's activities tell when it is in the background.
+         */
         public constructor(context: android.content.Context, sdkKey: String) :
-            this(sdkKey, File(context.applicationContext.filesDir, "megooflags"), null)
+            this(
+                sdkKey,
+                File(context.applicationContext.filesDir, "megooflags"),
+                (context.applicationContext as? Application)?.let(::ActivityLifecycleSource),
+            )
 
         /** The MegooFlags server, an http or https URL; required unless offline. */
         public fun baseUrl(url: String): Builder = apply { baseUrl = url }

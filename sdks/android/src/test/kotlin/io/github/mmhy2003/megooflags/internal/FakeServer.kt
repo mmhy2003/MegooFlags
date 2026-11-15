@@ -1,4 +1,5 @@
-// A local HTTP/1.1 server for the evaluator and streamer tests: scripted evaluate replies and controllable streams.
+// A local HTTP/1.1 server for the evaluator, streamer and provider tests: scripted evaluate replies, controllable
+// streams and accepted events.
 // It is written on ServerSocket because com.sun.net.httpserver is not on the compile classpath of Android unit
 // tests (they compile against android.jar). One request per connection, answered with Connection: close.
 package io.github.mmhy2003.megooflags.internal
@@ -125,6 +126,13 @@ internal class FakeServer : AutoCloseable {
     /** Every evaluate request, in order. */
     val requests: MutableList<Request> = CopyOnWriteArrayList()
 
+    /** Every events request, in order; each is answered 202. */
+    val events: MutableList<Request> = CopyOnWriteArrayList()
+
+    /** When set, evaluate requests are answered only once it is counted down (or after 10 s). */
+    @Volatile
+    var evaluateGate: CountDownLatch? = null
+
     /** Every stream connection, in order. */
     val connections: MutableList<StreamConn> = CopyOnWriteArrayList()
 
@@ -183,6 +191,7 @@ internal class FakeServer : AutoCloseable {
                 when (request.path) {
                     "/sdk/v1/evaluate" -> {
                         requests.add(request)
+                        evaluateGate?.await(10, TimeUnit.SECONDS)
                         write(out, evaluateReplies.poll() ?: Reply(200, """{"results":[]}"""))
                     }
 
@@ -191,6 +200,11 @@ internal class FakeServer : AutoCloseable {
                         connections.add(conn)
                         val reply = streamReplies.poll()
                         if (reply != null && reply.status != 200) write(out, reply) else conn.serve(out, holdStreams)
+                    }
+
+                    "/sdk/v1/events" -> {
+                        events.add(request)
+                        write(out, Reply(202))
                     }
 
                     else -> {
