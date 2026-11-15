@@ -19,6 +19,12 @@ on:
       - "sdk-ruby/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
       - "sdk-php/v[0-9]+.[0-9]+.[0-9]+"
       - "sdk-php/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-js/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-js/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-react/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-react/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-react-native/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-react-native/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
 
 permissions:
   contents: read
@@ -220,6 +226,8 @@ jobs:
   # "true" and the tag is not a release candidate. For the registries with trusted publishing, a
   # separate sdk-<lang>-publish job holds id-token: write and only downloads the built artifact, so
   # no third-party install or build code runs with it.
+  # The npm client packages must be released in the order js, react, react-native (each depends on
+  # the previous one's published version).
 
   sdk-tag:
     if: startsWith(github.ref_name, 'sdk-')
@@ -537,3 +545,182 @@ jobs:
           git subtree split --prefix=sdks/php -b sdk-php-split
           git push "https://x-access-token:${SDK_PHP_SPLIT_TOKEN}@github.com/${SPLIT_REPO}.git" \
             sdk-php-split:refs/heads/main "sdk-php-split:refs/tags/${version}"
+
+  sdk-js-release:
+    if: startsWith(github.ref_name, 'sdk-js/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/js
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches package.json
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk js --tag "$GITHUB_REF_NAME"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/js/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: sdks/js/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack --pack-destination out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-js
+          path: sdks/js/out/*.tgz
+          if-no-files-found: error
+
+  sdk-js-publish:
+    needs: sdk-js-release
+    if: vars.SDK_PUBLISH_JS == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-js
+          path: out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm
+        # Trusted publishing (OIDC) needs npm 11.5.1 or later; no token.
+        run: |
+          npm install -g npm@^11.5.1
+          npm publish out/*.tgz --access public
+
+  sdk-react-release:
+    if: startsWith(github.ref_name, 'sdk-react/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/react
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches package.json
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk react --tag "$GITHUB_REF_NAME"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/react/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: |
+            sdks/js/pnpm-lock.yaml
+            sdks/react/pnpm-lock.yaml
+      - name: Build @megooflags/js
+        run: pnpm --dir ../js install --frozen-lockfile && pnpm --dir ../js build
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack --pack-destination out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-react
+          path: sdks/react/out/*.tgz
+          if-no-files-found: error
+
+  sdk-react-publish:
+    needs: sdk-react-release
+    if: vars.SDK_PUBLISH_REACT == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-react
+          path: out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm
+        # Trusted publishing (OIDC) needs npm 11.5.1 or later; no token.
+        run: |
+          npm install -g npm@^11.5.1
+          npm publish out/*.tgz --access public
+
+  sdk-react-native-release:
+    if: startsWith(github.ref_name, 'sdk-react-native/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/react-native
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches package.json
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk react-native --tag "$GITHUB_REF_NAME"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/react-native/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: |
+            sdks/js/pnpm-lock.yaml
+            sdks/react/pnpm-lock.yaml
+            sdks/react-native/pnpm-lock.yaml
+      - name: Build @megooflags/js
+        run: pnpm --dir ../js install --frozen-lockfile && pnpm --dir ../js build
+      - name: Build @megooflags/react
+        run: pnpm --dir ../react install --frozen-lockfile && pnpm --dir ../react build
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack --pack-destination out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-react-native
+          path: sdks/react-native/out/*.tgz
+          if-no-files-found: error
+
+  sdk-react-native-publish:
+    needs: sdk-react-native-release
+    if: vars.SDK_PUBLISH_REACT_NATIVE == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-react-native
+          path: out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm
+        # Trusted publishing (OIDC) needs npm 11.5.1 or later; no token.
+        run: |
+          npm install -g npm@^11.5.1
+          npm publish out/*.tgz --access public
