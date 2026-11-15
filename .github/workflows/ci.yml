@@ -608,3 +608,361 @@ jobs:
         run: docker compose -p megooflags-sdk-php -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
       - if: always()
         run: docker compose -p megooflags-sdk-php -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
+
+  sdk-js:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: sdks/js
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/js/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: sdks/js/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack
+
+  sdk-js-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-sdk-js
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/js/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: sdks/js/pnpm-lock.yaml
+      - name: E2E
+        working-directory: sdks/js
+        run: pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium && pnpm e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-js-e2e-results
+          path: sdks/js/test-results
+      - if: failure()
+        run: docker compose -p megooflags-sdk-js -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: always()
+        run: docker compose -p megooflags-sdk-js -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
+
+  sdk-react:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        react: ["18", "19"]
+    defaults:
+      run:
+        working-directory: sdks/react
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/react/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: |
+            sdks/js/pnpm-lock.yaml
+            sdks/react/pnpm-lock.yaml
+      - name: Build @megooflags/js
+        run: pnpm --dir ../js install --frozen-lockfile && pnpm --dir ../js build
+      - run: pnpm install --frozen-lockfile
+      - name: Use React 18
+        if: matrix.react == '18'
+        run: pnpm add -D react@^18.3.1 react-dom@^18.3.1 @types/react@^18 @types/react-dom@^18
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack
+
+  sdk-react-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-sdk-react
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/react/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: |
+            sdks/js/pnpm-lock.yaml
+            sdks/react/pnpm-lock.yaml
+      - name: Build @megooflags/js
+        working-directory: sdks/react
+        run: pnpm --dir ../js install --frozen-lockfile && pnpm --dir ../js build
+      - name: E2E
+        working-directory: sdks/react
+        run: pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium && pnpm e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-react-e2e-results
+          path: sdks/react/test-results
+      - if: failure()
+        run: docker compose -p megooflags-sdk-react -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: always()
+        run: docker compose -p megooflags-sdk-react -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
+
+  sdk-react-native:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: sdks/react-native
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/react-native/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: |
+            sdks/js/pnpm-lock.yaml
+            sdks/react/pnpm-lock.yaml
+            sdks/react-native/pnpm-lock.yaml
+      - name: Build @megooflags/js
+        run: pnpm --dir ../js install --frozen-lockfile && pnpm --dir ../js build
+      - name: Build @megooflags/react
+        run: pnpm --dir ../react install --frozen-lockfile && pnpm --dir ../react build
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack
+
+  sdk-react-native-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-sdk-react-native
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/react-native/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: |
+            sdks/js/pnpm-lock.yaml
+            sdks/react/pnpm-lock.yaml
+            sdks/react-native/pnpm-lock.yaml
+      - name: Build @megooflags/js
+        working-directory: sdks/react-native
+        run: pnpm --dir ../js install --frozen-lockfile && pnpm --dir ../js build
+      - name: Build @megooflags/react
+        working-directory: sdks/react-native
+        run: pnpm --dir ../react install --frozen-lockfile && pnpm --dir ../react build
+      - name: E2E
+        working-directory: sdks/react-native
+        run: pnpm install --frozen-lockfile && pnpm e2e
+      - if: failure()
+        run: docker compose -p megooflags-sdk-react-native -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: always()
+        run: docker compose -p megooflags-sdk-react-native -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
+
+  sdk-ios:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: sdks/ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode 16.4 (Swift 6.1)
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - run: swift --version
+      - uses: actions/cache@v4
+        with:
+          path: sdks/ios/.build
+          key: sdk-ios-${{ runner.os }}-${{ hashFiles('sdks/ios/Package.resolved') }}
+      - run: swift format lint --strict --recursive Sources Tests Package.swift
+      - run: swift build
+      - run: swift test --filter MegooFlagsTests
+      - name: Build for iOS
+        run: xcodebuild -scheme MegooFlags -destination 'generic/platform=iOS' build
+
+  sdk-ios-e2e:
+    # macOS runners have no Docker: Postgres, Valkey and the API run natively, as in web-e2e.
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      MEGOOFLAGS_DATABASE_URL: postgresql+asyncpg://megooflags:megooflags@localhost:5432/megooflags
+      MEGOOFLAGS_VALKEY_URL: redis://localhost:6379/0
+      MEGOOFLAGS_SECRET_KEY: ci-sdk-ios-e2e-secret-key-not-used-elsewhere-0123456789
+      MEGOOFLAGS_PUBLIC_URL: http://localhost:8000
+      MEGOOFLAGS_API_WORKERS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Postgres and Valkey
+        run: |
+          brew install postgresql@16 valkey libxmlsec1 libxml2 pkg-config
+          brew services start postgresql@16
+          brew services start valkey
+          pg="$(brew --prefix postgresql@16)/bin"
+          for _ in $(seq 60); do
+            if "$pg/pg_isready" -h localhost -q; then break; fi
+            sleep 1
+          done
+          "$pg/pg_isready" -h localhost
+          "$pg/psql" -d postgres -c "CREATE ROLE megooflags LOGIN SUPERUSER PASSWORD 'megooflags'"
+          "$pg/createdb" -O megooflags megooflags
+          # libxml2 is keg-only: lxml and xmlsec find it through pkg-config.
+          echo "PKG_CONFIG_PATH=$(brew --prefix libxml2)/lib/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+      - name: API dependencies
+        working-directory: api
+        run: uv sync --frozen
+      - name: Migrate
+        working-directory: api
+        run: uv run alembic upgrade head
+      - name: API
+        working-directory: api
+        run: |
+          # Not `uv run`: a live uv process holds the cache lock and blocks setup-uv's post-job prune.
+          nohup .venv/bin/python -m megooflags_api.serve > /tmp/api.log 2>&1 &
+          for _ in $(seq 60); do
+            if curl -fsS http://localhost:8000/readyz > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "API not ready after 60 s:"
+          cat /tmp/api.log
+          exit 1
+      - name: API token
+        run: |
+          token="$(bash scripts/sdk_e2e_token.sh http://localhost:8000)"
+          echo "::add-mask::$token"
+          echo "MEGOOFLAGS_E2E_URL=http://localhost:8000" >> "$GITHUB_ENV"
+          echo "MEGOOFLAGS_API_TOKEN=$token" >> "$GITHUB_ENV"
+      - name: Xcode 16.4 (Swift 6.1)
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - uses: actions/cache@v4
+        with:
+          path: sdks/ios/.build
+          key: sdk-ios-e2e-${{ runner.os }}-${{ hashFiles('sdks/ios/Package.resolved') }}
+      - name: E2E
+        working-directory: sdks/ios
+        run: swift test --filter MegooFlagsE2ETests
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-ios-e2e
+          path: /tmp/api.log
+
+  sdk-android:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: sdks/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew spotlessCheck lint testDebugUnitTest assembleRelease
+
+  sdk-android-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-sdk-android
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: E2E
+        working-directory: sdks/android
+        run: ./gradlew testDebugUnitTest -Pe2e
+      - if: failure()
+        run: docker compose -p megooflags-sdk-android -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-android-e2e
+          path: sdks/android/build/reports/tests
+      - if: always()
+        run: docker compose -p megooflags-sdk-android -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
+
+  sdk-flutter:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter: ["3.38.x", "stable"]
+    defaults:
+      run:
+        working-directory: sdks/flutter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          # An empty version gives the latest release on the channel.
+          flutter-version: ${{ matrix.flutter != 'stable' && matrix.flutter || '' }}
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed .
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter pub publish --dry-run
+
+  sdk-flutter-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-sdk-flutter
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.38.x
+          cache: true
+      - name: E2E
+        working-directory: sdks/flutter
+        run: flutter pub get && flutter test e2e
+      - if: failure()
+        run: docker compose -p megooflags-sdk-flutter -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: always()
+        run: docker compose -p megooflags-sdk-flutter -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v

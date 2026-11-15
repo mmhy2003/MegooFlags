@@ -19,6 +19,18 @@ on:
       - "sdk-ruby/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
       - "sdk-php/v[0-9]+.[0-9]+.[0-9]+"
       - "sdk-php/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-js/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-js/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-react/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-react/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-react-native/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-react-native/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-ios/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-ios/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-android/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-android/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-flutter/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-flutter/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
 
 permissions:
   contents: read
@@ -220,6 +232,8 @@ jobs:
   # "true" and the tag is not a release candidate. For the registries with trusted publishing, a
   # separate sdk-<lang>-publish job holds id-token: write and only downloads the built artifact, so
   # no third-party install or build code runs with it.
+  # The npm client packages must be released in the order js, react, react-native (each depends on
+  # the previous one's published version).
 
   sdk-tag:
     if: startsWith(github.ref_name, 'sdk-')
@@ -537,3 +551,307 @@ jobs:
           git subtree split --prefix=sdks/php -b sdk-php-split
           git push "https://x-access-token:${SDK_PHP_SPLIT_TOKEN}@github.com/${SPLIT_REPO}.git" \
             sdk-php-split:refs/heads/main "sdk-php-split:refs/tags/${version}"
+
+  sdk-js-release:
+    if: startsWith(github.ref_name, 'sdk-js/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/js
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches package.json
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk js --tag "$GITHUB_REF_NAME"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/js/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: sdks/js/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack --pack-destination out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-js
+          path: sdks/js/out/*.tgz
+          if-no-files-found: error
+
+  sdk-js-publish:
+    needs: sdk-js-release
+    if: vars.SDK_PUBLISH_JS == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-js
+          path: out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm
+        # Trusted publishing (OIDC) needs npm 11.5.1 or later; no token.
+        run: |
+          npm install -g npm@^11.5.1
+          npm publish out/*.tgz --access public
+
+  sdk-react-release:
+    if: startsWith(github.ref_name, 'sdk-react/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/react
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches package.json
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk react --tag "$GITHUB_REF_NAME"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/react/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: |
+            sdks/js/pnpm-lock.yaml
+            sdks/react/pnpm-lock.yaml
+      - name: Build @megooflags/js
+        run: pnpm --dir ../js install --frozen-lockfile && pnpm --dir ../js build
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack --pack-destination out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-react
+          path: sdks/react/out/*.tgz
+          if-no-files-found: error
+
+  sdk-react-publish:
+    needs: sdk-react-release
+    if: vars.SDK_PUBLISH_REACT == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-react
+          path: out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm
+        # Trusted publishing (OIDC) needs npm 11.5.1 or later; no token.
+        run: |
+          npm install -g npm@^11.5.1
+          npm publish out/*.tgz --access public
+
+  sdk-react-native-release:
+    if: startsWith(github.ref_name, 'sdk-react-native/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/react-native
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches package.json
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk react-native --tag "$GITHUB_REF_NAME"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/react-native/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: |
+            sdks/js/pnpm-lock.yaml
+            sdks/react/pnpm-lock.yaml
+            sdks/react-native/pnpm-lock.yaml
+      - name: Build @megooflags/js
+        run: pnpm --dir ../js install --frozen-lockfile && pnpm --dir ../js build
+      - name: Build @megooflags/react
+        run: pnpm --dir ../react install --frozen-lockfile && pnpm --dir ../react build
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack --pack-destination out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-react-native
+          path: sdks/react-native/out/*.tgz
+          if-no-files-found: error
+
+  sdk-react-native-publish:
+    needs: sdk-react-native-release
+    if: vars.SDK_PUBLISH_REACT_NATIVE == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-react-native
+          path: out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm
+        # Trusted publishing (OIDC) needs npm 11.5.1 or later; no token.
+        run: |
+          npm install -g npm@^11.5.1
+          npm publish out/*.tgz --access public
+
+  sdk-ios-release:
+    if: startsWith(github.ref_name, 'sdk-ios/v')
+    needs: sdk-tag
+    runs-on: macos-15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches Version.swift
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk ios --tag "$GITHUB_REF_NAME"
+      - name: Xcode 16.4 (Swift 6.1)
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - run: swift format lint --strict --recursive Sources Tests Package.swift
+      - run: swift build
+      - run: swift test --filter MegooFlagsTests
+
+  sdk-ios-publish:
+    needs: sdk-ios-release
+    if: vars.SDK_PUBLISH_IOS == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # No GITHUB_TOKEN header in .git/config: it would override the split token on the push.
+          persist-credentials: false
+      - name: Publish to the SwiftPM split repository
+        # SwiftPM reads the read-only split repository: sdks/ios as its root, tagged X.Y.Z (no "v").
+        env:
+          SDK_IOS_SPLIT_TOKEN: ${{ secrets.SDK_IOS_SPLIT_TOKEN }}
+          SPLIT_REPO: ${{ vars.SDK_IOS_SPLIT_REPO || 'mmhy2003/megooflags-swift' }}
+        run: |
+          version="${GITHUB_REF_NAME#sdk-ios/v}"
+          git subtree split --prefix=sdks/ios -b sdk-ios-split
+          git push "https://x-access-token:${SDK_IOS_SPLIT_TOKEN}@github.com/${SPLIT_REPO}.git" \
+            sdk-ios-split:refs/heads/main "sdk-ios-split:refs/tags/${version}"
+
+  sdk-android-release:
+    if: startsWith(github.ref_name, 'sdk-android/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/android
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches gradle.properties
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk android --tag "$GITHUB_REF_NAME"
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew spotlessCheck lint testDebugUnitTest assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-android
+          path: sdks/android/build/outputs/aar/*.aar
+          if-no-files-found: error
+      - name: Publish to Maven Central
+        if: vars.SDK_PUBLISH_ANDROID == 'true' && !contains(github.ref_name, '-rc.')
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_PASSPHRASE }}
+        run: ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache
+
+  sdk-flutter-release:
+    if: startsWith(github.ref_name, 'sdk-flutter/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/flutter
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches pubspec.yaml
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk flutter --tag "$GITHUB_REF_NAME"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.38.x
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed .
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter pub publish --dry-run
+
+  sdk-flutter-publish:
+    # pub.dev publishes from the source (it has no artifact upload), so this job runs pub get with the
+    # OIDC token; the only dependencies are openfeature_dart_client_sdk, http and shared_preferences.
+    needs: sdk-flutter-release
+    if: vars.SDK_PUBLISH_FLUTTER == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/flutter
+    steps:
+      - uses: actions/checkout@v4
+      # Configures the pub.dev OIDC credentials (trusted publishing); no token.
+      - uses: dart-lang/setup-dart@v1
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.38.x
+      - name: Publish to pub.dev
+        run: flutter pub get && flutter pub publish --force

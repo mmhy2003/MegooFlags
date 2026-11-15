@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://megooflags.dev/spec/client/client.schema.json",
+  "title": "MegooFlags client SDK case file",
+  "description": "resolution.json or context.json: the shared cases every client SDK runs. See README.md.",
+  "oneOf": [
+    { "$ref": "#/$defs/resolutionFile" },
+    { "$ref": "#/$defs/contextFile" }
+  ],
+  "$defs": {
+    "resolutionFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "kind", "description", "tests"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "resolution" },
+        "description": { "type": "string" },
+        "tests": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/resolutionTest" }
+        }
+      }
+    },
+    "contextFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "kind", "description", "tests"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "context" },
+        "description": { "type": "string" },
+        "tests": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/contextTest" }
+        }
+      }
+    },
+    "resolutionTest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "results", "source", "flag", "type", "default", "expected"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "results": {
+          "description": "The stored evaluate results, or null when there are none at all.",
+          "oneOf": [
+            { "type": "null" },
+            { "type": "array", "items": { "$ref": "#/$defs/storedResult" } }
+          ]
+        },
+        "source": { "enum": ["network", "cache"] },
+        "flag": { "type": "string" },
+        "type": { "enum": ["boolean", "string", "integer", "number", "object"] },
+        "default": true,
+        "expected": { "$ref": "#/$defs/expected" }
+      }
+    },
+    "storedResult": {
+      "description": "One item of a POST /sdk/v1/evaluate response for a client key (no metadata).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "value", "variant", "reason", "error_code", "error_message"],
+      "properties": {
+        "key": { "type": "string" },
+        "value": true,
+        "variant": { "type": ["string", "null"] },
+        "reason": { "type": "string" },
+        "error_code": { "type": ["string", "null"] },
+        "error_message": { "type": ["string", "null"] }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "variant", "reason", "error_code"],
+      "properties": {
+        "value": true,
+        "variant": { "type": ["string", "null"] },
+        "reason": {
+          "enum": [
+            "STATIC",
+            "DEFAULT",
+            "TARGETING_MATCH",
+            "SPLIT",
+            "DISABLED",
+            "PREREQUISITE_FAILED",
+            "CACHED",
+            "ERROR"
+          ]
+        },
+        "error_code": {
+          "enum": [
+            null,
+            "PROVIDER_NOT_READY",
+            "FLAG_NOT_FOUND",
+            "TYPE_MISMATCH",
+            "PARSE_ERROR",
+            "INVALID_CONTEXT",
+            "GENERAL"
+          ]
+        }
+      }
+    },
+    "contextTest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "context", "body", "canonical", "context_hash"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "context": {
+          "description": "An OpenFeature context. targetingKey is the targeting key; {\"$date\": \"<RFC 3339>\"} is a date.",
+          "type": "object",
+          "properties": { "targetingKey": { "type": "string" } }
+        },
+        "body": { "type": "object" },
+        "canonical": { "type": "string" },
+        "context_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}
