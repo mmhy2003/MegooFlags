@@ -186,6 +186,19 @@ async def sdk_key(client: httpx.AsyncClient, app: FastAPI) -> Params:
     return params | {"id": (await create_sdk_key(client, "server"))["id"]}
 
 
+async def private_hooks(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """`project`, in an app that may send to private addresses, so no name is resolved."""
+    app.state.settings.webhook_allow_private = True
+    return await project(client, app)
+
+
+async def integration(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    params = await private_hooks(client, app)
+    r = await client.post("/api/projects/demo/integrations", json=WEBHOOK)
+    assert r.status_code == 201, r.text
+    return params | {"id": r.json()["id"]}
+
+
 async def role(client: httpx.AsyncClient, app: FastAPI) -> Params:
     r = await client.post(
         "/api/roles", json={"key": "flag-ops", "name": "Flag ops", "permissions": ["flag.toggle"]}
@@ -443,6 +456,7 @@ E = f"{P}/environments/{{env}}"
 F = f"{P}/flags/{{flag}}"
 FE = f"{F}/environments/{{env}}"
 S = f"{P}/segments/{{segment}}"
+IN = f"{P}/integrations/{{id}}"
 CONFIG = {"version": 1, "enabled": True, "fallthrough": {"variation": "b"}}
 RUN_AT = (datetime.now(UTC) + timedelta(days=1)).isoformat()
 ROLLOUT = {
@@ -456,6 +470,12 @@ TOGGLE_CHANGE_REQUEST = {
     "kind": "toggle",
     "title": "Turn color on",
     "payload": {"enabled": True},
+}
+WEBHOOK = {
+    "kind": "webhook",
+    "name": "Hook",
+    "url": "https://127.0.0.1/hook",
+    "event_groups": ["flags"],
 }
 PASSWORD = "a much longer passphrase 42"
 PERSONAL_TOKEN = {"name": "laptop", "permissions": ["project.read"]}
@@ -685,6 +705,11 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
             sdk_key,
             {"overlap_seconds": 60},
         ),
+        # Integrations
+        sample("POST", f"{P}/integrations", "integration.create", private_hooks, WEBHOOK),
+        sample("PATCH", IN, "integration.update", integration, {"name": "Deploy hook"}),
+        sample("DELETE", IN, "integration.delete", integration),
+        sample("POST", f"{IN}/rotate-secret", "integration.rotate_secret", integration),
         # Roles and bindings
         sample(
             "POST",

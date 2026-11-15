@@ -17,6 +17,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - API logs are JSON lines on stdout, with one access-log line per request. Set `MEGOOFLAGS_LOG_LEVEL` to change the level.
 
 ### Added
+- Webhooks, Slack and Microsoft Teams notifications per project (Integrations page, `project.manage`), with the settings `MEGOOFLAGS_WEBHOOK_ALLOW_PRIVATE`, `MEGOOFLAGS_WEBHOOK_TIMEOUT_SECONDS` and `MEGOOFLAGS_WEBHOOK_RETENTION_DAYS`.
 - `GET /api/projects/{project}/environments/{env}/ruleset`: API tokens and users with `project.read` on the environment can download the same ruleset (and `ETag`) that `/sdk/v1/ruleset` serves, for SDK bootstrap files.
 - Go server SDK (`github.com/mmhy2003/MegooFlags/sdks/go`, 0.1.0 Alpha): an OpenFeature provider that evaluates flags locally, follows changes over SSE with a polling fallback, works offline from a bootstrap file or its last-known cache, and sends evaluation counts and exposures in the background. Released with `sdks/go/vX.Y.Z` tags.
 - Node.js server SDK (npm `@megooflags/node`, 0.1.0 Alpha, Node.js 22 or later): an OpenFeature provider for `@openfeature/server-sdk` that evaluates flags locally, follows changes over SSE with a polling fallback, works offline from a bootstrap file or its last-known cache, and sends evaluation counts and exposures in the background. Released with `sdk-node/vX.Y.Z` tags.
