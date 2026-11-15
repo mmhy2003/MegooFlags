@@ -341,7 +341,13 @@ async def next_events(lines: AsyncIterator[str], count: int, within: float) -> l
 
 def make_scheduler(app: FastAPI, clock: FakeClock) -> Scheduler:
     """The app's jobs on a scheduler whose ticks the test drives with `clock`."""
-    return Scheduler(app.state.engine, app.state.sessionmaker, app.state.change_bus, clock=clock)
+    return Scheduler(
+        app.state.engine,
+        app.state.sessionmaker,
+        app.state.change_bus,
+        clock=clock,
+        settings=app.state.settings,
+    )
 
 
 async def seed_counts(

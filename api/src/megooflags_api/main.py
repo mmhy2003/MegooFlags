@@ -134,6 +134,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.sessionmaker,
         app.state.change_bus,
         interval=settings.scheduler_interval_seconds,
+        settings=settings,
     )
     install_error_handlers(app)
     app.add_middleware(EventsBodyLimitMiddleware)
