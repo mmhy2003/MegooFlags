@@ -139,6 +139,11 @@ class ContextJsonTest {
     }
 
     @Test
+    fun sha256HexIsTheLowercaseHexDigestOfTheUtf8Text() {
+        assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", sha256Hex("abc"))
+    }
+
+    @Test
     fun targetingKeyIsKeyWhenItIsAString() {
         assertEquals("u1", targetingKeyOf(mapOf("key" to "u1")))
         assertNull(targetingKeyOf(emptyMap()))

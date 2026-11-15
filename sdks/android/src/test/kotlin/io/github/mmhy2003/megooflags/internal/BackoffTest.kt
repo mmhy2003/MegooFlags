@@ -6,7 +6,7 @@ import org.junit.Test
 import kotlin.random.Random
 
 /** A Random whose nextDouble is always [value]. */
-private class FixedRandom(
+internal class FixedRandom(
     private val value: Double,
 ) : Random() {
     override fun nextBits(bitCount: Int): Int = 0

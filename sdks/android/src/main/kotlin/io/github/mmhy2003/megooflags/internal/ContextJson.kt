@@ -41,10 +41,13 @@ private fun toJson(v: Value): Any? =
     }
 
 /** contextHash is the lowercase hex SHA-256 of the UTF-8 canonical JSON of [body]. */
-internal fun contextHash(body: Map<String, Any?>): String =
+internal fun contextHash(body: Map<String, Any?>): String = sha256Hex(writeCanonical(body))
+
+/** sha256Hex is the lowercase hex SHA-256 of the UTF-8 [text]. */
+internal fun sha256Hex(text: String): String =
     MessageDigest
         .getInstance("SHA-256")
-        .digest(writeCanonical(body).toByteArray(Charsets.UTF_8))
+        .digest(text.toByteArray(Charsets.UTF_8))
         .joinToString("") { Integer.toHexString((it.toInt() and 0xff) or 0x100).substring(1) }
 
 /** targetingKeyOf is body.key when it is a string, else null. */
