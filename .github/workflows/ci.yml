@@ -694,3 +694,37 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       - run: pnpm pack
+
+  sdk-react-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-sdk-react
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/react/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: |
+            sdks/js/pnpm-lock.yaml
+            sdks/react/pnpm-lock.yaml
+      - name: Build @megooflags/js
+        working-directory: sdks/react
+        run: pnpm --dir ../js install --frozen-lockfile && pnpm --dir ../js build
+      - name: E2E
+        working-directory: sdks/react
+        run: pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium && pnpm e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-react-e2e-results
+          path: sdks/react/test-results
+      - if: failure()
+        run: docker compose -p megooflags-sdk-react -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: always()
+        run: docker compose -p megooflags-sdk-react -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
