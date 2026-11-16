@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -208,7 +209,10 @@ func flagConfigInFromModel(m flagEnvironmentModel) (client.FlagConfigIn, error) 
 	return in, nil
 }
 
-func rolloutToModel(r *client.Rollout) *rolloutModel {
+// rolloutToModel maps an API rollout to the model. The API puts weights in
+// variation order; prior's order (may be nil) is kept when it has the same
+// weights.
+func rolloutToModel(r *client.Rollout, prior *rolloutModel) *rolloutModel {
 	if r == nil {
 		return nil
 	}
@@ -219,6 +223,69 @@ func rolloutToModel(r *client.Rollout) *rolloutModel {
 	out := &rolloutModel{BucketBy: types.StringValue(bucketBy), Weights: []weightModel{}}
 	for _, w := range r.Weights {
 		out.Weights = append(out.Weights, weightModel{Variation: types.StringValue(w.Variation), Weight: types.Int64Value(int64(w.Weight))})
+	}
+	if prior != nil && sameWeights(prior.Weights, out.Weights) {
+		out.Weights = slices.Clone(prior.Weights)
+	}
+	return out
+}
+
+// sameWeights reports whether a and b give the same variations the same
+// weights, in any order.
+func sameWeights(a, b []weightModel) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	shares := map[string]int64{}
+	for _, w := range a {
+		if w.Variation.IsUnknown() || w.Weight.IsUnknown() {
+			return false
+		}
+		shares[w.Variation.ValueString()] = w.Weight.ValueInt64()
+	}
+	for _, w := range b {
+		if s, ok := shares[w.Variation.ValueString()]; !ok || s != w.Weight.ValueInt64() {
+			return false
+		}
+	}
+	return len(shares) == len(b)
+}
+
+// targetsToModel maps API targets to the model. The API keeps one list per
+// variation, in variation order, with sorted values; prior's targets (may be
+// nil) are kept when they hold the same values for each variation.
+func targetsToModel(ts []client.Target, prior []targetModel) []targetModel {
+	out := []targetModel{}
+	for _, t := range ts {
+		values := t.Values
+		if values == nil {
+			values = []string{}
+		}
+		out = append(out, targetModel{Variation: types.StringValue(t.Variation), Values: values})
+	}
+	if prior != nil && maps.EqualFunc(targetSets(prior), targetSets(out), slices.Equal) {
+		return slices.Clone(prior)
+	}
+	return out
+}
+
+// targetSets is each variation's sorted values; unknown variations count as
+// different from everything.
+func targetSets(ts []targetModel) map[string][]string {
+	out := map[string][]string{}
+	for i, t := range ts {
+		key := t.Variation.ValueString()
+		if t.Variation.IsUnknown() {
+			key = fmt.Sprintf("\x00unknown-%d", i)
+		}
+		out[key] = append(out[key], t.Values...)
+	}
+	for k, v := range out {
+		if len(v) == 0 {
+			delete(out, k)
+		} else {
+			slices.Sort(v)
+		}
 	}
 	return out
 }
@@ -288,7 +355,8 @@ func clausesToModel(cs []client.Clause, prior []clauseModel) []clauseModel {
 }
 
 // flagConfigToModel maps an API config to the model. prior (the plan or
-// state, may be nil) supplies the clause values text to keep.
+// state, may be nil) supplies the clause values text and the order of
+// targets and weights to keep.
 func flagConfigToModel(project, flag string, c *client.FlagConfig, prior *flagEnvironmentModel) flagEnvironmentModel {
 	m := flagEnvironmentModel{
 		Project:     types.StringValue(project),
@@ -299,28 +367,32 @@ func flagConfigToModel(project, flag string, c *client.FlagConfig, prior *flagEn
 		Rules:       []ruleModel{},
 		Fallthrough: &serveModel{
 			Variation: types.StringPointerValue(c.Fallthrough.Variation),
-			Rollout:   rolloutToModel(c.Fallthrough.Rollout),
 		},
 		Prerequisites: []prerequisiteModel{},
 		Version:       types.Int64Value(int64(c.Version)),
 	}
-	for _, t := range c.Targets {
-		values := t.Values
-		if values == nil {
-			values = []string{}
+	var priorTargets []targetModel
+	var priorFallthrough *rolloutModel
+	if prior != nil {
+		priorTargets = prior.Targets
+		if prior.Fallthrough != nil {
+			priorFallthrough = prior.Fallthrough.Rollout
 		}
-		m.Targets = append(m.Targets, targetModel{Variation: types.StringValue(t.Variation), Values: values})
 	}
+	m.Targets = targetsToModel(c.Targets, priorTargets)
+	m.Fallthrough.Rollout = rolloutToModel(c.Fallthrough.Rollout, priorFallthrough)
 	for i, r := range c.Rules {
 		var priorClauses []clauseModel
+		var priorRollout *rolloutModel
 		if prior != nil && i < len(prior.Rules) {
 			priorClauses = prior.Rules[i].Clauses
+			priorRollout = prior.Rules[i].Rollout
 		}
 		m.Rules = append(m.Rules, ruleModel{
 			Description: types.StringValue(r.Description),
 			Clauses:     clausesToModel(r.Clauses, priorClauses),
 			Variation:   types.StringPointerValue(r.Variation),
-			Rollout:     rolloutToModel(r.Rollout),
+			Rollout:     rolloutToModel(r.Rollout, priorRollout),
 		})
 	}
 	for _, p := range c.Prerequisites {

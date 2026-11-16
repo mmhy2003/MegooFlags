@@ -17,7 +17,10 @@ import (
 // use. Configs in an environment that requires approvals answer 409
 // approval_required, and a PUT with an old version 409 version_conflict.
 // It checks the references a config makes, so a config that runs before
-// the flags it needs fails as it would on the server.
+// the flags it needs fails as it would on the server, and refuses to archive
+// a flag that is still a prerequisite. Like the server, it groups targets by
+// variation with sorted values, puts rollout weights in variation order,
+// fills in bucket_by and shows an archived flag's lifecycle as "archived".
 type store struct {
 	t  *testing.T
 	mu gosync.Mutex
@@ -45,6 +48,8 @@ type store struct {
 type storedFlag struct {
 	flag    client.Flag
 	configs map[string]*client.FlagConfig
+	// lifecycle is the stored state, shown again once the flag is restored.
+	lifecycle string
 }
 
 // newStore serves project key, which does not exist yet.
@@ -365,13 +370,27 @@ func (s *store) flag(r *http.Request, parts []string) (any, *apiError) {
 		if err != nil {
 			return nil, err
 		}
-		f.Lifecycle = "active"
+		sf.lifecycle = "active"
 		if in.Permanent {
-			f.Lifecycle = "permanent"
+			sf.lifecycle = "permanent"
+		}
+		if !f.Archived {
+			f.Lifecycle = sf.lifecycle
 		}
 		return f, nil
-	case len(parts) == 2 && (sub == "archive" || sub == "restore") && m == http.MethodPost:
-		f.Archived = sub == "archive"
+	case len(parts) == 2 && sub == "archive" && m == http.MethodPost:
+		if dependents := s.dependents(f.Key); len(dependents) > 0 {
+			return nil, &apiError{409, "in_use", fmt.Sprintf("flag '%s' is a prerequisite of %v", f.Key, dependents)}
+		}
+		if !f.Archived {
+			sf.lifecycle = f.Lifecycle
+		}
+		f.Archived, f.Lifecycle = true, "archived"
+		return f, nil
+	case len(parts) == 2 && sub == "restore" && m == http.MethodPost:
+		if f.Archived {
+			f.Archived, f.Lifecycle = false, sf.lifecycle
+		}
 		return f, nil
 	case sub == "variations":
 		return s.variation(r, f, parts[2:])
@@ -410,7 +429,7 @@ func (s *store) createFlag(r *http.Request) (any, *apiError) {
 		return nil, invalid("off_variation: unknown variation")
 	}
 	f.OffVariation = *in.OffVariation
-	sf := &storedFlag{flag: f, configs: map[string]*client.FlagConfig{}}
+	sf := &storedFlag{flag: f, configs: map[string]*client.FlagConfig{}, lifecycle: f.Lifecycle}
 	for _, e := range s.project.Environments {
 		sf.configs[e.Key] = defaultConfig(e.Key, f.OffVariation)
 	}
@@ -502,13 +521,78 @@ func (s *store) config(r *http.Request, flag, env string) (any, *apiError) {
 		if v := in.Fallthrough.Variation; v != nil && !hasVariation(&sf.flag, *v) {
 			return nil, invalid("fallthrough.variation: unknown variation %s", *v)
 		}
+		rules := make([]client.Rule, len(in.Rules))
+		for i, r := range in.Rules {
+			r.Rollout = normalRollout(&sf.flag, r.Rollout)
+			rules[i] = r
+		}
+		ft := in.Fallthrough
+		ft.Rollout = normalRollout(&sf.flag, ft.Rollout)
 		*cfg = client.FlagConfig{
 			Environment: env, Enabled: in.Enabled, Version: cfg.Version + 1,
-			Targets: in.Targets, Rules: in.Rules, Fallthrough: in.Fallthrough, Prerequisites: in.Prerequisites,
+			Targets: normalTargets(&sf.flag, in.Targets), Rules: rules, Fallthrough: ft,
+			Prerequisites: in.Prerequisites,
 		}
 		return cfg, nil
 	}
 	return nil, notFound()
+}
+
+// dependents lists the flags whose config in some environment has flag as
+// a prerequisite.
+func (s *store) dependents(flag string) []string {
+	var out []string
+	for _, key := range sortedKeys(s.flags) {
+		for _, cfg := range s.flags[key].configs {
+			if slices.ContainsFunc(cfg.Prerequisites, func(p client.Prerequisite) bool { return p.Flag == flag }) {
+				out = append(out, key)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// variationOrder compares variation keys by their position in f.
+func variationOrder(f *client.Flag) func(a, b string) int {
+	return func(a, b string) int {
+		at := slices.IndexFunc(f.Variations, func(v client.Variation) bool { return v.Key == a })
+		bt := slices.IndexFunc(f.Variations, func(v client.Variation) bool { return v.Key == b })
+		return at - bt
+	}
+}
+
+// normalTargets is targets as the server returns them: one list per
+// variation, in variation order, with sorted values.
+func normalTargets(f *client.Flag, targets []client.Target) []client.Target {
+	values := map[string][]string{}
+	for _, t := range targets {
+		values[t.Variation] = append(values[t.Variation], t.Values...)
+	}
+	keys := sortedKeys(values)
+	slices.SortFunc(keys, variationOrder(f))
+	out := []client.Target{}
+	for _, k := range keys {
+		if len(values[k]) > 0 {
+			out = append(out, client.Target{Variation: k, Values: slices.Sorted(slices.Values(values[k]))})
+		}
+	}
+	return out
+}
+
+// normalRollout is r as the server returns it: weights in variation order
+// and bucket_by "key" when it is missing.
+func normalRollout(f *client.Flag, r *client.Rollout) *client.Rollout {
+	if r == nil {
+		return nil
+	}
+	out := client.Rollout{BucketBy: r.BucketBy, Weights: slices.Clone(r.Weights)}
+	if out.BucketBy == "" {
+		out.BucketBy = "key"
+	}
+	order := variationOrder(f)
+	slices.SortStableFunc(out.Weights, func(a, b client.Weight) int { return order(a.Variation, b.Variation) })
+	return &out
 }
 
 func sortedKeys[V any](m map[string]V) []string {

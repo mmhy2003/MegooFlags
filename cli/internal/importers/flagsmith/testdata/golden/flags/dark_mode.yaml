@@ -23,7 +23,7 @@ environments:
       variation: "true"
     prerequisites: []
   prod:
-    enabled: false
+    enabled: true
     targets: []
     rules:
       - description: ""
@@ -43,5 +43,5 @@ environments:
             negate: false
         variation: "true"
     fallthrough:
-      variation: "true"
+      variation: "false"
     prerequisites: []

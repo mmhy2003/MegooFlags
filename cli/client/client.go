@@ -29,8 +29,24 @@ type Client struct {
 	// MaxRetries is how many times a GET is retried on a network error, 429
 	// or 5xx. Other methods are never retried.
 	MaxRetries int
-	// Sleep waits between retries. Tests replace it.
-	Sleep func(time.Duration)
+	// Sleep waits between retries, and returns ctx's error as soon as ctx
+	// is done. Tests replace it.
+	Sleep func(ctx context.Context, d time.Duration) error
+}
+
+// MaxRetryWait caps the wait before a retry, whatever Retry-After says.
+const MaxRetryWait = 30 * time.Second
+
+// sleep waits for d or until ctx is done.
+func sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // Option configures a Client.
@@ -53,7 +69,7 @@ func New(baseURL, token string, opts ...Option) *Client {
 		UserAgent:  DefaultUserAgent,
 		HTTP:       &http.Client{Timeout: 60 * time.Second},
 		MaxRetries: DefaultMaxRetries,
-		Sleep:      time.Sleep,
+		Sleep:      sleep,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -96,13 +112,17 @@ func (c *Client) request(ctx context.Context, method, path string, query url.Val
 			if ctx.Err() != nil || attempt >= retries {
 				return nil, err
 			}
-			c.Sleep(backoff(attempt, ""))
+			if err := c.Sleep(ctx, backoff(attempt, "")); err != nil {
+				return nil, err
+			}
 			continue
 		}
 		if retryable(resp.StatusCode) && attempt < retries {
 			wait := backoff(attempt, resp.Header.Get("Retry-After"))
 			drain(resp)
-			c.Sleep(wait)
+			if err := c.Sleep(ctx, wait); err != nil {
+				return nil, err
+			}
 			continue
 		}
 		return resp, nil
@@ -169,12 +189,12 @@ func retryable(status int) bool {
 }
 
 // backoff honours a Retry-After header in seconds, else waits 0.5 s, 1 s,
-// 2 s and so on.
+// 2 s and so on; never longer than MaxRetryWait.
 func backoff(attempt int, retryAfter string) time.Duration {
 	if s, err := strconv.Atoi(strings.TrimSpace(retryAfter)); err == nil && s >= 0 {
-		return time.Duration(s) * time.Second
+		return min(time.Duration(min(s, int(MaxRetryWait/time.Second)))*time.Second, MaxRetryWait)
 	}
-	return 500 * time.Millisecond << attempt
+	return min(500*time.Millisecond<<min(attempt, 10), MaxRetryWait)
 }
 
 func drain(resp *http.Response) {

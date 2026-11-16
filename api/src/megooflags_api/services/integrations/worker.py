@@ -41,6 +41,7 @@ BATCH = 10
 LEASE_MARGIN = timedelta(seconds=30)
 # Errors that another attempt cannot fix.
 PERMANENT_ERRORS = ("unsafe address", "cannot decrypt")
+PAUSED = "the integration is paused"
 
 
 def sign(secret: str, timestamp: int, body: bytes) -> str:
@@ -123,8 +124,13 @@ class DeliveryWorker:
         await asyncio.gather(*(send(delivery_id) for delivery_id in ids))
         return len(ids)
 
-    async def deliver(self, delivery_id: uuid.UUID) -> IntegrationDelivery:
-        """One attempt now; the delivery afterwards. LookupError when it no longer exists."""
+    async def deliver(
+        self, delivery_id: uuid.UUID, *, even_if_paused: bool = False
+    ) -> IntegrationDelivery:
+        """One attempt now; the delivery afterwards. LookupError when it no longer exists.
+
+        A delivery of a paused integration is not sent: it ends failed, and can be sent again
+        once the integration is resumed. `even_if_paused` is for the test send."""
         if self.secret_box is None:
             raise RuntimeError("MEGOOFLAGS_SECRET_KEY is not set")
         async with self.sessionmaker() as session:
@@ -138,6 +144,12 @@ class DeliveryWorker:
             if found is None:
                 raise LookupError(f"delivery {delivery_id} not found")
             delivery, integration = found
+            if not integration.enabled and not even_if_paused:
+                delivery.status = DeliveryStatus.FAILED
+                delivery.next_attempt_at = None
+                delivery.last_error = PAUSED
+                await session.commit()
+                return delivery
             # End the read transaction: no locks or open transaction during the request.
             await session.commit()
 

@@ -18,7 +18,10 @@ const testToken = "mf_api_secret_token"
 // newTestClient returns a client for srv whose Sleep records the delays.
 func newTestClient(srv *httptest.Server, slept *[]time.Duration) *Client {
 	c := New(srv.URL, testToken)
-	c.Sleep = func(d time.Duration) { *slept = append(*slept, d) }
+	c.Sleep = func(_ context.Context, d time.Duration) error {
+		*slept = append(*slept, d)
+		return nil
+	}
 	return c
 }
 
@@ -223,7 +226,10 @@ func TestGetRetriesNetworkErrors(t *testing.T) {
 	srv.Close()
 	var slept []time.Duration
 	c := New(base, testToken)
-	c.Sleep = func(d time.Duration) { slept = append(slept, d) }
+	c.Sleep = func(_ context.Context, d time.Duration) error {
+		slept = append(slept, d)
+		return nil
+	}
 	err := c.Do(context.Background(), http.MethodGet, "/x", nil, nil, nil)
 	if err == nil {
 		t.Fatal("want a network error")
@@ -343,5 +349,43 @@ func TestListAllFollowsCursor(t *testing.T) {
 	}
 	if query.Get("cursor") != "" || query.Get("limit") != "" {
 		t.Errorf("ListAll must not modify the caller's query: %v", query)
+	}
+}
+
+func TestRetryAfterIsCapped(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			w.Header().Set("Retry-After", "3600")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	var slept []time.Duration
+	if err := newTestClient(srv, &slept).Do(context.Background(), http.MethodGet, "/x", nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(slept) != 1 || slept[0] != MaxRetryWait {
+		t.Errorf("slept = %v, want [%v]", slept, MaxRetryWait)
+	}
+}
+
+func TestCancelStopsTheWaitBeforeARetry(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "20")
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { time.Sleep(50 * time.Millisecond); cancel() }()
+	started := time.Now()
+	err := New(srv.URL, testToken).Do(ctx, http.MethodGet, "/x", nil, nil, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if waited := time.Since(started); waited > 5*time.Second {
+		t.Errorf("waited %v after the cancel", waited)
 	}
 }

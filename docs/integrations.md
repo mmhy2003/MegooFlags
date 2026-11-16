@@ -18,13 +18,16 @@ permission, which the built-in Admin role has.
 Then pick the event groups, and either all environments or the ones you want.
 
 - A webhook's **signing secret** (`mf_whsec_…`) is shown once, right after you create the webhook. Copy it
-  then; **Rotate secret** replaces it.
+  then. To replace it, call `POST /api/projects/{project}/integrations/{id}/rotate-secret`. Rotation is in the API only;
+  the Integrations page has no rotate action.
 - The URL is stored encrypted and never shown again; the list shows a masked hint such as
   `https://hooks.example.com/…ook1`. To change it, enter a new URL when you edit the integration.
 - **Send test** sends a `ping` event now and shows the result.
 - **Deliveries** lists recent deliveries with their request body, the response status and body, and the
   duration. **Send again** queues a failed delivery once more, with the same event `id`.
-- **Pause** stops new deliveries until you resume. An integration whose last delivery failed shows
+- **Pause** stops deliveries until you resume: events are not queued while paused, and deliveries still
+  waiting to be sent or retried end failed with "the integration is paused" (use **Send again** after
+  you resume). **Send test** still sends. An integration whose last delivery failed shows
   **Failing**; it keeps retrying each event (see [Retries](#retries)).
 
 The same actions are in the API under `/api/projects/{project}/integrations` (see `api/openapi.json`):
@@ -256,7 +259,7 @@ Set these on the `api` service (see `deploy/.env.example`):
 | Variable | Default | Meaning |
 |---|---|---|
 | `MEGOOFLAGS_WEBHOOK_ALLOW_PRIVATE` | `false` | Allow `http` and private, loopback and link-local addresses |
-| `MEGOOFLAGS_WEBHOOK_TIMEOUT_SECONDS` | `10` | How long to wait for a receiver to answer, at most 60 |
+| `MEGOOFLAGS_WEBHOOK_TIMEOUT_SECONDS` | `10` | The deadline for a whole request, from connecting to reading the answer, at most 60 |
 | `MEGOOFLAGS_WEBHOOK_RETENTION_DAYS` | `7` | Days to keep the delivery log; older delivered and failed deliveries are deleted every hour |
 | `MEGOOFLAGS_PUBLIC_URL` | empty | The external URL, used for the `url` field and the links in Slack and Teams |
 

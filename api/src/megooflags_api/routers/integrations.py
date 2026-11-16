@@ -206,7 +206,7 @@ async def test_integration(
         after={"delivery": str(delivery.id)},
     )
     await session.commit()
-    sent = await worker.deliver(delivery.id)
+    sent = await worker.deliver(delivery.id, even_if_paused=True)
     return crud.delivery_out(sent, row.kind)
 
 

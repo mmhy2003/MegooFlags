@@ -20,7 +20,7 @@ permanent: false
 archived: false
 environments:
   development:
-    enabled: false
+    enabled: true
     targets: []
     rules:
       - description: ""

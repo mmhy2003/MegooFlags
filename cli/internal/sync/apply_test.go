@@ -257,9 +257,9 @@ func TestApplyContinuesPastFailedFlag(t *testing.T) {
 	}
 	sameLines(t, failed, []string{
 		"+ flag old-banner: validation_error: flag old-banner cannot be created (HTTP 422)",
-		"- flag old-banner: archive: skipped: flag old-banner was not created",
 		"~ config old-banner [development]: fallthrough: skipped: flag old-banner was not created",
 		"~ config old-banner [production]: fallthrough: skipped: flag old-banner was not created",
+		"- flag old-banner: archive: skipped: flag old-banner was not created",
 	})
 	for _, w := range s.writesTo() {
 		if strings.Contains(w, "/flags/old-banner") {
@@ -377,4 +377,33 @@ func TestApplyOffVariationFailureIsReported(t *testing.T) {
 	if len(r.Applied) != 0 {
 		t.Fatalf("applied = %v", lines(r.Applied))
 	}
+}
+
+// Unsorted targets and weights, and a missing bucket_by, apply and then show
+// no difference against a server that normalises them.
+func TestApplyUnsortedTargetsThenNoDiff(t *testing.T) {
+	_, c := seeded(t)
+	files := golden(t, false)
+	editEnv(files, "banner-text", "development", func(e *flagfiles.FlagEnv) {
+		e.Targets = []client.Target{{Variation: "welcome", Values: []string{"u2", "u1"}}, {Variation: "hello", Values: []string{"u3"}}}
+		e.Fallthrough = client.Serve{Rollout: &client.Rollout{Weights: []client.Weight{{Variation: "welcome", Weight: 50000}, {Variation: "hello", Weight: 50000}}}}
+	})
+	noFailures(t, applyFiles(t, c, files, Options{}, ApplyOptions{}))
+	noDiff(t, c, files, Options{})
+}
+
+// One run archives a permanent flag and drops the prerequisite on it that
+// would make the API refuse the archive, and then shows no difference.
+func TestApplyArchivesPrerequisiteAfterDependentConfig(t *testing.T) {
+	_, c := seeded(t)
+	files := golden(t, false)
+	if !files.Flags["banner-text"].Permanent {
+		t.Fatal("banner-text should be permanent in the golden files")
+	}
+	editFlag(files, "banner-text", func(f *flagfiles.Flag) { f.Archived = true })
+	for env := range files.Flags["new-checkout"].Environments {
+		editEnv(files, "new-checkout", env, func(e *flagfiles.FlagEnv) { e.Prerequisites = nil })
+	}
+	noFailures(t, applyFiles(t, c, files, Options{}, ApplyOptions{}))
+	noDiff(t, c, files, Options{})
 }

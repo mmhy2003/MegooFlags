@@ -336,3 +336,22 @@ func TestApplyPrune(t *testing.T) {
 		t.Fatalf("writes = %v", w)
 	}
 }
+
+// The files name their project; diff and apply refuse to compare them with
+// another one, and use it when no project is set.
+func TestSyncRefusesAnotherProject(t *testing.T) {
+	dir := exportedDir(t)
+	for _, cmd := range []string{"diff", "apply"} {
+		api := fixtureAPI(t)
+		code, out, errOut := api.session("checkout").run(cmd, "--dir", dir, "--prune")
+		if code != ExitUsage || out != "" || len(api.requests) != 0 ||
+			!strings.Contains(errOut, `the files are for project "shop", not "checkout"`) {
+			t.Fatalf("%s: code = %d, stdout = %q, stderr = %q, requests = %d", cmd, code, out, errOut, len(api.requests))
+		}
+	}
+
+	code, out, errOut := fixtureAPI(t).session("").run("diff", "--dir", dir)
+	if code != ExitOK || out != "No differences.\n" {
+		t.Fatalf("no project set: code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+}

@@ -308,3 +308,52 @@ func TestPutFlagConfigRetriesOnce(t *testing.T) {
 		t.Errorf("diagnostic = %s", d.Detail())
 	}
 }
+
+// The API groups targets by variation with sorted values and puts weights in
+// variation order; the model keeps the prior order when the content is the
+// same, so apply gives back what was planned.
+func TestFlagConfigToModelKeepsPriorOrder(t *testing.T) {
+	weights := func(ws ...weightModel) *rolloutModel {
+		return &rolloutModel{BucketBy: types.StringValue("key"), Weights: ws}
+	}
+	w := func(v string, n int64) weightModel {
+		return weightModel{Variation: types.StringValue(v), Weight: types.Int64Value(n)}
+	}
+	prior := flagEnvironmentModel{
+		Targets: []targetModel{
+			{Variation: types.StringValue("off"), Values: []string{"carol"}},
+			{Variation: types.StringValue("on"), Values: []string{"bob", "alice"}},
+		},
+		Rules:       []ruleModel{{Clauses: []clauseModel{}, Rollout: weights(w("off", 60000), w("on", 40000))}},
+		Fallthrough: &serveModel{Rollout: weights(w("off", 75000), w("on", 25000))},
+	}
+	api := func(fallthroughOn int) *client.FlagConfig {
+		return &client.FlagConfig{
+			Environment: "prod",
+			Targets:     []client.Target{{Variation: "on", Values: []string{"alice", "bob"}}, {Variation: "off", Values: []string{"carol"}}},
+			Rules: []client.Rule{{Clauses: []client.Clause{}, Rollout: &client.Rollout{BucketBy: "key", Weights: []client.Weight{
+				{Variation: "on", Weight: 40000}, {Variation: "off", Weight: 60000},
+			}}}},
+			Fallthrough: client.Serve{Rollout: &client.Rollout{BucketBy: "key", Weights: []client.Weight{
+				{Variation: "on", Weight: fallthroughOn}, {Variation: "off", Weight: 100000 - fallthroughOn},
+			}}},
+		}
+	}
+
+	m := flagConfigToModel("shop", "checkout", api(25000), &prior)
+	if !reflect.DeepEqual(m.Targets, prior.Targets) {
+		t.Errorf("targets = %+v, want the prior order", m.Targets)
+	}
+	if !reflect.DeepEqual(m.Rules[0].Rollout, prior.Rules[0].Rollout) {
+		t.Errorf("rule weights = %+v, want the prior order", m.Rules[0].Rollout)
+	}
+	if !reflect.DeepEqual(m.Fallthrough.Rollout, prior.Fallthrough.Rollout) {
+		t.Errorf("fallthrough weights = %+v, want the prior order", m.Fallthrough.Rollout)
+	}
+
+	// Other weights than the prior's come in the API's order.
+	m = flagConfigToModel("shop", "checkout", api(30000), &prior)
+	if got := m.Fallthrough.Rollout.Weights; got[0].Variation.ValueString() != "on" || got[0].Weight.ValueInt64() != 30000 {
+		t.Errorf("fallthrough weights = %+v, want the API's", got)
+	}
+}

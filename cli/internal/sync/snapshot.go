@@ -16,8 +16,9 @@ import (
 // with its config in each environment, or only in envs when it is not
 // empty. It leaves out what the files do not manage: versions, timestamps,
 // lifecycle state other than permanent, schedules, running rollouts, SDK
-// keys, integrations and members. Environments hidden from the token are
-// absent.
+// keys, integrations and members. An archived flag reads as not permanent:
+// the API shows its lifecycle as "archived". Environments hidden from the
+// token are absent.
 func Snapshot(ctx context.Context, c *client.Client, project string, envs []string) (*flagfiles.Dir, error) {
 	p, err := c.GetProject(ctx, project)
 	if err != nil {

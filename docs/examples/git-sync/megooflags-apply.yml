@@ -2,8 +2,9 @@
 # Copy to .github/workflows/ in the repository that holds flags/. Set the
 # MEGOOFLAGS_URL and MEGOOFLAGS_PROJECT variables and the MEGOOFLAGS_API_TOKEN
 # secret. Changes to environments that require approvals become change
-# requests: `megooflags apply` then exits 4, which this workflow treats as
-# success and lists the opened change requests in the job summary.
+# requests: `megooflags apply --change-requests` still exits 0 and prints
+# "opened change request <id>" for each, which this workflow lists in the job
+# summary.
 name: MegooFlags apply
 
 on:
@@ -54,7 +55,7 @@ jobs:
           {
             echo "## MegooFlags apply"
             echo
-            if [ "$status" -eq 4 ]; then
+            if grep -q '^opened change request ' apply.txt; then
               echo "Some changes need approval. Review the opened change requests in MegooFlags:"
               echo
             fi
@@ -62,8 +63,4 @@ jobs:
             cat apply.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          # Exit 4: change requests were opened and wait for approval.
-          if [ "$status" -eq 4 ]; then
-            exit 0
-          fi
           exit "$status"

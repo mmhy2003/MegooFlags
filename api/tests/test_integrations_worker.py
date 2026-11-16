@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from helpers import FakeClock, create_project
 from prometheus_client import REGISTRY
 from sqlalchemy import select
-from test_integrations_api import SLACK_URL, create_webhook
+from test_integrations_api import BASE, SLACK_URL, create_webhook
 from test_integrations_api import fake_dns as fake_dns  # autouse: resolves the test hosts
 
 from megooflags_api import __version__
@@ -402,3 +402,74 @@ def test_retention_is_a_default_job() -> None:
     assert isinstance(job.run, partial)
     assert job.run.func is run_delivery_retention
     assert job.run.keywords == {"days": 3}
+
+
+async def test_nul_in_the_response_is_stored_without_it(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    # Postgres text refuses NUL: storing it raw made the commit fail and the row loop forever.
+    await create_project(api)
+    hook = await create_webhook(api)
+    clock = FakeClock()
+    delivery_id = await add_delivery(app, hook["id"], clock)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, content=b"bad\x00answer")
+
+    delivery = await make_worker(app, handler, clock).deliver(delivery_id)
+
+    assert delivery.attempts == 1
+    stored = await load(app, delivery_id)
+    assert stored.attempts == 1
+    assert stored.response_body == "badanswer"
+
+
+async def test_test_endpoint_survives_nul_in_the_response(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await create_project(api)
+    hook = await create_webhook(api)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"ok\x00")
+
+    app.state.delivery_worker.transport = httpx.MockTransport(handler)
+
+    r = await api.post(f"{BASE}/{hook['id']}/test")
+
+    assert r.status_code == 201, r.text
+
+
+async def test_paused_integration_deliveries_are_not_sent(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await create_project(api)
+    hook = await create_webhook(api)
+    clock = FakeClock()
+    receiver = Receiver(200)
+    delivery_id = await add_delivery(app, hook["id"], clock)
+    r = await api.patch(f"{BASE}/{hook['id']}", json={"enabled": False})
+    assert r.status_code == 200, r.text
+
+    delivery = await make_worker(app, receiver, clock).deliver(delivery_id)
+
+    assert receiver.requests == []
+    assert delivery.status == DeliveryStatus.FAILED
+    assert delivery.attempts == 0
+    assert delivery.next_attempt_at is None
+    assert delivery.last_error == "the integration is paused"
+
+
+async def test_test_send_goes_out_while_paused(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    hook = await create_webhook(api)
+    r = await api.patch(f"{BASE}/{hook['id']}", json={"enabled": False})
+    assert r.status_code == 200, r.text
+    receiver = Receiver(200)
+    app.state.delivery_worker.transport = httpx.MockTransport(receiver)
+
+    r = await api.post(f"{BASE}/{hook['id']}/test")
+
+    assert r.status_code == 201, r.text
+    assert r.json()["status"] == "delivered"
+    assert len(receiver.requests) == 1

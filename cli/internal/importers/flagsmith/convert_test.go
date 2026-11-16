@@ -242,3 +242,72 @@ func TestConvertReportsIdentityOverridesOfUnknownFeatures(t *testing.T) {
 		t.Fatalf("report = %#v", report.Lines)
 	}
 }
+
+// overriddenWhileOff is one environment where flag is off by default and a
+// segment override turns it on for vip.
+func overriddenWhileOff(value, override any) *Export {
+	f := Feature{ID: 1, Name: "flag"}
+	return &Export{Environments: map[string]Document{"prod": {
+		FeatureStates: []FeatureState{{Feature: f, Enabled: false, Value: value}},
+		Project: Project{Segments: []Segment{
+			{ID: 1, Name: "vip", FeatureStates: []FeatureState{{Feature: f, Enabled: true, Value: override, FeatureSegment: &FeatureSegment{}}}},
+			{ID: 2, Name: "blocked", FeatureStates: []FeatureState{{Feature: f, Enabled: false, Value: override, FeatureSegment: &FeatureSegment{Priority: 1}}}},
+		}},
+	}}}
+}
+
+// A segment override that turns on a flag that is off in the environment
+// keeps working: the flag is on, and the fallthrough serves the off value.
+func TestConvertOverrideEnablesAFlagThatIsOff(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		value, override any
+		rules           []string
+		serve           string
+	}{
+		{name: "boolean", rules: []string{"true", "false"}, serve: "false"},
+		{name: "typed", value: 10.0, override: 50.0, rules: []string{"segment-vip", "default"}, serve: "default"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d, report := Convert(overriddenWhileOff(tc.value, tc.override), importers.Options{Project: "shop"})
+			if errs := flagfiles.Validate(d, nil); len(errs) > 0 {
+				t.Fatalf("the import does not validate: %v", errs)
+			}
+			f := d.Flags["flag"]
+			e := f.Environments["prod"]
+			if !e.Enabled {
+				t.Fatal("the flag is off, so the vip override never applies")
+			}
+			if e.Fallthrough.Variation == nil || *e.Fallthrough.Variation != tc.serve || f.OffVariation != tc.serve {
+				t.Fatalf("fallthrough = %+v, off = %s, want %s", e.Fallthrough, f.OffVariation, tc.serve)
+			}
+			var served []string
+			for _, r := range e.Rules {
+				served = append(served, *r.Variation)
+			}
+			if !reflect.DeepEqual(served, tc.rules) {
+				t.Fatalf("rules serve %v, want %v", served, tc.rules)
+			}
+			for _, l := range report.Lines {
+				if strings.Contains(l.Message, "disables the flag") {
+					t.Fatalf("nothing is lost, but the report says %q", l.Message)
+				}
+			}
+		})
+	}
+}
+
+// Rounded allocations never add up to more than 100%.
+func TestConvertRoundedAllocationsStayWithinTheTotal(t *testing.T) {
+	theme := Feature{ID: 1, Name: "theme"}
+	e := &Export{Environments: map[string]Document{"prod": {FeatureStates: []FeatureState{{
+		Feature: theme, Enabled: true, Value: "blue", MultivariateValues: []MultivariateValue{
+			{PercentageAllocation: 50.0005, Option: MultivariateOption{ID: 1, Value: "green"}},
+			{PercentageAllocation: 49.9995, Option: MultivariateOption{ID: 2, Value: "red"}},
+		},
+	}}}}}
+	d, _ := Convert(e, importers.Options{Project: "shop"})
+	if errs := flagfiles.Validate(d, nil); len(errs) > 0 {
+		t.Fatalf("the import does not validate: %v", errs)
+	}
+}

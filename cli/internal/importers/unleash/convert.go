@@ -144,15 +144,30 @@ func (f *feature) env(name string) *featureEnv {
 }
 
 // flagInfo is what other flags need to know about a flag: its key, its
-// variants in order and the variation key of each variant name.
+// variants in order, the variation key of each variant name (its first
+// payload's) and of each variant name and payload.
 type flagInfo struct {
 	key        string
 	variants   []Variant
 	variations map[string]string
+	byPayload  map[string]string
 }
 
 func (i flagInfo) multivariate() bool {
 	return len(i.variants) > 0
+}
+
+// keyOf is the variation key of variant v, by its name and payload.
+func (i flagInfo) keyOf(v Variant) string {
+	return i.byPayload[variantID(v)]
+}
+
+// variantID is v's name and payload.
+func variantID(v Variant) string {
+	if v.Payload == nil {
+		return v.Name
+	}
+	return v.Name + "\x00" + v.Payload.Type + "\x00" + v.Payload.Value
 }
 
 func (c *converter) convertFlags() {
@@ -200,22 +215,35 @@ func (c *converter) convertFlags() {
 
 // info collects a feature's variants by first appearance, in environment
 // order (the environment's variants, then its strategies'), and names the
-// variations: true and false, or a key per variant name and disabled. The
-// off variation is under the name "".
+// variations: true and false, or a key per variant name and payload and
+// disabled. A variant with another payload than before gets the key
+// <name>-<environment>, with a report line. The off variation is under the
+// name "".
 func (c *converter) info(f *feature, key string) flagInfo {
-	info := flagInfo{key: key, variations: map[string]string{}}
+	info := flagInfo{key: key, variations: map[string]string{}, byPayload: map[string]string{}}
 	used := map[string]bool{}
-	add := func(vs []Variant) {
+	add := func(env string, vs []Variant) {
 		for _, v := range vs {
-			if _, ok := info.variations[v.Name]; ok {
+			id := variantID(v)
+			if _, ok := info.byPayload[id]; ok {
 				continue
 			}
 			base := importers.Slug(v.Name)
 			if base == "" {
 				base = fmt.Sprintf("v%d", len(info.variants))
 			}
-			info.variations[v.Name] = importers.Unique(base, used)
+			first, seen := info.variations[v.Name]
+			if seen {
+				base += "-" + env
+			}
+			info.byPayload[id] = importers.Unique(base, used)
 			info.variants = append(info.variants, v)
+			if seen {
+				c.r.Add("flag", key, env, "variant %s has another payload in %s: it is variation %s there, and %s elsewhere",
+					v.Name, env, info.byPayload[id], first)
+			} else {
+				info.variations[v.Name] = info.byPayload[id]
+			}
 		}
 	}
 	for _, env := range c.e.Environments {
@@ -224,10 +252,10 @@ func (c *converter) info(f *feature, key string) flagInfo {
 			continue
 		}
 		if fe.state != nil {
-			add(fe.state.Variants)
+			add(c.envKeys[env], fe.state.Variants)
 		}
 		for _, s := range fe.strategies {
-			add(s.Variants)
+			add(c.envKeys[env], s.Variants)
 		}
 	}
 	if info.multivariate() {
@@ -271,7 +299,7 @@ func (c flagConverter) flag(f *feature) flagfiles.Flag {
 			if v.Payload != nil && v.Payload.Type == "json" {
 				out.Type = "json"
 			}
-			out.Variations = append(out.Variations, client.Variation{Key: c.info.variations[v.Name], Name: v.Name, Value: c.value(v)})
+			out.Variations = append(out.Variations, client.Variation{Key: c.info.keyOf(v), Name: v.Name, Value: c.value(v)})
 		}
 		out.Variations = append(out.Variations, client.Variation{Key: c.off(), Value: ""})
 		c.report("", `has variants; %s (value "") is served when the flag is off or no variant applies`, c.off())
@@ -481,7 +509,7 @@ func (c flagConverter) serve(env, name string, share int, bucketBy string, varia
 	}
 	rollout := &client.Rollout{BucketBy: bucketBy}
 	for i, w := range split(share, weights) {
-		rollout.Weights = append(rollout.Weights, client.Weight{Variation: c.info.variations[variants[i].Name], Weight: w})
+		rollout.Weights = append(rollout.Weights, client.Weight{Variation: c.info.keyOf(variants[i]), Weight: w})
 	}
 	if share < totalWeight {
 		rollout.Weights = append(rollout.Weights, client.Weight{Variation: c.off(), Weight: totalWeight - share})

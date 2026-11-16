@@ -439,6 +439,10 @@ func TestImporters(t *testing.T) {
 			mustCLI(t, 0, "import", tc.tool, "--file", "../internal/importers/"+tc.tool+"/testdata/export.json",
 				"--project", p, "--out", dir)
 			mustCLI(t, 0, "apply", "-p", p, "--dir", dir)
+			// The server normalises targets and rollouts; that is no difference.
+			if r := mustCLI(t, 0, "diff", "-p", p, "--dir", dir); !strings.Contains(r.stdout, "No differences.") {
+				t.Fatalf("diff after apply: %s", r)
+			}
 
 			var out client.EvaluateOut
 			cliJSON(t, &out, "evaluate", tc.flag, "-p", p, "--env", tc.env, "-c", "key="+tc.user)

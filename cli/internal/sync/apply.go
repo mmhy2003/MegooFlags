@@ -111,7 +111,8 @@ func (a *applier) record(ch Change, err error) {
 }
 
 // afterVariations reports whether ch comes after the new and changed
-// variations in apply order: a config, a removed variation, or a prune.
+// variations in apply order: a config, a removed variation, an archive or a
+// prune.
 func afterVariations(ch Change) bool {
 	switch ch.Kind {
 	case KindConfig:
@@ -121,7 +122,7 @@ func afterVariations(ch Change) bool {
 	case KindSegment:
 		return ch.Op == OpDelete
 	case KindFlag:
-		return ch.Flag == nil // a pruned flag
+		return ch.Op == OpArchive
 	}
 	return false
 }

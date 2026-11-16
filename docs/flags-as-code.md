@@ -96,7 +96,8 @@ megooflags apply --dir flags
   the environments visible to the token. It deletes `*.yaml` files in `flags/` and `segments/` that no
   longer exist on the server.
 - **`diff`** checks the files, compares them with the server by meaning, not by text (`1` and `1.0`, or
-  YAML and JSON forms of the same value, are equal), and prints the plan. It exits 0 with
+  YAML and JSON forms of the same value, are equal; so are targets and rollout weights in any order, and
+  a rollout without `bucket_by` and one with `bucket_by: key`), and prints the plan. It exits 0 with
   `No differences.`, or 3 when there are changes. Each line is a change:
 
   ```
@@ -109,6 +110,13 @@ megooflags apply --dir flags
   `+` creates or restores, `~` updates, `-` archives or deletes.
 - **`apply`** makes those changes. It creates the project when it does not exist, so the same directory
   can seed a new project.
+
+`diff` and `apply` work on the project that `megooflags.yaml` names. When `-p`, `MEGOOFLAGS_PROJECT` or
+the config file sets another project, they stop with an error before they read or write anything, so a
+directory is never applied to the wrong project.
+
+The API shows any archived flag's lifecycle as `archived`, so `diff` cannot see whether an archived flag
+is `permanent` and does not compare it. Restoring a flag from the files sets its `permanent` mark again.
 
 `--env` (repeatable) limits all three commands to the environments you name. An environment that a flag's
 file does not list is not managed for that flag: `apply` leaves its config alone. Environments that exist
@@ -128,12 +136,14 @@ only on the server are ignored, and `apply` never deletes an environment.
 
 1. The project and its environments.
 2. Segments: new segments and details first, then their configs (included, excluded, rules).
-3. Flags: new flags, details, `permanent`, archive and restore.
+3. Flags: new flags, details, `permanent` and restore.
 4. New and changed variations.
 5. Per-environment configs. Each is saved with the server's current version; if someone else saved in
    between, `apply` reads it again and retries once.
 6. Removed variations, after no config serves them any more.
-7. With `--prune`: archiving and deleting what the files no longer have.
+7. Flags the files mark `archived: true`, after the configs: the API refuses to archive a flag that is
+   still another flag's prerequisite, so one commit can drop the prerequisite and archive the flag.
+8. With `--prune`: archiving and deleting what the files no longer have.
 
 A flag's prerequisites are created before its config, so a new flag can depend on another new flag.
 A change that fails does not stop the others: `apply` lists every failure and exits 1. Changes that
@@ -179,6 +189,11 @@ Each workflow downloads the CLI release archive, checks it against `SHA256SUMS`,
 variables `MEGOOFLAGS_URL` and `MEGOOFLAGS_PROJECT` and the secret `MEGOOFLAGS_API_TOKEN`. The export
 workflow also needs "Allow GitHub Actions to create and approve pull requests" in the repository's
 Actions settings. Pin `MEGOOFLAGS_CLI_VERSION` at the top of each file to the CLI release you use.
+
+The export workflow opens its pull request with `GITHUB_TOKEN`, and GitHub does not start workflows
+for events made with that token, so `megooflags-diff.yml` does not run on the export pull request. That
+is harmless, since the export is what the server already has. If you want the check there too, open
+the pull request with a GitHub App token or a fine-grained token instead.
 
 Give the token only what it needs: `project.read` for diff and export, and the flag, segment and
 environment permissions for apply.

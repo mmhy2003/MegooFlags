@@ -1,3 +1,6 @@
+import asyncio
+import gzip
+import time
 from collections.abc import AsyncIterator, Iterable
 from ipaddress import ip_address
 from typing import Any
@@ -350,3 +353,73 @@ async def test_url_httpx_cannot_parse_becomes_error() -> None:
 
     assert result.status is None
     assert result.error == "unsafe address: the URL is not valid"
+
+
+class TricklingStream(httpx.AsyncByteStream):
+    """A receiver that sends one byte at a time, each well within a per-read timeout."""
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        for _ in range(100):
+            await asyncio.sleep(0.05)
+            yield b"a"
+
+
+async def test_deadline_covers_the_whole_request() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, stream=TricklingStream())
+
+    started = time.monotonic()
+    result = await post_json(
+        "https://example.com/x",
+        b"{}",
+        {},
+        allow_private=False,
+        timeout=0.3,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert result.status is None
+    assert result.error == "timeout"
+    assert time.monotonic() - started < 2
+
+
+async def test_control_characters_are_removed_from_the_body() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, content=b"a\x00b\x01c\x7f\td\r\ne")
+
+    result = await post_json(
+        "https://example.com/x",
+        b"{}",
+        {},
+        allow_private=False,
+        timeout=5,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert result.body == "abc\td\r\ne"
+
+
+async def test_body_is_not_decompressed() -> None:
+    seen: list[httpx.Request] = []
+    inflated = b"a" * 1_000_000
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            500,
+            stream=httpx.ByteStream(gzip.compress(inflated)),
+            headers={"content-encoding": "gzip"},
+        )
+
+    result = await post_json(
+        "https://example.com/x",
+        b"{}",
+        {"accept-encoding": "gzip"},
+        allow_private=False,
+        timeout=5,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert seen[0].headers["accept-encoding"] == "identity"
+    assert result.status == 500
+    assert result.body != "a" * 2048  # the raw bytes were counted and kept, not inflated

@@ -1,4 +1,5 @@
-"""Outbound requests for integrations: public https addresses only, no redirects, capped reads.
+"""Outbound requests for integrations: public https addresses only, no redirects, capped reads,
+and one deadline for the whole request.
 
 The host is resolved when the connection opens, every address must pass `is_allowed_ip`, and the
 socket goes to the checked address. A DNS answer that changes after the URL was saved cannot point
@@ -7,9 +8,10 @@ httpcore passes `server_hostname` to `start_tls` separately.
 """
 
 import asyncio
+import re
 import socket
 import time
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from ipaddress import IPv4Address, IPv6Address, IPv6Network, ip_address
 from typing import Any
@@ -26,6 +28,8 @@ MAX_BODY_CHARS = 2048
 
 # NAT64 (RFC 6052): the last 32 bits are the IPv4 address the gateway connects to.
 NAT64_PREFIX = IPv6Network("64:ff9b::/96")
+# Control characters other than tab and newlines; Postgres text refuses NUL.
+CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 Resolver = Callable[[str, int], Awaitable[list[str]]]
 
@@ -140,6 +144,10 @@ class SafeTransport(httpx.AsyncHTTPTransport):
         )
 
 
+async def _already_read(response: httpx.Response) -> AsyncIterator[bytes]:
+    yield response.content
+
+
 @dataclass
 class PostResult:
     status: int | None
@@ -154,10 +162,11 @@ async def post_json(
     headers: Mapping[str, str],
     *,
     allow_private: bool,
-    timeout: float,  # noqa: ASYNC109 - passed to httpx, which applies it per phase
+    timeout: float,  # noqa: ASYNC109 - the deadline for the whole request, not each phase
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> PostResult:
-    """POST `body` to `url`. Never raises: failures come back in `PostResult.error`."""
+    """POST `body` to `url` and read at most MAX_READ_BYTES of the answer, as sent: the body
+    is never decompressed. Never raises: failures come back in `PostResult.error`."""
     started = time.monotonic()
 
     def result(status: int | None, text: str = "", error: str | None = None) -> PostResult:
@@ -172,19 +181,29 @@ async def post_json(
     )
     try:
         validate_url(url, IntegrationKind.WEBHOOK, allow_private=allow_private)
-        async with client.stream("POST", url, content=body, headers=dict(headers)) as response:
+        sent = {k: v for k, v in headers.items() if k.lower() != "accept-encoding"}
+        sent["Accept-Encoding"] = "identity"
+        async with (
+            asyncio.timeout(timeout),
+            client.stream("POST", url, content=body, headers=sent) as response,
+        ):
             read = bytearray()
-            async for chunk in response.aiter_bytes():
+            # A transport that answers with the body already read (a test's MockTransport)
+            # leaves nothing to stream; the network always streams.
+            chunks = (
+                _already_read(response) if response.is_stream_consumed else response.aiter_raw()
+            )
+            async for chunk in chunks:
                 read += chunk
                 if len(read) >= MAX_READ_BYTES:
                     break
             text = bytes(read[:MAX_READ_BYTES]).decode("utf-8", errors="replace")
-            return result(response.status_code, text[:MAX_BODY_CHARS])
+            return result(response.status_code, CONTROL_CHARS.sub("", text)[:MAX_BODY_CHARS])
     except UnsafeUrl as exc:
         return result(None, error=str(exc))
     except httpx.InvalidURL:  # validate_url parses with httpx too; kept so this never raises
         return result(None, error="unsafe address: the URL is not valid")
-    except httpx.TimeoutException:
+    except (TimeoutError, httpx.TimeoutException):
         return result(None, error="timeout")
     except httpx.HTTPError as exc:
         return result(None, error=str(exc) or type(exc).__name__)

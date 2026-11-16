@@ -148,6 +148,112 @@ resource "megooflags_flag_environment" "test" {
 	})
 }
 
+// Targets and weights in another order than the API's apply cleanly and
+// plan no changes afterwards.
+func TestAccFlagEnvironment_unsortedInput(t *testing.T) {
+	project := testAccKey(t)
+	name := "megooflags_flag_environment.test"
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			testAccPreCheck(t)
+			testAccProject(t, project)
+			testAccFlags(t, project, "checkout")
+		},
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckFlagEnvironmentOff,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "megooflags_flag_environment" "test" {
+  project     = %q
+  flag        = "checkout"
+  environment = "dev"
+  enabled     = true
+  targets = [
+    { variation = "false", values = ["zoe"] },
+    { variation = "true", values = ["bob", "alice"] },
+  ]
+  rules = [
+    {
+      clauses = [
+        { attribute = "plan", operator = "in", values_json = jsonencode(["gold"]) },
+      ]
+      rollout = {
+        weights = [
+          { variation = "false", weight = 60000 },
+          { variation = "true", weight = 40000 },
+        ]
+      }
+    },
+  ]
+  fallthrough = {
+    rollout = {
+      weights = [
+        { variation = "false", weight = 75000 },
+        { variation = "true", weight = 25000 },
+      ]
+    }
+  }
+}
+`, project),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(name, "targets.0.variation", "false"),
+					resource.TestCheckResourceAttr(name, "targets.1.values.0", "bob"),
+					resource.TestCheckResourceAttr(name, "rules.0.rollout.weights.0.variation", "false"),
+					resource.TestCheckResourceAttr(name, "fallthrough.rollout.weights.0.variation", "false"),
+					func(*terraform.State) error {
+						cfg, err := testAccClient().GetFlagConfig(context.Background(), project, "checkout", "dev")
+						if err != nil {
+							return err
+						}
+						if len(cfg.Targets) != 2 || cfg.Targets[0].Variation != "true" || cfg.Targets[0].Values[0] != "alice" {
+							return fmt.Errorf("the API keeps targets %+v", cfg.Targets)
+						}
+						return nil
+					},
+				),
+			},
+			{
+				// The same config again: nothing to change.
+				Config: fmt.Sprintf(`
+resource "megooflags_flag_environment" "test" {
+  project     = %q
+  flag        = "checkout"
+  environment = "dev"
+  enabled     = true
+  targets = [
+    { variation = "false", values = ["zoe"] },
+    { variation = "true", values = ["bob", "alice"] },
+  ]
+  rules = [
+    {
+      clauses = [
+        { attribute = "plan", operator = "in", values_json = jsonencode(["gold"]) },
+      ]
+      rollout = {
+        weights = [
+          { variation = "false", weight = 60000 },
+          { variation = "true", weight = 40000 },
+        ]
+      }
+    },
+  ]
+  fallthrough = {
+    rollout = {
+      weights = [
+        { variation = "false", weight = 75000 },
+        { variation = "true", weight = 25000 },
+      ]
+    }
+  }
+}
+`, project),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
 func TestAccFlagEnvironment_approvalRequired(t *testing.T) {
 	project := testAccKey(t)
 	resource.Test(t, resource.TestCase{

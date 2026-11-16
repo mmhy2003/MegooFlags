@@ -76,12 +76,14 @@ type Options struct {
 
 // Diff compares files with server, the server's Snapshot, and returns what
 // to change on the server, in apply order: the project, its environments,
-// segments, flags, new and changed variations, configs, removed variations
-// and, with Prune, the flags and segments missing from the files.
+// segments, flags, new and changed variations, configs, removed variations,
+// archived flags and, with Prune, the flags and segments missing from the
+// files.
 // Environments only on the server are never removed. A flag's config is
 // compared only in the environments its file lists (and Envs allows).
-// Values are compared by meaning, so 1 equals 1.0, and the lists the files
-// keep sorted are compared as sets.
+// Values are compared by meaning, so 1 equals 1.0, the lists the files
+// keep sorted are compared as sets, and targets and rollouts are compared
+// in the form the server normalises them to.
 func Diff(files, server *flagfiles.Dir, opts Options) Plan {
 	var p Plan
 	add := func(c Change) {
@@ -156,15 +158,13 @@ func Diff(files, server *flagfiles.Dir, opts Options) Plan {
 			// Apply refuses a changed type: the flag must be deleted and recreated.
 			add(Change{Op: OpUpdate, Kind: KindFlag, Key: key, Fields: fields, Flag: &f})
 		}
-		if f.Permanent != old.Permanent {
+		// The API shows an archived flag's lifecycle as "archived", so its
+		// permanent mark is unknown: it is set again with a restore.
+		if old.Archived && !f.Archived || !old.Archived && f.Permanent != old.Permanent {
 			add(Change{Op: OpUpdate, Kind: KindLifecycle, Key: key, Summary: lifecycle(f.Permanent), Flag: &f})
 		}
-		if f.Archived != old.Archived {
-			op := OpRestore
-			if f.Archived {
-				op = OpArchive
-			}
-			add(Change{Op: op, Kind: KindFlag, Key: key, Summary: string(op), Flag: &f})
+		if !f.Archived && old.Archived {
+			add(Change{Op: OpRestore, Kind: KindFlag, Key: key, Summary: string(OpRestore), Flag: &f})
 		}
 	}
 
@@ -199,9 +199,9 @@ func Diff(files, server *flagfiles.Dir, opts Options) Plan {
 			e, s := f.Environments[env], old.Environments[env]
 			if fields := differing(
 				part{"enabled", e.Enabled, s.Enabled},
-				part{"targets", e.Targets, s.Targets},
+				part{"targets", canonicalTargets(e.Targets), canonicalTargets(s.Targets)},
 				part{"rules", canonicalRules(e.Rules), canonicalRules(s.Rules)},
-				part{"fallthrough", e.Fallthrough, s.Fallthrough},
+				part{"fallthrough", canonicalServe(e.Fallthrough), canonicalServe(s.Fallthrough)},
 				part{"prerequisites", e.Prerequisites, s.Prerequisites},
 			); len(fields) > 0 {
 				add(Change{Op: OpUpdate, Kind: KindConfig, Key: key, Env: env, Fields: fields, Config: &e})
@@ -215,6 +215,14 @@ func Diff(files, server *flagfiles.Dir, opts Options) Plan {
 			if !slices.ContainsFunc(vs, func(v client.Variation) bool { return v.Key == o.Key }) {
 				add(Change{Op: OpDelete, Kind: KindVariation, Key: key, Variation: o.Key})
 			}
+		}
+	}
+
+	// Archives come after the configs, which may drop a prerequisite on the
+	// flag: the API refuses to archive a flag that is still one.
+	for _, key := range flagKeys {
+		if f := files.Flags[key]; f.Archived && !server.Flags[key].Archived {
+			add(Change{Op: OpArchive, Kind: KindFlag, Key: key, Summary: string(OpArchive), Flag: &f})
 		}
 	}
 
@@ -332,11 +340,46 @@ func dropEmpty(v any) any {
 	return v
 }
 
+// canonicalTargets merges the lists of each variation and sorts the
+// variations and their values, as the server keeps them (it orders
+// variations by their position, but the order means nothing).
+func canonicalTargets(targets []client.Target) []client.Target {
+	values := map[string][]string{}
+	for _, t := range targets {
+		values[t.Variation] = append(values[t.Variation], t.Values...)
+	}
+	var out []client.Target
+	for _, k := range slices.Sorted(maps.Keys(values)) {
+		if len(values[k]) > 0 {
+			out = append(out, client.Target{Variation: k, Values: sortedStrings(values[k])})
+		}
+	}
+	return out
+}
+
+// canonicalRollout sorts the weights by variation and fills in the
+// server's default bucket_by, "key".
+func canonicalRollout(r *client.Rollout) *client.Rollout {
+	if r == nil {
+		return nil
+	}
+	out := client.Rollout{BucketBy: cmp.Or(r.BucketBy, "key"), Weights: slices.Clone(r.Weights)}
+	slices.SortStableFunc(out.Weights, func(a, b client.Weight) int { return cmp.Compare(a.Variation, b.Variation) })
+	return &out
+}
+
+func canonicalServe(s client.Serve) client.Serve {
+	s.Rollout = canonicalRollout(s.Rollout)
+	return s
+}
+
 // canonicalRules sorts the values of in_segment clauses, as the files keep
-// them, so that their order makes no difference.
+// them, and makes rollouts canonical, so that their order makes no
+// difference.
 func canonicalRules(rules []client.Rule) []client.Rule {
 	out := make([]client.Rule, len(rules))
 	for i, r := range rules {
+		r.Rollout = canonicalRollout(r.Rollout)
 		cs := slices.Clone(r.Clauses)
 		for j, c := range cs {
 			if c.Operator == "in_segment" {

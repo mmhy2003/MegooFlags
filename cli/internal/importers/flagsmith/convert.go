@@ -40,6 +40,10 @@ var numeric = map[string]bool{"GREATER_THAN": true, "GREATER_THAN_INCLUSIVE": tr
 // totalWeight is what a MegooFlags rollout's weights add up to.
 const totalWeight = 100000
 
+// offVariation is a typed flag's off variation: the first environment's
+// value, the first variation added.
+const offVariation = "default"
+
 // maxDepth is how deep segment rules may nest, and maxRules how many
 // MegooFlags rules a segment's expansion may have.
 const (
@@ -462,7 +466,7 @@ func (c *flagConverter) flag(f *feature) flagfiles.Flag {
 		}
 	})
 	out.Variations = c.variations
-	out.OffVariation = "default"
+	out.OffVariation = offVariation
 	c.states(f, func(env string, fe *featureEnv) {
 		out.Environments[c.envKeys[env]] = c.typedConfig(env, fe)
 	})
@@ -477,12 +481,22 @@ func overrideStates(fe *featureEnv) []FeatureState {
 	return out
 }
 
+// onlyOverridesEnable reports whether the flag is off in the environment
+// but a segment override turns it on. The flag is then imported on, with a
+// fallthrough that serves its off variation, so the override still applies.
+func onlyOverridesEnable(fe *featureEnv) bool {
+	return !fe.state.Enabled && slices.ContainsFunc(fe.overrides, func(o override) bool { return o.state.Enabled })
+}
+
 // booleanConfig is a boolean flag's config: enabled serves true, and each
 // segment override serves true, or false when it disables the flag.
 func (c *flagConverter) booleanConfig(env string, fe *featureEnv) flagfiles.FlagEnv {
 	on := "true"
+	if onlyOverridesEnable(fe) {
+		on = "false"
+	}
 	out := flagfiles.FlagEnv{
-		Enabled:       fe.state.Enabled,
+		Enabled:       fe.state.Enabled || onlyOverridesEnable(fe),
 		Targets:       []client.Target{},
 		Rules:         []client.Rule{},
 		Fallthrough:   client.Serve{Variation: &on},
@@ -500,10 +514,30 @@ func (c *flagConverter) booleanConfig(env string, fe *featureEnv) flagfiles.Flag
 
 // typedConfig is a typed flag's config: the fallthrough splits between
 // the multivariate options and the control value, and each segment
-// override serves its value.
+// override serves its value. When only overrides turn the flag on, the
+// fallthrough and the overrides that disable it serve the off variation.
 func (c *flagConverter) typedConfig(env string, fe *featureEnv) flagfiles.FlagEnv {
 	envKey := c.envKeys[env]
 	def := c.envDefault[env]
+	if onlyOverridesEnable(fe) {
+		off := offVariation
+		out := flagfiles.FlagEnv{
+			Enabled:       true,
+			Targets:       []client.Target{},
+			Rules:         []client.Rule{},
+			Fallthrough:   client.Serve{Variation: &off},
+			Prerequisites: []client.Prerequisite{},
+		}
+		for _, o := range fe.overrides {
+			serve := offVariation
+			if o.state.Enabled {
+				serve = c.find(o.state.Value)
+				c.reportSplit(envKey, o, serve)
+			}
+			out.Rules = append(out.Rules, segmentRule(o.segment, serve))
+		}
+		return out
+	}
 	out := flagfiles.FlagEnv{
 		Enabled:       fe.state.Enabled,
 		Targets:       []client.Target{},
@@ -513,8 +547,15 @@ func (c *flagConverter) typedConfig(env string, fe *featureEnv) flagfiles.FlagEn
 	}
 	rollout := &client.Rollout{BucketBy: "key"}
 	left := totalWeight
+	// Each weight is the rounded running total less the weights before it,
+	// so rounding never takes the sum past the total.
+	sum := 0.0
 	for _, mv := range fe.state.MultivariateValues {
-		w := int(math.Round(mv.PercentageAllocation * 1000))
+		if mv.PercentageAllocation <= 0 {
+			continue
+		}
+		sum += mv.PercentageAllocation
+		w := min(int(math.Round(sum*1000)), totalWeight) - (totalWeight - left)
 		if w <= 0 {
 			continue
 		}
@@ -538,12 +579,17 @@ func (c *flagConverter) typedConfig(env string, fe *featureEnv) flagfiles.FlagEn
 		if !o.state.Enabled {
 			c.r.Add("flag", c.key, envKey, "the override for segment %s disables the flag, which a rule cannot do: it serves %s", o.segment, serve)
 		}
-		if len(o.state.MultivariateValues) > 0 {
-			c.r.Add("flag", c.key, envKey, "the override for segment %s splits between options, which is not imported: it serves %s", o.segment, serve)
-		}
+		c.reportSplit(envKey, o, serve)
 		out.Rules = append(out.Rules, segmentRule(o.segment, serve))
 	}
 	return out
+}
+
+// reportSplit adds a line for an override that splits between options.
+func (c *flagConverter) reportSplit(envKey string, o override, serve string) {
+	if len(o.state.MultivariateValues) > 0 {
+		c.r.Add("flag", c.key, envKey, "the override for segment %s splits between options, which is not imported: it serves %s", o.segment, serve)
+	}
 }
 
 func segmentRule(segment, variation string) client.Rule {
@@ -609,15 +655,15 @@ func (c *flagConverter) addDefault(env string, raw any) {
 		c.report(envKey, "has no value: %v is used", c.coerce(raw))
 	}
 	if len(c.variations) == 0 {
-		c.envDefault[env] = c.add("default", raw)
+		c.envDefault[env] = c.add(offVariation, raw)
 		return
 	}
-	key := c.findPrefix(raw, "default")
+	key := c.findPrefix(raw, offVariation)
 	if key == "" {
 		key = c.add("default-"+envKey, raw)
 	}
 	c.envDefault[env] = key
-	if key != "default" {
+	if key != offVariation {
 		c.report(envKey, "its value differs from the first environment's: %s serves it here, and the flag serves default when it is off", key)
 	}
 }

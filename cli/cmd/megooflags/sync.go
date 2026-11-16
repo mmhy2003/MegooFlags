@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mmhy2003/MegooFlags/cli/client"
+	"github.com/mmhy2003/MegooFlags/cli/internal/config"
 	"github.com/mmhy2003/MegooFlags/cli/internal/flagfiles"
 	flagsync "github.com/mmhy2003/MegooFlags/cli/internal/sync"
 )
@@ -66,7 +67,7 @@ func newDiffCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c, v, err := a.projectClient()
+			c, v, err := a.filesClient(files)
 			if err != nil {
 				return err
 			}
@@ -115,7 +116,7 @@ func newApplyCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c, v, err := a.projectClient()
+			c, v, err := a.filesClient(files)
 			if err != nil {
 				return err
 			}
@@ -177,6 +178,28 @@ func apiMessage(err error) string {
 
 // validate checks files, letting them refer to the server's segments, and
 // writes every problem to w.
+// filesClient is projectClient for the project the files name: it is the
+// default, and another project set with -p, MEGOOFLAGS_PROJECT or the config
+// file is refused, so that the files are never applied to the wrong project.
+func (a *app) filesClient(files *flagfiles.Dir) (*client.Client, config.Values, error) {
+	v, err := a.values()
+	if err != nil {
+		return nil, v, err
+	}
+	key := files.Project.Project.Key
+	switch {
+	case v.Project == "":
+		v.Project = key
+	case key != "" && v.Project != key:
+		return nil, v, usageError(fmt.Errorf("the files are for project %q, not %q: pass -p %s", key, v.Project, key))
+	}
+	if v.Project == "" {
+		return nil, v, usageError(errors.New("no project: pass -p or set MEGOOFLAGS_PROJECT"))
+	}
+	c, err := newClient(v)
+	return c, v, err
+}
+
 func validate(w io.Writer, files, server *flagfiles.Dir) error {
 	var serverOnly []string
 	for _, key := range slices.Sorted(maps.Keys(server.Segments)) {

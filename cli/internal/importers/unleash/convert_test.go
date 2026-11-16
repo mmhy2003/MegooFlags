@@ -234,3 +234,46 @@ func TestFetchNeedsURLAndProject(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// A variant whose payload differs between environments becomes one
+// variation per payload, so each environment serves its own value.
+func TestConvertVariantPayloadsPerEnvironment(t *testing.T) {
+	url := func(v string) []Variant {
+		return []Variant{{Name: "url", Weight: 1000, Payload: &Payload{Type: "string", Value: v}}}
+	}
+	batch := func(v string) BatchExport {
+		return BatchExport{
+			Features:            []Feature{{Name: "f"}},
+			FeatureEnvironments: []FeatureEnvironment{{FeatureName: "f", Enabled: true, Variants: url(v)}},
+		}
+	}
+	e := &Export{Environments: []string{"development", "production"}, PerEnv: map[string]BatchExport{
+		"development": batch("http://dev"), "production": batch("http://prod"),
+	}}
+	d, report := Convert(e, importers.Options{Project: "shop"})
+	if errs := flagfiles.Validate(d, nil); len(errs) > 0 {
+		t.Fatalf("the import does not validate: %v", errs)
+	}
+	f := d.Flags["f"]
+	value := func(env string) any {
+		t.Helper()
+		r := f.Environments[env].Fallthrough.Rollout
+		if r == nil {
+			t.Fatalf("%s fallthrough = %+v", env, f.Environments[env].Fallthrough)
+		}
+		key := r.Weights[0].Variation
+		for _, v := range f.Variations {
+			if v.Key == key {
+				return v.Value
+			}
+		}
+		t.Fatalf("%s serves unknown variation %s", env, key)
+		return nil
+	}
+	if dev, prod := value("development"), value("production"); dev != "http://dev" || prod != "http://prod" {
+		t.Fatalf("development serves %v, production %v", dev, prod)
+	}
+	if !hasLine(report.Lines, "variant url has another payload in production: it is variation url-production there") {
+		t.Fatalf("report = %#v", report.Lines)
+	}
+}

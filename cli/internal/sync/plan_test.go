@@ -204,7 +204,8 @@ func TestDiffChangeKinds(t *testing.T) {
 		{
 			name:  "restore",
 			files: func(d *flagfiles.Dir) { editFlag(d, "old-banner", func(f *flagfiles.Flag) { f.Archived = false }) },
-			want:  []string{"+ flag old-banner: restore"},
+			// The lifecycle of an archived flag is unknown, so a restore sets it.
+			want: []string{"~ lifecycle old-banner: temporary", "+ flag old-banner: restore"},
 		},
 		{
 			name: "variations",
@@ -371,6 +372,7 @@ func TestDiffOrder(t *testing.T) {
 		"+ flag a-new",
 		"~ flag banner-text: name",
 		"~ lifecycle banner-text: temporary",
+		"~ lifecycle old-banner: temporary",
 		"+ flag old-banner: restore",
 		"+ variation banner-text/bye",
 		"~ config a-new [production]: fallthrough",
@@ -393,18 +395,18 @@ func TestDiffOrder(t *testing.T) {
 	if c[6].Op != OpCreate || c[6].Kind != KindFlag || c[6].Flag == nil || c[6].Flag.Name != "A" {
 		t.Errorf("flag change = %+v", c[6])
 	}
-	if c[10].Kind != KindVariation || c[10].Key != "banner-text" || c[10].Variation != "bye" ||
-		c[10].VariationValue == nil || c[10].VariationValue.Value != "Bye" {
-		t.Errorf("variation change = %+v", c[10])
+	if c[11].Kind != KindVariation || c[11].Key != "banner-text" || c[11].Variation != "bye" ||
+		c[11].VariationValue == nil || c[11].VariationValue.Value != "Bye" {
+		t.Errorf("variation change = %+v", c[11])
 	}
-	if c[12].Kind != KindConfig || c[12].Env != "development" || c[12].Config == nil || !c[12].Config.Enabled {
-		t.Errorf("config change = %+v", c[12])
+	if c[13].Kind != KindConfig || c[13].Env != "development" || c[13].Config == nil || !c[13].Config.Enabled {
+		t.Errorf("config change = %+v", c[13])
 	}
-	if c[14].Op != OpArchive || c[14].Kind != KindFlag || c[14].Key != "new-checkout" {
-		t.Errorf("prune change = %+v", c[14])
+	if c[15].Op != OpArchive || c[15].Kind != KindFlag || c[15].Key != "new-checkout" {
+		t.Errorf("prune change = %+v", c[15])
 	}
-	if c[15].Op != OpDelete || c[15].Kind != KindSegment || c[15].Key != "staff" {
-		t.Errorf("segment delete = %+v", c[15])
+	if c[16].Op != OpDelete || c[16].Kind != KindSegment || c[16].Key != "staff" {
+		t.Errorf("segment delete = %+v", c[16])
 	}
 }
 
@@ -416,4 +418,60 @@ func TestDiffChangeFields(t *testing.T) {
 	if len(p.Changes) != 1 || !slices.Equal(p.Changes[0].Fields, []string{"type", "off_variation"}) {
 		t.Fatalf("changes = %+v", p.Changes)
 	}
+}
+
+// The server groups targets by variation and sorts their values, puts
+// rollout weights in variation order and fills in bucket_by; none of that
+// is a difference.
+func TestDiffTargetsAndRolloutsByMeaning(t *testing.T) {
+	server, files := expected(), expected()
+	editEnv(server, "banner-text", "production", func(e *flagfiles.FlagEnv) {
+		e.Targets = []client.Target{{Variation: "hello", Values: []string{"u0", "u1", "u2"}}, {Variation: "welcome", Values: []string{"u3"}}}
+		e.Rules = []client.Rule{{Clauses: []client.Clause{}, Rollout: &client.Rollout{BucketBy: "key", Weights: []client.Weight{{Variation: "hello", Weight: 40000}, {Variation: "welcome", Weight: 60000}}}}}
+		e.Fallthrough = client.Serve{Rollout: &client.Rollout{BucketBy: "key", Weights: []client.Weight{{Variation: "hello", Weight: 75000}, {Variation: "welcome", Weight: 25000}}}}
+	})
+	editEnv(files, "banner-text", "production", func(e *flagfiles.FlagEnv) {
+		e.Targets = []client.Target{{Variation: "welcome", Values: []string{"u3"}}, {Variation: "hello", Values: []string{"u2", "u1"}}, {Variation: "hello", Values: []string{"u0"}}}
+		e.Rules = []client.Rule{{Clauses: []client.Clause{}, Rollout: &client.Rollout{Weights: []client.Weight{{Variation: "welcome", Weight: 60000}, {Variation: "hello", Weight: 40000}}}}}
+		e.Fallthrough = client.Serve{Rollout: &client.Rollout{Weights: []client.Weight{{Variation: "welcome", Weight: 25000}, {Variation: "hello", Weight: 75000}}}}
+	})
+	if p := Diff(files, server, Options{}); len(p.Changes) != 0 {
+		t.Fatalf("changes = %v", printed(p))
+	}
+
+	editEnv(files, "banner-text", "production", func(e *flagfiles.FlagEnv) {
+		e.Targets = []client.Target{{Variation: "welcome", Values: []string{"u3", "u2"}}, {Variation: "hello", Values: []string{"u1", "u0"}}}
+		e.Fallthrough.Rollout.BucketBy = "org"
+	})
+	sameLines(t, printed(Diff(files, server, Options{})), []string{"~ config banner-text [production]: targets, fallthrough"})
+}
+
+// The API shows any archived flag's lifecycle as "archived", so whether it
+// is permanent cannot be compared until it is restored.
+func TestDiffArchivedFlagLifecycle(t *testing.T) {
+	server := expected()
+	editFlag(server, "banner-text", func(f *flagfiles.Flag) { f.Archived, f.Permanent = true, false })
+	files := expected()
+	editFlag(files, "banner-text", func(f *flagfiles.Flag) { f.Archived, f.Permanent = true, true })
+	if p := Diff(files, server, Options{}); len(p.Changes) != 0 {
+		t.Fatalf("changes = %v", printed(p))
+	}
+
+	editFlag(files, "banner-text", func(f *flagfiles.Flag) { f.Archived = false })
+	sameLines(t, printed(Diff(files, server, Options{})), []string{
+		"~ lifecycle banner-text: permanent",
+		"+ flag banner-text: restore",
+	})
+}
+
+// An archive waits for the configs: one of them may drop the prerequisite
+// on the flag that the API would otherwise refuse to archive.
+func TestDiffArchiveAfterConfigs(t *testing.T) {
+	files := expected()
+	editFlag(files, "banner-text", func(f *flagfiles.Flag) { f.Archived = true })
+	editEnv(files, "new-checkout", "production", func(e *flagfiles.FlagEnv) { e.Enabled = !e.Enabled })
+	sameLines(t, printed(Diff(files, expected(), Options{})), []string{
+		"~ config new-checkout [production]: enabled",
+		"- flag banner-text: archive",
+	})
 }
