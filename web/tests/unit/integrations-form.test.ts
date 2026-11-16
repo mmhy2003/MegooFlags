@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { components } from "@/lib/api/client";
 import {
+  draftField,
   draftFrom,
   emptyDraft,
   type IntegrationDraft,
@@ -235,5 +236,24 @@ describe("toUpdate", () => {
     expect(toUpdate({ ...draftFrom(original), ...change }, original)).toEqual(
       update,
     );
+  });
+});
+
+describe("draftField", () => {
+  it.each([
+    ["name", "name"],
+    ["url", "url"],
+    ["event_groups", "eventGroups"],
+    ["event_groups[1]", "eventGroups"],
+    ["all_environments", "allEnvironments"],
+    ["environments", "environments"],
+    ["environments[0]", "environments"],
+    ["enabled", "enabled"],
+  ] as const)("maps %s to %s", (path, field) => {
+    expect(draftField(path)).toBe(field);
+  });
+
+  it.each([null, "", "secret", "kind"])("gives null for %s", (path) => {
+    expect(draftField(path)).toBeNull();
   });
 });

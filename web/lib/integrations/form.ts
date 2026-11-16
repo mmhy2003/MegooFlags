@@ -118,3 +118,18 @@ export function toUpdate(
   if (d.enabled !== original.enabled) update.enabled = d.enabled;
   return update;
 }
+
+const FIELDS: Record<string, keyof IntegrationDraft> = {
+  name: "name",
+  url: "url",
+  event_groups: "eventGroups",
+  all_environments: "allEnvironments",
+  environments: "environments",
+  enabled: "enabled",
+};
+
+/** The form field a 422 error path points at, such as "event_groups[0]", or null for the form. */
+export function draftField(path: string | null): keyof IntegrationDraft | null {
+  const head = path?.match(/^[a-z_]+/)?.[0];
+  return head && Object.hasOwn(FIELDS, head) ? FIELDS[head] : null;
+}
