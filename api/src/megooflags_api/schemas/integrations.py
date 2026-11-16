@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime
 
-from pydantic import Field
+from pydantic import Field, JsonValue
 
-from megooflags_api.models.enums import EventGroup, IntegrationKind
+from megooflags_api.models.enums import DeliveryStatus, EventGroup, IntegrationKind
 from megooflags_api.schemas.common import ApiModel, Key, Name
 
 
@@ -53,3 +53,19 @@ class IntegrationCreated(IntegrationOut):
 
 class IntegrationSecret(ApiModel):
     secret: str = Field(description="The new webhook signing secret. Shown only once.")
+
+
+class DeliveryOut(ApiModel):
+    id: uuid.UUID
+    event_id: str = Field(description="The event's id; a delivery sent again keeps it.")
+    event_type: str
+    status: DeliveryStatus
+    attempts: int
+    next_attempt_at: datetime | None
+    last_status_code: int | None
+    last_error: str | None
+    response_body: str | None = Field(description="The first 2048 characters of the response.")
+    duration_ms: int | None
+    created_at: datetime
+    delivered_at: datetime | None
+    request_body: JsonValue = Field(description="The body sent for the integration's kind.")

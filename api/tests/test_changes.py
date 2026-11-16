@@ -39,6 +39,8 @@ EXCLUDED = {
     ("PATCH", "/api/projects/{project}/integrations/{id}"),
     ("DELETE", "/api/projects/{project}/integrations/{id}"),
     ("POST", "/api/projects/{project}/integrations/{id}/rotate-secret"),
+    ("POST", "/api/projects/{project}/integrations/{id}/test"),
+    ("POST", "/api/projects/{project}/integrations/{id}/deliveries/{delivery}/redeliver"),
 }
 P = "/api/projects/{project}"
 F = f"{P}/flags/{{flag}}"

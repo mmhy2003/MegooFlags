@@ -15,7 +15,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from megooflags_api import __version__, metrics
@@ -24,7 +24,7 @@ from megooflags_api.models import Integration, IntegrationDelivery
 from megooflags_api.models.enums import DeliveryStatus, IntegrationKind
 from megooflags_api.services.integrations.format import render
 from megooflags_api.services.integrations.net import PostResult, post_json
-from megooflags_api.services.scheduler import now_utc
+from megooflags_api.services.scheduler import JobResult, now_utc
 from megooflags_api.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -77,6 +77,11 @@ class DeliveryWorker:
         self.poll_seconds = poll_seconds
         self.concurrency = concurrency
 
+    @property
+    def lease(self) -> timedelta:
+        """How long a claimed delivery is left to the send in progress."""
+        return timedelta(seconds=self.settings.webhook_timeout_seconds) + LEASE_MARGIN
+
     async def run(self) -> None:
         while True:
             try:
@@ -89,7 +94,6 @@ class DeliveryWorker:
     async def send_due(self) -> int:
         """Claims up to BATCH due deliveries, leases them, and sends them concurrently."""
         now = self.clock()
-        lease = timedelta(seconds=self.settings.webhook_timeout_seconds) + LEASE_MARGIN
         async with self.sessionmaker() as session:
             rows = list(
                 await session.scalars(
@@ -104,7 +108,7 @@ class DeliveryWorker:
                 )
             )
             for row in rows:
-                row.next_attempt_at = now + lease
+                row.next_attempt_at = now + self.lease
             await session.commit()
         ids = [row.id for row in rows]
         semaphore = asyncio.Semaphore(self.concurrency)
@@ -193,3 +197,18 @@ class DeliveryWorker:
             timeout=self.settings.webhook_timeout_seconds,
             transport=self.transport,
         )
+
+
+async def run_delivery_retention(
+    sessionmaker: async_sessionmaker[AsyncSession], now: datetime, *, days: int
+) -> JobResult:
+    """Deletes delivered and failed deliveries created more than `days` ago."""
+    async with sessionmaker() as session:
+        result = await session.execute(
+            delete(IntegrationDelivery).where(
+                IntegrationDelivery.status != DeliveryStatus.PENDING,
+                IntegrationDelivery.created_at < now - timedelta(days=days),
+            )
+        )
+        await session.commit()
+    return JobResult(ok=int(result.rowcount))  # type: ignore[attr-defined]

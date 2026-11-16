@@ -49,6 +49,7 @@ def now_utc() -> datetime:
 def default_jobs(settings: Settings | None = None) -> list[Job]:
     # The jobs import JobResult from here.
     from megooflags_api.services.integrations.fanout import run_integration_fanout
+    from megooflags_api.services.integrations.worker import run_delivery_retention
     from megooflags_api.services.lifecycle import run_lifecycle_sweep
     from megooflags_api.services.rollouts import run_due_rollouts
     from megooflags_api.services.schedules import run_due_schedules
@@ -58,12 +59,22 @@ def default_jobs(settings: Settings | None = None) -> list[Job]:
         if settings is None or settings.public_url is None
         else str(settings.public_url).rstrip("/")
     )
+    retention_days: int = (
+        Settings.model_fields["webhook_retention_days"].default
+        if settings is None
+        else settings.webhook_retention_days
+    )
     return [
         Job("schedules", run_due_schedules),
         Job("rollouts", run_due_rollouts),
         Job("lifecycle", run_lifecycle_sweep, every=timedelta(minutes=15)),
         # After the jobs that write audit entries, so their events leave on the same tick.
         Job("integration_fanout", partial(run_integration_fanout, public_url=public_url)),
+        Job(
+            "integration_retention",
+            partial(run_delivery_retention, days=retention_days),
+            every=timedelta(hours=1),
+        ),
     ]
 
 

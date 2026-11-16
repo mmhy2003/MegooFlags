@@ -1,4 +1,5 @@
-"""Create, read, update and delete a project's integrations, and rotate webhook secrets.
+"""Create, read, update and delete a project's integrations, rotate webhook secrets, and read
+and repeat their deliveries.
 
 The URL and the signing secret are stored encrypted; reads only ever see `url_hint`.
 """
@@ -7,19 +8,34 @@ import secrets
 import uuid
 from collections import defaultdict
 from collections.abc import Sequence
+from datetime import datetime
 from ipaddress import ip_address
 from urllib.parse import urlsplit
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.auth.rbac import Authorizer
 from megooflags_api.crypto import SecretBox
-from megooflags_api.errors import not_found, validation_error
-from megooflags_api.models import Environment, Integration, IntegrationEnvironment, Project
-from megooflags_api.models.enums import IntegrationKind
-from megooflags_api.schemas.integrations import IntegrationCreate, IntegrationOut, IntegrationUpdate
+from megooflags_api.errors import invalid_state, not_found, validation_error
+from megooflags_api.models import (
+    Environment,
+    Integration,
+    IntegrationDelivery,
+    IntegrationEnvironment,
+    Project,
+)
+from megooflags_api.models.enums import DeliveryStatus, IntegrationKind
+from megooflags_api.schemas.integrations import (
+    DeliveryOut,
+    IntegrationCreate,
+    IntegrationOut,
+    IntegrationUpdate,
+)
+from megooflags_api.services.integrations.events import ping_event
+from megooflags_api.services.integrations.format import render
 from megooflags_api.services.integrations.net import UnsafeUrl, is_allowed_ip, resolve, validate_url
+from megooflags_api.services.pagination import decode_cursor, encode_cursor
 
 SECRET_PREFIX = "mf_whsec_"
 DEFAULT_PORTS = {"https": 443, "http": 80}
@@ -252,3 +268,111 @@ async def rotate_secret(session: AsyncSession, row: Integration, box: SecretBox)
 async def delete_integration(session: AsyncSession, row: Integration) -> None:
     await session.delete(row)
     await session.flush()
+
+
+def delivery_out(row: IntegrationDelivery, kind: IntegrationKind) -> DeliveryOut:
+    return DeliveryOut.model_validate(
+        {
+            "id": row.id,
+            "event_id": row.event_id,
+            "event_type": row.event_type,
+            "status": row.status,
+            "attempts": row.attempts,
+            "next_attempt_at": row.next_attempt_at,
+            "last_status_code": row.last_status_code,
+            "last_error": row.last_error,
+            "response_body": row.response_body,
+            "duration_ms": row.duration_ms,
+            "created_at": row.created_at,
+            "delivered_at": row.delivered_at,
+            "request_body": render(kind, row.payload),
+        }
+    )
+
+
+def _delivery_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    created_at, _, id = decode_cursor(cursor).partition("|")
+    try:
+        at = datetime.fromisoformat(created_at)
+        if at.tzinfo is None:
+            raise ValueError("no time zone")
+        return at, uuid.UUID(id)
+    except ValueError:
+        raise validation_error("invalid cursor", "cursor") from None
+
+
+async def list_deliveries(
+    session: AsyncSession, row: Integration, cursor: str | None, limit: int
+) -> tuple[list[DeliveryOut], str | None]:
+    """One page of the integration's deliveries, newest first, keyed on (created_at, id)."""
+    query = (
+        select(IntegrationDelivery)
+        .where(IntegrationDelivery.integration_id == row.id)
+        .order_by(IntegrationDelivery.created_at.desc(), IntegrationDelivery.id.desc())
+        .limit(limit + 1)
+    )
+    if cursor is not None:
+        query = query.where(
+            tuple_(IntegrationDelivery.created_at, IntegrationDelivery.id)
+            < tuple_(*_delivery_cursor(cursor))
+        )
+    rows = list(await session.scalars(query))
+    next_cursor = None
+    if len(rows) > limit:
+        rows = rows[:limit]
+        last = rows[-1]
+        next_cursor = encode_cursor(f"{last.created_at.isoformat()}|{last.id}")
+    return [delivery_out(r, row.kind) for r in rows], next_cursor
+
+
+async def add_ping(
+    session: AsyncSession,
+    project: Project,
+    row: Integration,
+    *,
+    public_url: str | None,
+    due: datetime,
+) -> IntegrationDelivery:
+    """A pending test delivery. The caller sends it at once, so `due` leases it: the worker
+    tries it only if that send was cut short."""
+    event = ping_event(project.key, row.name, public_url)
+    delivery = IntegrationDelivery(
+        integration_id=row.id,
+        audit_entry_id=None,
+        event_id=event["id"],
+        event_type=event["type"],
+        payload=event,
+        status=DeliveryStatus.PENDING,
+        next_attempt_at=due,
+    )
+    session.add(delivery)
+    await session.flush()
+    return delivery
+
+
+async def redeliver(
+    session: AsyncSession, row: Integration, delivery_id: uuid.UUID
+) -> IntegrationDelivery:
+    """A new pending delivery, due now, of a failed delivery's event; 409 for any other status."""
+    old = await session.scalar(
+        select(IntegrationDelivery).where(
+            IntegrationDelivery.id == delivery_id, IntegrationDelivery.integration_id == row.id
+        )
+    )
+    if old is None:
+        raise not_found("delivery", str(delivery_id))
+    if old.status is not DeliveryStatus.FAILED:
+        raise invalid_state("only a failed delivery can be sent again")
+    again = IntegrationDelivery(
+        integration_id=row.id,
+        audit_entry_id=old.audit_entry_id,
+        event_id=old.event_id,
+        event_type=old.event_type,
+        payload=old.payload,
+        status=DeliveryStatus.PENDING,
+        next_attempt_at=func.now(),
+    )
+    session.add(again)
+    await session.flush()
+    await session.refresh(again)
+    return again

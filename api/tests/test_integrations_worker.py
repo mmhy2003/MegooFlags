@@ -6,7 +6,8 @@ import hmac
 import json
 import uuid
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import Any
 
 import httpx
@@ -14,6 +15,7 @@ import pytest
 from fastapi import FastAPI
 from helpers import FakeClock, create_project
 from prometheus_client import REGISTRY
+from sqlalchemy import select
 from test_integrations_api import SLACK_URL, create_webhook
 from test_integrations_api import fake_dns as fake_dns  # autouse: resolves the test hosts
 
@@ -25,8 +27,10 @@ from megooflags_api.services.integrations.worker import (
     MAX_ATTEMPTS,
     RETRY_DELAYS,
     DeliveryWorker,
+    run_delivery_retention,
     sign,
 )
+from megooflags_api.services.scheduler import default_jobs
 from megooflags_api.settings import Settings
 
 EVENT: dict[str, Any] = {
@@ -351,3 +355,50 @@ async def test_run_sends_only_while_leader(app: FastAPI, api: httpx.AsyncClient)
         await asyncio.gather(task, return_exceptions=True)
     assert len(receiver.requests) == 1
     assert (await load(app, delivery_id)).status == DeliveryStatus.DELIVERED
+
+
+async def test_retention_deletes_old_finished_deliveries(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await create_project(api)
+    hook = await create_webhook(api)
+    now = datetime(2026, 1, 10, 12, 0, tzinfo=UTC)
+    old = now - timedelta(days=8)
+    recent = now - timedelta(days=6)
+    rows = {
+        "old delivered": (DeliveryStatus.DELIVERED, old),
+        "old failed": (DeliveryStatus.FAILED, old),
+        "old pending": (DeliveryStatus.PENDING, old),
+        "recent delivered": (DeliveryStatus.DELIVERED, recent),
+    }
+    ids: dict[str, uuid.UUID] = {}
+    async with app.state.sessionmaker() as session:
+        for name, (status, created_at) in rows.items():
+            row = IntegrationDelivery(
+                integration_id=uuid.UUID(hook["id"]),
+                event_id=EVENT["id"],
+                event_type=EVENT["type"],
+                payload=EVENT,
+                status=status,
+                created_at=created_at,
+            )
+            session.add(row)
+            await session.flush()
+            ids[name] = row.id
+        await session.commit()
+
+    result = await run_delivery_retention(app.state.sessionmaker, now, days=7)
+
+    assert result.ok == 2
+    async with app.state.sessionmaker() as session:
+        left = set(await session.scalars(select(IntegrationDelivery.id)))
+    assert left == {ids["old pending"], ids["recent delivered"]}
+
+
+def test_retention_is_a_default_job() -> None:
+    jobs = {job.name: job for job in default_jobs(Settings(webhook_retention_days=3))}
+    job = jobs["integration_retention"]
+    assert job.every == timedelta(hours=1)
+    assert isinstance(job.run, partial)
+    assert job.run.func is run_delivery_retention
+    assert job.run.keywords == {"days": 3}

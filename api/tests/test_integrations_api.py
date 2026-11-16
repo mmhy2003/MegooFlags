@@ -3,6 +3,7 @@
 import json
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address
 from typing import Any
 
@@ -389,3 +390,174 @@ async def test_project_delete_cascades_integrations(app: FastAPI, api: httpx.Asy
     assert await count(app, Integration) == 0
     assert await count(app, IntegrationDelivery) == 0
     assert await count(app, IntegrationEnvironment) == 0
+
+
+def receive(status: int, seen: list[httpx.Request]) -> httpx.MockTransport:
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(status, text="ok")
+
+    return httpx.MockTransport(handler)
+
+
+async def add_deliveries(
+    app: FastAPI, integration_id: str, statuses: list[DeliveryStatus], *, start: datetime
+) -> list[uuid.UUID]:
+    """One delivery per status, a minute apart from `start`, oldest first."""
+    async with app.state.sessionmaker() as session:
+        rows = [
+            IntegrationDelivery(
+                integration_id=uuid.UUID(integration_id),
+                audit_entry_id=41 + i,
+                event_id=f"evt_{i}",
+                event_type="flag.toggle",
+                payload={"id": f"evt_{i}", "type": "flag.toggle"},
+                status=status,
+                attempts=6 if status is DeliveryStatus.FAILED else 1,
+                created_at=start + timedelta(minutes=i),
+            )
+            for i, status in enumerate(statuses)
+        ]
+        session.add_all(rows)
+        await session.commit()
+        return [row.id for row in rows]
+
+
+async def test_test_send_delivers_a_ping(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    hook = await create_webhook(api)
+    seen: list[httpx.Request] = []
+    app.state.delivery_worker.transport = receive(200, seen)
+
+    r = await api.post(f"{BASE}/{hook['id']}/test")
+
+    assert r.status_code == 201, r.text
+    delivery = r.json()
+    assert delivery["status"] == "delivered"
+    assert delivery["event_type"] == "ping"
+    assert delivery["attempts"] == 1
+    assert delivery["last_status_code"] == 200
+    [request] = seen
+    assert json.loads(request.content) == delivery["request_body"]
+    assert delivery["request_body"]["type"] == "ping"
+    assert delivery["request_body"]["resource"] == {"type": "integration", "key": "Deploy hook"}
+    [entry] = await audit_entries(app, "integration.test")
+    assert entry["resource_key"] == hook["id"]
+    assert entry["after"] == {"delivery": delivery["id"]}
+
+
+async def test_test_send_renders_the_slack_body(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    hook = await create_webhook(api, kind="slack", url=SLACK_URL)
+    seen: list[httpx.Request] = []
+    app.state.delivery_worker.transport = receive(200, seen)
+
+    delivery = (await api.post(f"{BASE}/{hook['id']}/test")).json()
+
+    [request] = seen
+    assert json.loads(request.content) == delivery["request_body"]
+    assert "blocks" in delivery["request_body"]
+
+
+async def test_delivery_log_pages_newest_first(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    hook = await create_webhook(api)
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    ids = await add_deliveries(app, hook["id"], [DeliveryStatus.DELIVERED] * 5, start=start)
+    # Two rows created at the same moment are ordered by id.
+    [same] = await add_deliveries(app, hook["id"], [DeliveryStatus.DELIVERED], start=start)
+    expected = [str(i) for i in reversed(ids)]
+    expected[-1:] = sorted([str(ids[0]), str(same)], reverse=True)
+
+    seen: list[str] = []
+    cursor: str | None = None
+    pages = 0
+    while True:
+        params: dict[str, str | int] = {"limit": 2}
+        if cursor is not None:
+            params["cursor"] = cursor
+        r = await api.get(f"{BASE}/{hook['id']}/deliveries", params=params)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        seen += [d["id"] for d in body["items"]]
+        pages += 1
+        cursor = body["next_cursor"]
+        if cursor is None:
+            break
+    assert seen == expected
+    assert pages == 3
+    first = (await api.get(f"{BASE}/{hook['id']}/deliveries")).json()["items"][0]
+    assert first["request_body"] == {"id": "evt_4", "type": "flag.toggle"}
+
+
+async def test_delivery_log_limits_and_bad_cursor(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    hook = await create_webhook(api)
+    url = f"{BASE}/{hook['id']}/deliveries"
+    assert (await api.get(url)).json() == {"items": [], "next_cursor": None}
+    for limit in (0, 101):
+        assert_error(await api.get(url, params={"limit": limit}), 422, "validation_error")
+    for cursor in ("!!!", "bm90IGEgY3Vyc29y", "eHw1"):  # bad base64; "not a cursor"; "x|5"
+        assert_error(await api.get(url, params={"cursor": cursor}), 422, "validation_error")
+
+
+async def test_redeliver_a_failed_delivery(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    hook = await create_webhook(api)
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    [failed] = await add_deliveries(app, hook["id"], [DeliveryStatus.FAILED], start=start)
+
+    r = await api.post(f"{BASE}/{hook['id']}/deliveries/{failed}/redeliver")
+
+    assert r.status_code == 201, r.text
+    again = r.json()
+    assert again["id"] != str(failed)
+    assert again["event_id"] == "evt_0"
+    assert again["status"] == "pending"
+    assert again["attempts"] == 0
+    async with app.state.sessionmaker() as session:
+        row = await session.get(IntegrationDelivery, uuid.UUID(again["id"]))
+        assert row is not None
+        assert row.audit_entry_id == 41
+        assert row.payload == {"id": "evt_0", "type": "flag.toggle"}
+        assert row.next_attempt_at is not None
+        assert row.next_attempt_at <= datetime.now(UTC)
+        old = await session.get(IntegrationDelivery, failed)
+        assert old is not None and old.status is DeliveryStatus.FAILED
+    [entry] = await audit_entries(app, "integration.redeliver")
+    assert entry["resource_key"] == hook["id"]
+    assert entry["after"] == {"delivery": again["id"], "redelivery_of": str(failed)}
+
+
+async def test_redeliver_only_a_failed_delivery(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_project(api, key="other")
+    hook = await create_webhook(api)
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    delivered, pending = await add_deliveries(
+        app, hook["id"], [DeliveryStatus.DELIVERED, DeliveryStatus.PENDING], start=start
+    )
+    for id in (delivered, pending):
+        r = await api.post(f"{BASE}/{hook['id']}/deliveries/{id}/redeliver")
+        body = assert_error(r, 409, "invalid_state")
+        assert body["message"] == "only a failed delivery can be sent again"
+    other = await create_webhook(api, name="Other hook")
+    for r in [
+        await api.post(f"{BASE}/{other['id']}/deliveries/{delivered}/redeliver"),
+        await api.post(f"{BASE}/{hook['id']}/deliveries/{uuid.uuid4()}/redeliver"),
+    ]:
+        assert "delivery" in assert_error(r, 404, "not_found")["message"]
+
+
+async def test_delivery_routes_need_project_manage(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    hook = await create_webhook(api)
+    start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    [failed] = await add_deliveries(app, hook["id"], [DeliveryStatus.FAILED], start=start)
+    viewer = bearer(await seed_service_token(app, "viewer", name="viewer"))
+    for r in [
+        await api.post(f"{BASE}/{hook['id']}/test", headers=viewer),
+        await api.get(f"{BASE}/{hook['id']}/deliveries", headers=viewer),
+        await api.post(f"{BASE}/{hook['id']}/deliveries/{failed}/redeliver", headers=viewer),
+    ]:
+        assert_error(r, 403, "forbidden")
