@@ -28,11 +28,13 @@ type reply struct {
 }
 
 // fakeAPI answers the routes it is given, 404 not_found for the rest, and
-// records every request.
+// records every request. A route in queue answers with its replies in turn
+// before falling back to routes.
 type fakeAPI struct {
 	t        *testing.T
 	srv      *httptest.Server
 	routes   map[string]reply
+	queue    map[string][]reply
 	requests []recorded
 }
 
@@ -53,7 +55,11 @@ func newFakeAPI(t *testing.T, routes map[string]reply) *fakeAPI {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		rep, ok := f.routes[r.Method+" "+req.Path]
+		route := r.Method + " " + req.Path
+		rep, ok := f.routes[route]
+		if q := f.queue[route]; len(q) > 0 {
+			rep, ok, f.queue[route] = q[0], true, q[1:]
+		}
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"code":"not_found","message":"Not found"}`))

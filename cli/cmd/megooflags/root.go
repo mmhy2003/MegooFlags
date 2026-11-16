@@ -111,7 +111,7 @@ func run(ctx context.Context, args []string, io IO) int {
 	pf.StringVar(&g.config, "config", "", "config file (default $XDG_CONFIG_HOME/megooflags/config.yaml)")
 
 	root.AddCommand(newVersionCmd(), newCompletionCmd(), newLoginCmd(a), newLogoutCmd(a), newWhoamiCmd(a),
-		newProjectCmd(a), newEnvCmd(a), newSegmentCmd(a))
+		newProjectCmd(a), newEnvCmd(a), newSegmentCmd(a), newFlagCmd(a))
 
 	err := root.ExecuteContext(ctx)
 	if err == nil {
@@ -122,6 +122,9 @@ func run(ctx context.Context, args []string, io IO) int {
 	}
 	if !printAPIError(io.Err, err) {
 		fmt.Fprintln(io.Err, "Error:", err)
+	}
+	if client.IsCode(err, "approval_required") {
+		fmt.Fprintln(io.Err, "hint: open a change request in the UI, or use `megooflags apply --change-requests`")
 	}
 	return exitCode(err)
 }
