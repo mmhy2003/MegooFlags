@@ -1,0 +1,30 @@
+name: Checkout config
+description: ""
+type: json
+tags:
+  - checkout
+variations:
+  - key: default
+    name: Default
+    description: ""
+    value:
+      max_items: 10
+      steps:
+        - cart
+        - pay
+  - key: fast
+    name: Fast
+    description: ""
+    value:
+      max_items: 5
+      ratio: 0.5
+      steps:
+        - pay
+  - key: none
+    name: None
+    description: ""
+    value: null
+off_variation: default
+permanent: false
+archived: true
+environments: {}
