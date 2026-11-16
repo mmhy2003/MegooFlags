@@ -12,13 +12,17 @@ Percentage rollouts are re-bucketed: MegooFlags hashes contexts differently from
 | flag | checkout-theme |  | variant Dark Mode has a number payload, which is not imported: its name is the value |
 | flag | checkout-theme |  | has variants; disabled (value "") is served when the flag is off or no variant applies |
 | flag | checkout-theme | development | the overrides of variant blue are not imported |
+| flag | checkout-theme | prod | strategy 1 (flexibleRollout, Swedes): contexts that match its constraints but fall outside its 40% get disabled instead of trying later strategies |
 | flag | checkout-theme | prod | strategy 3 (default) has random stickiness, which is not supported: it buckets by the context key |
+| flag | new-checkout | prod | strategy 2 (flexibleRollout, Beta testers in the Nordics): contexts that match its constraints but fall outside its 25% get false instead of trying later strategies |
+| flag | new-checkout | prod | strategy 5 (default, Numbers and dates): currentTime is set by Unleash SDKs; MegooFlags SDKs do not set it, so the app must send it |
 | flag | new-checkout | prod | strategy 6 (default, Paused) is disabled: skipped |
 | flag | new-checkout | prod | strategy 7 (remoteAddress) matches IP addresses, which are not supported: skipped |
 | flag | new-checkout | prod | strategy 8 (applicationHostname) uses the applicationHostname strategy, which is not supported: skipped |
 | flag | new-checkout | prod | strategy 9 (default, Recent apps) skipped: operator SEMVER_GTE is not supported |
 | flag | new-checkout | prod | strategy 10 (default, Internal network) skipped: the constraint on remoteAddress matches IP addresses, which is not supported |
 | flag | new-checkout | prod | strategy 11 (flexibleRollout, Random tenth) has random stickiness, which is not supported: it buckets by the context key |
+| flag | new-checkout | prod | strategy 11 (flexibleRollout, Random tenth): contexts that match its constraints but fall outside its 10% get false instead of trying later strategies |
 | segment | beta-testers |  | the constraint on email is case-insensitive; it is imported case-sensitive |
 | segment | everyone |  | has no constraints, so it matched everyone in Unleash; here it matches no one |
 | segment | office-ips |  | key "Office IPs" was renamed to "office-ips" |

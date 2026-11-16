@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -324,7 +325,13 @@ func (c flagConverter) config(env string, fe *featureEnv) flagfiles.FlagEnv {
 		}
 	}
 
+	// An enabled feature without strategies is on for everyone.
 	var fallthroughServe *client.Serve
+	fallthroughFrom := 0
+	if len(fe.strategies) == 0 {
+		serve := c.serve(env, "the environment", totalWeight, "", envVariants)
+		fallthroughServe = &serve
+	}
 	seen := map[string]bool{}
 strategies:
 	for i, s := range fe.strategies {
@@ -374,6 +381,9 @@ strategies:
 		case "default":
 			serve = c.serve(env, name, totalWeight, "", variants)
 			if len(clauses) == 0 {
+				if fallthroughServe != nil && c.info.multivariate() && !reflect.DeepEqual(*fallthroughServe, serve) {
+					c.report(env, "%s replaces strategy %d's rollout as the fallthrough; the variants that rollout served are dropped", name, fallthroughFrom)
+				}
 				fallthroughServe = &serve
 				break strategies
 			}
@@ -389,8 +399,12 @@ strategies:
 					c.report(env, "%s skipped: an earlier rollout without constraints is already the fallthrough", name)
 					continue
 				}
-				fallthroughServe = &serve
+				fallthroughServe, fallthroughFrom = &serve, i+1
 				continue
+			}
+			if rollout < 100 {
+				c.report(env, "%s: contexts that match its constraints but fall outside its %d%% get %s instead of trying later strategies",
+					name, rollout, c.off())
 			}
 		case "userWithId":
 			var ids []any
@@ -548,6 +562,9 @@ func (c flagConverter) prerequisites(env string, deps []Dependency) []client.Pre
 	return out
 }
 
+// currentTimeNote is the note on constraints on currentTime.
+const currentTimeNote = "currentTime is set by Unleash SDKs; MegooFlags SDKs do not set it, so the app must send it"
+
 // convertClauses converts constraints into clauses, with notes on what
 // changed in meaning. An unsupported constraint is an error, since
 // dropping it would widen what matches.
@@ -579,6 +596,9 @@ func convertClauses(in []Constraint) ([]client.Clause, []string, error) {
 				}
 				values[i] = scalar(n)
 			}
+		}
+		if k.ContextName == "currentTime" && !slices.Contains(notes, currentTimeNote) {
+			notes = append(notes, currentTimeNote)
 		}
 		if k.CaseInsensitive {
 			notes = append(notes, fmt.Sprintf("the constraint on %s is case-insensitive; it is imported case-sensitive", k.ContextName))

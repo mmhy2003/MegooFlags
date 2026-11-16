@@ -20,12 +20,12 @@ environments:
     targets: []
     rules: []
     fallthrough:
-      variation: "false"
+      variation: "true"
     prerequisites: []
   prod:
     enabled: true
     targets: []
     rules: []
     fallthrough:
-      variation: "false"
+      variation: "true"
     prerequisites: []
