@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -109,7 +110,8 @@ func run(ctx context.Context, args []string, io IO) int {
 	pf.StringVarP(&g.output, "output", "o", "", "output format: table, json or yaml (env MEGOOFLAGS_OUTPUT)")
 	pf.StringVar(&g.config, "config", "", "config file (default $XDG_CONFIG_HOME/megooflags/config.yaml)")
 
-	root.AddCommand(newVersionCmd(), newCompletionCmd(), newLoginCmd(a), newLogoutCmd(a), newWhoamiCmd(a))
+	root.AddCommand(newVersionCmd(), newCompletionCmd(), newLoginCmd(a), newLogoutCmd(a), newWhoamiCmd(a),
+		newProjectCmd(a), newEnvCmd(a), newSegmentCmd(a))
 
 	err := root.ExecuteContext(ctx)
 	if err == nil {
@@ -156,4 +158,46 @@ func newCompletionCmd() *cobra.Command {
 			}
 		},
 	}
+}
+
+// projectClient is client for commands that work inside one project: the
+// project comes from -p, MEGOOFLAGS_PROJECT or the config file, and its
+// absence is a usage error.
+func (a *app) projectClient() (*client.Client, config.Values, error) {
+	v, err := a.values()
+	if err != nil {
+		return nil, v, err
+	}
+	if v.Project == "" {
+		return nil, v, usageError(errors.New("no project: pass -p or set MEGOOFLAGS_PROJECT"))
+	}
+	c, err := newClient(v)
+	return c, v, err
+}
+
+// requireYes refuses a delete that was not confirmed with --yes.
+func requireYes(yes bool) error {
+	if !yes {
+		return usageError(errors.New("refusing to delete without --yes"))
+	}
+	return nil
+}
+
+// errNothingToUpdate is returned by update commands given no changes.
+var errNothingToUpdate = usageError(errors.New("nothing to update: pass at least one field flag"))
+
+// changedString returns a pointer to the value of flag name when it was set.
+func changedString(cmd *cobra.Command, name, value string) *string {
+	if !cmd.Flags().Changed(name) {
+		return nil
+	}
+	return &value
+}
+
+// changedInt returns a pointer to the value of flag name when it was set.
+func changedInt(cmd *cobra.Command, name string, value int) *int {
+	if !cmd.Flags().Changed(name) {
+		return nil
+	}
+	return &value
 }
