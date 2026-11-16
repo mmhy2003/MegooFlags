@@ -1,6 +1,10 @@
 package main
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/mmhy2003/MegooFlags/cli/client"
+)
 
 // Exit codes. Scripts and CI rely on them, so they never change.
 const (
@@ -30,6 +34,9 @@ func exitCode(err error) int {
 	var ee *exitError
 	if errors.As(err, &ee) {
 		return ee.code
+	}
+	if client.IsCode(err, "approval_required") {
+		return ExitNeedsApproval
 	}
 	return ExitError
 }
