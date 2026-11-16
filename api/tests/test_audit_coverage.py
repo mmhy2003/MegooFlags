@@ -53,7 +53,8 @@ NOT_AUDITED = {
     ("POST", "/api/auth/webauthn/options"),
     # Personal UI settings.
     ("PATCH", "/api/account/preferences"),
-    # Worker traffic (heartbeats and forwarded SDK events), not admin actions.
+    # Worker traffic (the snapshot stream, heartbeats and forwarded SDK events), not admin actions.
+    ("POST", "/api/cluster/v1/stream"),
     ("POST", "/api/cluster/v1/heartbeat"),
     ("POST", "/api/cluster/v1/events"),
 }

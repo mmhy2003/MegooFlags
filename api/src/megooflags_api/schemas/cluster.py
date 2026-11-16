@@ -7,6 +7,17 @@ from megooflags_api.schemas.common import ApiModel
 from megooflags_api.schemas.events import MAX_BATCH, CountIn, ExposureIn
 
 
+class StreamIn(ApiModel):
+    versions: dict[uuid.UUID, int] = Field(
+        default_factory=dict, description="The snapshot version the worker holds per environment."
+    )
+    public_key: str | None = Field(
+        None,
+        max_length=100,
+        description="The key the worker verifies with; when it differs, every snapshot is sent.",
+    )
+
+
 class HeartbeatIn(ApiModel):
     version: str = Field(max_length=50)
     snapshot_version: int = Field(ge=0)

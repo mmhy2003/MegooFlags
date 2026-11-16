@@ -675,6 +675,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cluster/v1/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stream Snapshots
+         * @description Stream the signed environment snapshots to a worker, starting with those it lacks.
+         */
+        post: operations["stream_snapshots_api_cluster_v1_stream_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/invitations/{token}": {
         parameters: {
             query?: never;
@@ -4537,6 +4557,21 @@ export interface components {
             /** Sp Private Key */
             sp_private_key?: string | null;
         };
+        /** StreamIn */
+        StreamIn: {
+            /**
+             * Public Key
+             * @description The key the worker verifies with; when it differs, every snapshot is sent.
+             */
+            public_key?: string | null;
+            /**
+             * Versions
+             * @description The snapshot version the worker holds per environment.
+             */
+            versions?: {
+                [key: string]: number;
+            };
+        };
         /**
          * SubjectKind
          * @enum {string}
@@ -7119,6 +7154,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HeartbeatOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    stream_snapshots_api_cluster_v1_stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamIn"];
+            };
+        };
+        responses: {
+            /** @description Server-sent events: `hello`, a `put` (the signed snapshot, one line each for the signature, the header and the ruleset) for every environment the worker does not hold, `remove` for those gone, then `synced`. After that `put`, `remove`, `state`, `revoked` before the stream closes, and a `: ping` comment as heartbeat. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
                 };
             };
             /** @description Unauthorized */

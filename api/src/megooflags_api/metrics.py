@@ -53,6 +53,11 @@ INTEGRATION_DELIVERIES = Counter(
     "Integration delivery attempts by kind and outcome.",
     ["kind", "outcome"],
 )
+NODE_STREAMS = Gauge(
+    "megooflags_node_streams",
+    "Open worker streams on this control-plane process.",
+    multiprocess_mode="livesum",
+)
 BUILD_INFO = Gauge(
     "megooflags_build_info", "MegooFlags API build.", ["version"], multiprocess_mode="max"
 )

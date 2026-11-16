@@ -43,6 +43,7 @@ from megooflags_api.routers import (
     users,
 )
 from megooflags_api.services.changes import ChangeBus
+from megooflags_api.services.cluster.node_hub import NodeHub
 from megooflags_api.services.cluster.signing import SnapshotSigner
 from megooflags_api.services.delivery import db_delivery
 from megooflags_api.services.events import (
@@ -63,6 +64,13 @@ from megooflags_api.valkey import check_valkey, create_valkey
 logger = logging.getLogger(__name__)
 
 
+def _signer(app: FastAPI) -> SnapshotSigner:
+    """The lifespan refuses to start without a secret key, so a serving app has a signer."""
+    signer: SnapshotSigner | None = app.state.snapshot_signer
+    assert signer is not None
+    return signer
+
+
 def background_jobs(app: FastAPI) -> list[Coroutine[Any, Any, None]]:
     jobs = [
         app.state.change_bus.run(),
@@ -70,6 +78,8 @@ def background_jobs(app: FastAPI) -> list[Coroutine[Any, Any, None]]:
         app.state.evaluation_counter.run(app.state.sessionmaker),
         run_retention(app.state.sessionmaker, app.state.settings.exposure_retention_days),
     ]
+    if app.state.settings.role == "control-plane":
+        jobs.append(app.state.node_hub.run_recheck_loop(app.state.settings.stream_recheck_seconds))
     if app.state.settings.scheduler_enabled:
         jobs.append(app.state.scheduler.run())
         jobs.append(app.state.delivery_worker.run())
@@ -137,6 +147,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.change_bus.on_project.append(app.state.stream_hub.notify_project)
     app.state.change_bus.on_key_revoked.append(app.state.stream_hub.notify_key_revoked)
     app.state.change_bus.on_resubscribe.append(app.state.stream_hub.recheck_all)
+    app.state.node_hub = NodeHub(
+        app.state.sessionmaker, app.state.ruleset_cache, lambda: _signer(app)
+    )
+    app.state.change_bus.on_project.append(app.state.node_hub.notify_project)
+    app.state.change_bus.on_node.append(app.state.node_hub.notify_node)
+    app.state.change_bus.on_resubscribe.append(app.state.node_hub.recheck_all)
     app.state.evaluation_counter = EvaluationCounter()
     app.state.delivery = db_delivery(app)
     app.state.scheduler = Scheduler(

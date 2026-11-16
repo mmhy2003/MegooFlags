@@ -6409,6 +6409,37 @@
         "title": "SsoProviderUpdate",
         "type": "object"
       },
+      "StreamIn": {
+        "additionalProperties": false,
+        "properties": {
+          "public_key": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The key the worker verifies with; when it differs, every snapshot is sent.",
+            "title": "Public Key"
+          },
+          "versions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "The snapshot version the worker holds per environment.",
+            "propertyNames": {
+              "format": "uuid"
+            },
+            "title": "Versions",
+            "type": "object"
+          }
+        },
+        "title": "StreamIn",
+        "type": "object"
+      },
       "SubjectKind": {
         "enum": [
           "user",
@@ -10284,6 +10315,84 @@
           }
         },
         "summary": "Heartbeat",
+        "tags": [
+          "cluster"
+        ]
+      }
+    },
+    "/api/cluster/v1/stream": {
+      "post": {
+        "description": "Stream the signed environment snapshots to a worker, starting with those it lacks.",
+        "operationId": "stream_snapshots_api_cluster_v1_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Server-sent events: `hello`, a `put` (the signed snapshot, one line each for the signature, the header and the ruleset) for every environment the worker does not hold, `remove` for those gone, then `synced`. After that `put`, `remove`, `state`, `revoked` before the stream closes, and a `: ping` comment as heartbeat."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Stream Snapshots",
         "tags": [
           "cluster"
         ]
