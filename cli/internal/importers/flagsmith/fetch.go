@@ -155,7 +155,13 @@ func Fetch(ctx context.Context, src importers.Source) (*Export, error) {
 		envs = append(envs, page.Results...)
 		path = ""
 		if page.Next != nil {
-			path = *page.Next
+			// Only the path and query are kept, so the token never goes
+			// to another host or over another scheme.
+			next, err := url.Parse(*page.Next)
+			if err != nil {
+				return nil, fmt.Errorf("next page %q: %w", *page.Next, err)
+			}
+			path = next.RequestURI()
 		}
 	}
 
@@ -176,14 +182,9 @@ type fetcher struct {
 	src  importers.Source
 }
 
-// get decodes the response to path into out. path is relative to the base
-// URL, or a URL the API returned.
+// get decodes the response to path, relative to the base URL, into out.
 func (f fetcher) get(path string, out any) error {
-	target := f.base + path
-	if u, err := url.Parse(path); err == nil && u.IsAbs() {
-		target = path
-	}
-	req, err := http.NewRequestWithContext(f.ctx, http.MethodGet, target, nil)
+	req, err := http.NewRequestWithContext(f.ctx, http.MethodGet, f.base+path, nil)
 	if err != nil {
 		return err
 	}

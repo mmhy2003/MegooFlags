@@ -133,7 +133,7 @@ func TestFetchSendsApiKeyAndReadsEachDocument(t *testing.T) {
 	for name, pages := range map[string][]string{
 		"array": {`[{"id": 1, "name": "Development", "api_key": "dev-key"}, {"id": 2, "name": "Production", "api_key": "prod-key"}]`},
 		"paginated": {
-			`{"count": 2, "next": "/api/v1/environments/?project=7&page=2", "results": [{"id": 1, "name": "Development", "api_key": "dev-key"}]}`,
+			`{"count": 2, "next": "http://elsewhere.example/api/v1/environments/?project=7&page=2", "results": [{"id": 1, "name": "Development", "api_key": "dev-key"}]}`,
 			`{"count": 2, "next": null, "results": [{"id": 2, "name": "Production", "api_key": "prod-key"}]}`,
 		},
 	} {
@@ -208,5 +208,37 @@ func TestFetchNeedsProject(t *testing.T) {
 	_, err := Fetch(context.Background(), importers.Source{Token: "t"})
 	if err == nil || !strings.Contains(err.Error(), "project") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestConvertMergesOptionsWithTheSameValue(t *testing.T) {
+	theme := Feature{ID: 1, Name: "theme"}
+	e := &Export{Environments: map[string]Document{"prod": {FeatureStates: []FeatureState{{
+		Feature: theme, Enabled: true, Value: "blue", MultivariateValues: []MultivariateValue{
+			{PercentageAllocation: 20, Option: MultivariateOption{ID: 1, Value: "green"}},
+			{PercentageAllocation: 30, Option: MultivariateOption{ID: 2, Value: "green"}},
+		},
+	}}}}}
+	d, _ := Convert(e, importers.Options{Project: "shop"})
+	if errs := flagfiles.Validate(d, nil); len(errs) > 0 {
+		t.Fatalf("the import does not validate: %v", errs)
+	}
+	want := &client.Rollout{BucketBy: "key", Weights: []client.Weight{{Variation: "option-1", Weight: 50000}, {Variation: "default", Weight: 50000}}}
+	if got := d.Flags["theme"].Environments["prod"].Fallthrough.Rollout; !reflect.DeepEqual(got, want) {
+		t.Fatalf("rollout = %+v", got)
+	}
+	if n := len(d.Flags["theme"].Variations); n != 2 {
+		t.Fatalf("variations = %+v", d.Flags["theme"].Variations)
+	}
+}
+
+func TestConvertReportsIdentityOverridesOfUnknownFeatures(t *testing.T) {
+	e := &Export{Environments: map[string]Document{"prod": {IdentityOverrides: []IdentityOverride{{
+		Identifier: "alice", IdentityFeatures: []FeatureState{{Feature: Feature{ID: 9, Name: "Gone Feature"}, Enabled: true}},
+	}}}}}
+	_, report := Convert(e, importers.Options{Project: "shop"})
+	want := []importers.ReportLine{{Resource: "identity", Key: "alice", Env: "prod", Message: "identity overrides are not imported: Gone Feature"}}
+	if !reflect.DeepEqual(report.Lines, want) {
+		t.Fatalf("report = %#v", report.Lines)
 	}
 }

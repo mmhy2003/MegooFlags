@@ -372,7 +372,11 @@ func (c *converter) reportIdentities() {
 		for _, id := range c.e.Environments[env].IdentityOverrides {
 			var flags []string
 			for _, s := range id.IdentityFeatures {
-				flags = append(flags, c.flagKeys[s.Feature.Name])
+				key, ok := c.flagKeys[s.Feature.Name]
+				if !ok {
+					key = s.Feature.Name
+				}
+				flags = append(flags, key)
 			}
 			c.r.Add("identity", id.Identifier, c.envKeys[env], "identity overrides are not imported: %s", strings.Join(flags, ", "))
 		}
@@ -514,7 +518,13 @@ func (c *flagConverter) typedConfig(env string, fe *featureEnv) flagfiles.FlagEn
 		if w <= 0 {
 			continue
 		}
-		rollout.Weights = append(rollout.Weights, client.Weight{Variation: c.findPrefix(mv.Option.Value, "option-"), Weight: w})
+		// Options with the same value share a variation and its weight.
+		key := c.findPrefix(mv.Option.Value, "option-")
+		if i := slices.IndexFunc(rollout.Weights, func(x client.Weight) bool { return x.Variation == key }); i >= 0 {
+			rollout.Weights[i].Weight += w
+		} else {
+			rollout.Weights = append(rollout.Weights, client.Weight{Variation: key, Weight: w})
+		}
 		left -= w
 	}
 	if len(rollout.Weights) > 0 {
