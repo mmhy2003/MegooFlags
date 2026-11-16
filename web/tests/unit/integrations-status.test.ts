@@ -4,8 +4,10 @@ import type { components } from "@/lib/api/client";
 import {
   canSendAgain,
   deliveryLabel,
+  deliveryOutcome,
   integrationStatus,
   statusPill,
+  testSendResult,
 } from "@/lib/integrations/status";
 
 type S = components["schemas"];
@@ -88,5 +90,46 @@ describe("canSendAgain", () => {
     ["failed", true],
   ] as const)("%s is %s", (status, can) => {
     expect(canSendAgain({ ...delivery, status })).toBe(can);
+  });
+});
+
+describe("deliveryOutcome", () => {
+  it.each([
+    [200, null, "HTTP 200"],
+    [501, "ignored", "HTTP 501"],
+    [null, "connection refused", "connection refused"],
+    [null, null, null],
+  ] as const)("status %s, error %s is %s", (code, error, outcome) => {
+    expect(
+      deliveryOutcome({
+        ...delivery,
+        last_status_code: code,
+        last_error: error,
+      }),
+    ).toBe(outcome);
+  });
+});
+
+describe("testSendResult", () => {
+  it.each([
+    ["delivered", 200, null, { ok: true, message: "Test delivered" }],
+    ["pending", 501, null, { ok: false, message: "Test failed: 501" }],
+    ["failed", 404, null, { ok: false, message: "Test failed: 404" }],
+    [
+      "pending",
+      null,
+      "timed out",
+      { ok: false, message: "Test failed: timed out" },
+    ],
+    ["failed", null, null, { ok: false, message: "Test failed" }],
+  ] as const)("%s, %s, %s", (status, code, error, result) => {
+    expect(
+      testSendResult({
+        ...delivery,
+        status,
+        last_status_code: code,
+        last_error: error,
+      }),
+    ).toEqual(result);
   });
 });

@@ -1,10 +1,23 @@
 "use client";
 
-import { Ellipsis, Pencil, Plus, Webhook } from "lucide-react";
+import {
+  Ellipsis,
+  History,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  Send,
+  Trash2,
+  Webhook,
+} from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
+import { DeliveryLog } from "@/components/integrations/delivery-log";
 import { IntegrationForm } from "@/components/integrations/integration-form";
 import { SecretReveal } from "@/components/integrations/secret-reveal";
+import { ConfirmDialog } from "@/components/patterns/confirm-dialog";
 import { type Column, DataList } from "@/components/patterns/data-list";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { PageHeader } from "@/components/patterns/page-header";
@@ -16,16 +29,21 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useApiData } from "@/hooks/use-api-data";
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { failureText, must } from "@/lib/flags/errors";
+import { ApiError, failureText, must } from "@/lib/flags/errors";
 import { can } from "@/lib/flags/permissions";
 import { groupLabel, KIND_LABELS } from "@/lib/integrations/groups";
-import { integrationStatus, statusPill } from "@/lib/integrations/status";
+import {
+  integrationStatus,
+  statusPill,
+  testSendResult,
+} from "@/lib/integrations/status";
 import { projectTrail } from "@/lib/routes";
 
 type Integration = components["schemas"]["IntegrationOut"];
@@ -35,7 +53,24 @@ const DATE_TIME = new Intl.DateTimeFormat(undefined, {
   timeStyle: "short",
 });
 
-function columns(onEdit: (i: Integration) => void): Column<Integration>[] {
+type RowActions = {
+  onDeliveries: (i: Integration) => void;
+  onEdit: (i: Integration) => void;
+  onSendTest: (i: Integration) => void;
+  onToggle: (i: Integration) => void;
+  onDelete: (i: Integration) => void;
+};
+
+function showError(error: unknown, what: string) {
+  if (!(error instanceof ApiError)) console.error(what, error);
+  toast.error(
+    error instanceof ApiError
+      ? failureText(error.failure)
+      : "Couldn't reach the server",
+  );
+}
+
+function columns(actions: RowActions): Column<Integration>[] {
   return [
     {
       id: "name",
@@ -100,9 +135,29 @@ function columns(onEdit: (i: Integration) => void): Column<Integration>[] {
             <Ellipsis aria-hidden />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-auto min-w-40">
-            <DropdownMenuItem onClick={() => onEdit(i)}>
+            <DropdownMenuItem onClick={() => actions.onDeliveries(i)}>
+              <History aria-hidden />
+              Deliveries
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => actions.onEdit(i)}>
               <Pencil aria-hidden />
               Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => actions.onSendTest(i)}>
+              <Send aria-hidden />
+              Send test
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => actions.onToggle(i)}>
+              {i.enabled ? <Pause aria-hidden /> : <Play aria-hidden />}
+              {i.enabled ? "Pause" : "Resume"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => actions.onDelete(i)}
+            >
+              <Trash2 aria-hidden />
+              Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -141,6 +196,62 @@ export function IntegrationList({ project }: { project: string }) {
     setForm({ open: true, integration });
   const closeForm = () => setForm((f) => ({ ...f, open: false }));
   const [secret, setSecret] = useState<string | null>(null);
+  // Like the form, these keep their integration while closing.
+  const [log, setLog] = useState<{
+    open: boolean;
+    integration: Integration | null;
+  }>({ open: false, integration: null });
+  const [removing, setRemoving] = useState<{
+    open: boolean;
+    integration: Integration | null;
+  }>({ open: false, integration: null });
+
+  const path = (i: Integration) => ({ project, id: i.id });
+
+  const sendTest = async (i: Integration) => {
+    try {
+      const delivery = await must(
+        api.POST("/api/projects/{project}/integrations/{id}/test", {
+          params: { path: path(i) },
+        }),
+      );
+      const result = testSendResult(delivery);
+      if (result.ok) toast(result.message);
+      else toast.error(result.message);
+    } catch (error) {
+      showError(error, "sending a test failed");
+    }
+    list.reload();
+  };
+
+  const toggle = async (i: Integration) => {
+    try {
+      await must(
+        api.PATCH("/api/projects/{project}/integrations/{id}", {
+          params: { path: path(i) },
+          body: { enabled: !i.enabled },
+        }),
+      );
+      toast(i.enabled ? "Integration paused" : "Integration resumed");
+      list.reload();
+    } catch (error) {
+      showError(error, "pausing or resuming the integration failed");
+    }
+  };
+
+  const remove = async (i: Integration) => {
+    try {
+      await must(
+        api.DELETE("/api/projects/{project}/integrations/{id}", {
+          params: { path: path(i) },
+        }),
+      );
+      toast("Integration deleted");
+      list.reload();
+    } catch (error) {
+      showError(error, "deleting the integration failed");
+    }
+  };
 
   const canManage = can(perms, "project.manage");
   const add = canManage && (
@@ -179,7 +290,13 @@ export function IntegrationList({ project }: { project: string }) {
     body = (
       <DataList
         caption="Integrations"
-        columns={columns(openForm)}
+        columns={columns({
+          onDeliveries: (integration) => setLog({ open: true, integration }),
+          onEdit: openForm,
+          onSendTest: (integration) => void sendTest(integration),
+          onToggle: (integration) => void toggle(integration),
+          onDelete: (integration) => setRemoving({ open: true, integration }),
+        })}
         rows={list.data}
         rowKey={(i) => i.id}
       />
@@ -208,6 +325,23 @@ export function IntegrationList({ project }: { project: string }) {
         }}
       />
       <SecretReveal secret={secret} onClose={() => setSecret(null)} />
+      <DeliveryLog
+        project={project}
+        integration={log.integration}
+        open={log.open}
+        onOpenChange={(open) => setLog((l) => ({ ...l, open }))}
+      />
+      <ConfirmDialog
+        open={removing.open}
+        onOpenChange={(open) => setRemoving((r) => ({ ...r, open }))}
+        title="Delete integration?"
+        description={`${removing.integration?.name ?? "It"} stops receiving events, and its delivery log is deleted.`}
+        confirmLabel="Delete integration"
+        destructive
+        onConfirm={() => {
+          if (removing.integration) void remove(removing.integration);
+        }}
+      />
     </>
   );
 }

@@ -39,3 +39,22 @@ export function deliveryLabel(d: S["DeliveryOut"]): string {
 export function canSendAgain(d: S["DeliveryOut"]): boolean {
   return d.status === "failed";
 }
+
+/** What the receiver answered, or why there was no answer. */
+export function deliveryOutcome(d: S["DeliveryOut"]): string | null {
+  if (d.last_status_code !== null) return `HTTP ${d.last_status_code}`;
+  return d.last_error;
+}
+
+/** A test that the server will retry still failed its one immediate attempt. */
+export function testSendResult(d: S["DeliveryOut"]): {
+  ok: boolean;
+  message: string;
+} {
+  if (d.status === "delivered") return { ok: true, message: "Test delivered" };
+  const reason = d.last_status_code ?? d.last_error;
+  return {
+    ok: false,
+    message: reason === null ? "Test failed" : `Test failed: ${reason}`,
+  };
+}
