@@ -39,6 +39,7 @@ async def create_sdk_key(
     session: SessionDep,
     authz: ManageKeys,
     audit: AuditDep,
+    bus: ChangesDep,
     project: str,
     env: str,
     body: SdkKeyCreate,
@@ -56,6 +57,7 @@ async def create_sdk_key(
         after=snapshot(_out(row)),
     )
     await session.commit()
+    await bus.publish(environment.project_id)
     return out
 
 
@@ -92,6 +94,7 @@ async def revoke_sdk_key(
         after=snapshot(_out(key)),
     )
     await session.commit()
+    await bus.publish(environment.project_id)
     await bus.publish_key_revoked(key.id)
     return Response(status_code=204)
 
@@ -125,6 +128,7 @@ async def rotate_sdk_key(
         after={"old": snapshot(_out(old)), "new": snapshot(_out(new))},
     )
     await session.commit()
+    await bus.publish(environment.project_id)
     if old.revoked_at is not None:
         await bus.publish_key_revoked(old.id)
     return out

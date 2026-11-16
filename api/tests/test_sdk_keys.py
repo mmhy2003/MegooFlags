@@ -1,5 +1,6 @@
 import hashlib
 import re
+import uuid
 
 import httpx
 import pytest
@@ -70,6 +71,26 @@ async def test_revoke(api: httpx.AsyncClient) -> None:
     assert r.status_code == 204, r.text
     [again] = (await api.get(KEYS)).json()
     assert again["revoked_at"] == item["revoked_at"]
+
+
+async def test_key_create_rotate_revoke_publish_project(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await create_project(api)
+    async with app.state.sessionmaker() as session:
+        project_id = await session.scalar(select(Environment.project_id).limit(1))
+    seen: list[uuid.UUID] = []
+    app.state.change_bus.on_project.append(seen.append)
+
+    created = await create_sdk_key(api, "server")
+    assert seen == [project_id]
+    r = await api.post(f"{KEYS}/{created['id']}/rotate", json={"overlap_seconds": 60})
+    assert r.status_code == 201, r.text
+    assert seen == [project_id] * 2
+    r = await api.delete(f"{KEYS}/{r.json()['id']}")
+    assert r.status_code == 204, r.text
+
+    assert seen == [project_id] * 3
 
 
 async def test_revoke_other_environment_404(api: httpx.AsyncClient) -> None:
