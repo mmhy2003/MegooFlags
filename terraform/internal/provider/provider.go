@@ -90,6 +90,7 @@ func (p *megooflagsProvider) Resources(context.Context) []func() resource.Resour
 	return []func() resource.Resource{
 		newProjectResource,
 		newFlagResource,
+		newFlagEnvironmentResource,
 	}
 }
 
