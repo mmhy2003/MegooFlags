@@ -41,6 +41,7 @@ from megooflags_api.routers import (
     users,
 )
 from megooflags_api.services.changes import ChangeBus
+from megooflags_api.services.cluster.signing import SnapshotSigner
 from megooflags_api.services.events import (
     EvaluationCounter,
     EventsBodyLimitMiddleware,
@@ -112,6 +113,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # None without a key, so export_openapi works; the lifespan refuses to start without one.
     app.state.secret_box = (
         SecretBox(settings.secret_key.get_secret_value()) if settings.secret_key else None
+    )
+    app.state.snapshot_signer = (
+        SnapshotSigner(settings.secret_key.get_secret_value()) if settings.secret_key else None
     )
     app.state.engine = create_engine(settings)
     app.state.sessionmaker = create_sessionmaker(app.state.engine)
