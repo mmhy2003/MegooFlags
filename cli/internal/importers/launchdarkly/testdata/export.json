@@ -1,0 +1,248 @@
+{
+  "environments": [
+    {"key": "production", "name": "Production"},
+    {"key": "test", "name": "Test"}
+  ],
+  "segments": {
+    "production": [
+      {
+        "key": "beta-users",
+        "name": "Beta users",
+        "description": "Early access",
+        "included": ["u2", "u1"],
+        "excluded": ["u9"],
+        "includedContexts": [
+          {"contextKind": "user", "values": ["u3"]},
+          {"contextKind": "organization", "values": ["acme"]}
+        ],
+        "rules": [
+          {"description": "Staff", "clauses": [{"attribute": "email", "op": "endsWith", "values": ["@example.com"], "negate": false, "contextKind": "user"}]},
+          {"description": "Half of the testers", "clauses": [{"attribute": "group", "op": "in", "values": ["testers"], "negate": false, "contextKind": "user"}], "weight": 50000, "bucketBy": "key"}
+        ],
+        "unbounded": false
+      },
+      {"key": "Internal", "name": "Internal", "description": "", "included": ["alice"], "unbounded": false},
+      {"key": "big-spenders", "name": "Big spenders", "description": "", "unbounded": true}
+    ],
+    "test": [
+      {
+        "key": "beta-users",
+        "name": "Beta users",
+        "description": "Early access",
+        "included": ["u1", "u2"],
+        "excluded": ["u9"],
+        "includedContexts": [
+          {"contextKind": "user", "values": ["u3"]},
+          {"contextKind": "organization", "values": ["acme"]}
+        ],
+        "rules": [
+          {"description": "Staff", "clauses": [{"attribute": "email", "op": "endsWith", "values": ["@example.com"], "negate": false, "contextKind": "user"}]},
+          {"description": "Half of the testers", "clauses": [{"attribute": "group", "op": "in", "values": ["testers"], "negate": false, "contextKind": "user"}], "weight": 50000, "bucketBy": "key"}
+        ],
+        "unbounded": false
+      },
+      {"key": "Internal", "name": "Internal", "description": "", "included": ["bob"], "unbounded": false},
+      {"key": "big-spenders", "name": "Big spenders", "description": "", "unbounded": true}
+    ]
+  },
+  "flags": {
+    "production": [
+      {
+        "key": "NewCheckout",
+        "name": "New checkout",
+        "description": "The one-page checkout",
+        "kind": "boolean",
+        "tags": ["checkout", "web"],
+        "temporary": true,
+        "archived": false,
+        "_maintainer": {"email": "mona@example.com"},
+        "variations": [{"value": true, "name": "On"}, {"value": false, "name": "Off"}],
+        "environments": {
+          "production": {
+            "on": true,
+            "targets": [{"values": ["u1"], "variation": 0, "contextKind": "user"}],
+            "contextTargets": [
+              {"values": [], "variation": 0, "contextKind": "user"},
+              {"values": ["u5"], "variation": 1, "contextKind": "user"},
+              {"values": ["acme"], "variation": 0, "contextKind": "organization"}
+            ],
+            "rules": [
+              {"description": "Staff", "clauses": [{"attribute": "email", "op": "endsWith", "values": ["@example.com"], "negate": false, "contextKind": "user"}], "variation": 0},
+              {"description": "", "clauses": [{"attribute": "segmentMatch", "op": "segmentMatch", "values": ["beta-users"], "negate": false}], "variation": 0},
+              {"description": "Enterprise orgs", "clauses": [{"attribute": "plan", "op": "in", "values": ["enterprise"], "negate": false, "contextKind": "organization"}], "variation": 0},
+              {"description": "Big spenders", "clauses": [{"attribute": "segmentMatch", "op": "segmentMatch", "values": ["big-spenders"], "negate": false}], "variation": 0},
+              {"description": "Not internal", "clauses": [{"attribute": "segmentMatch", "op": "segmentMatch", "values": ["Internal"], "negate": true}], "variation": 1}
+            ],
+            "fallthrough": {"variation": 1},
+            "offVariation": 1,
+            "prerequisites": []
+          }
+        }
+      },
+      {
+        "key": "checkout-theme",
+        "name": "Checkout theme",
+        "description": "",
+        "kind": "multivariate",
+        "tags": [],
+        "temporary": false,
+        "archived": false,
+        "variations": [
+          {"value": "blue", "name": "Blue"},
+          {"value": "green", "name": "Green", "description": "The new one"},
+          {"value": "dark"},
+          {"value": "navy", "name": "Blue"}
+        ],
+        "environments": {
+          "production": {
+            "on": true,
+            "targets": [],
+            "contextTargets": [],
+            "rules": [
+              {
+                "description": "New app versions",
+                "clauses": [{"attribute": "version", "op": "semVerGreaterThan", "values": ["2.0.0"], "negate": false, "contextKind": "user"}],
+                "rollout": {"variations": [{"variation": 0, "weight": 50000}, {"variation": 1, "weight": 50000}], "bucketBy": "email"}
+              },
+              {
+                "description": "Minors",
+                "clauses": [
+                  {"attribute": "age", "op": "greaterThanOrEqual", "values": [18], "negate": true, "contextKind": ""},
+                  {"attribute": "country", "op": "startsWith", "values": ["U"], "negate": false},
+                  {"attribute": "name", "op": "matches", "values": ["^a"], "negate": false}
+                ],
+                "variation": 3
+              }
+            ],
+            "fallthrough": {
+              "rollout": {
+                "variations": [{"variation": 0, "weight": 40000}, {"variation": 1, "weight": 30000}, {"variation": 2, "weight": 30000}, {"variation": 3, "weight": 0}],
+                "experimentAllocation": {"type": "measuredRollout", "defaultVariation": 0}
+              }
+            },
+            "offVariation": 2,
+            "prerequisites": [{"key": "NewCheckout", "variation": 0}, {"key": "db-migration", "variation": 0}]
+          }
+        }
+      },
+      {
+        "key": "max-items",
+        "name": "Max items",
+        "description": "",
+        "kind": "multivariate",
+        "tags": ["cart"],
+        "temporary": false,
+        "archived": true,
+        "variations": [{"value": 10}, {"value": 2.5}],
+        "environments": {
+          "production": {
+            "on": false,
+            "targets": [],
+            "contextTargets": [],
+            "rules": [
+              {"description": "", "clauses": [{"attribute": "signup", "op": "before", "values": [1700000000000], "negate": false, "contextKind": "user"}], "variation": 1}
+            ],
+            "fallthrough": {"variation": 0},
+            "offVariation": 0,
+            "prerequisites": []
+          }
+        }
+      },
+      {
+        "key": "db-migration",
+        "name": "DB migration",
+        "description": "",
+        "kind": "multivariate",
+        "purpose": "migration",
+        "migrationSettings": {"stageCount": 2},
+        "tags": [],
+        "temporary": true,
+        "archived": false,
+        "variations": [{"value": "off", "name": "off"}, {"value": "shadow", "name": "shadow"}],
+        "environments": {
+          "production": {"on": true, "targets": [], "contextTargets": [], "rules": [], "fallthrough": {"variation": 1}, "offVariation": 0, "prerequisites": []}
+        }
+      }
+    ],
+    "test": [
+      {
+        "key": "NewCheckout",
+        "name": "New checkout",
+        "description": "The one-page checkout",
+        "kind": "boolean",
+        "tags": ["checkout", "web"],
+        "temporary": true,
+        "archived": false,
+        "_maintainer": {"email": "mona@example.com"},
+        "variations": [{"value": true, "name": "On"}, {"value": false, "name": "Off"}],
+        "environments": {
+          "test": {
+            "on": false,
+            "targets": [],
+            "contextTargets": [],
+            "rules": [
+              {"description": "", "clauses": [{"attribute": "segmentMatch", "op": "segmentMatch", "values": ["beta-users", "Internal"], "negate": false}], "variation": 0}
+            ],
+            "fallthrough": {"variation": 0},
+            "offVariation": 1,
+            "prerequisites": []
+          }
+        }
+      },
+      {
+        "key": "checkout-theme",
+        "name": "Checkout theme",
+        "description": "",
+        "kind": "multivariate",
+        "tags": [],
+        "temporary": false,
+        "archived": false,
+        "variations": [
+          {"value": "blue", "name": "Blue"},
+          {"value": "green", "name": "Green", "description": "The new one"},
+          {"value": "dark"},
+          {"value": "navy", "name": "Blue"}
+        ],
+        "environments": {
+          "test": {
+            "on": true,
+            "targets": [{"values": ["qa1", "qa2"], "variation": 2}],
+            "contextTargets": [],
+            "rules": [],
+            "fallthrough": {"variation": 0},
+            "offVariation": 0,
+            "prerequisites": [{"key": "NewCheckout", "variation": 1}]
+          }
+        }
+      },
+      {
+        "key": "max-items",
+        "name": "Max items",
+        "description": "",
+        "kind": "multivariate",
+        "tags": ["cart"],
+        "temporary": false,
+        "archived": true,
+        "variations": [{"value": 10}, {"value": 2.5}],
+        "environments": {
+          "test": {"on": true, "targets": [], "contextTargets": [], "rules": [], "fallthrough": {"variation": 1}, "offVariation": null, "prerequisites": []}
+        }
+      },
+      {
+        "key": "db-migration",
+        "name": "DB migration",
+        "description": "",
+        "kind": "multivariate",
+        "purpose": "migration",
+        "migrationSettings": {"stageCount": 2},
+        "tags": [],
+        "temporary": true,
+        "archived": false,
+        "variations": [{"value": "off", "name": "off"}, {"value": "shadow", "name": "shadow"}],
+        "environments": {
+          "test": {"on": false, "targets": [], "contextTargets": [], "rules": [], "fallthrough": {"variation": 0}, "offVariation": 0, "prerequisites": []}
+        }
+      }
+    ]
+  }
+}

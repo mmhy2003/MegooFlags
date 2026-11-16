@@ -1,0 +1,73 @@
+name: New checkout
+description: The one-page checkout
+type: boolean
+tags:
+  - checkout
+  - web
+owner: mona@example.com
+variations:
+  - key: "on"
+    name: "On"
+    description: ""
+    value: true
+  - key: "off"
+    name: "Off"
+    description: ""
+    value: false
+off_variation: "off"
+permanent: false
+archived: false
+environments:
+  production:
+    enabled: true
+    targets:
+      - variation: "on"
+        values:
+          - u1
+      - variation: "off"
+        values:
+          - u5
+    rules:
+      - description: Staff
+        clauses:
+          - attribute: email
+            operator: ends_with
+            values:
+              - '@example.com'
+            negate: false
+        variation: "on"
+      - description: ""
+        clauses:
+          - attribute: key
+            operator: in_segment
+            values:
+              - beta-users
+            negate: false
+        variation: "on"
+      - description: Not internal
+        clauses:
+          - attribute: key
+            operator: in_segment
+            values:
+              - internal-production
+            negate: true
+        variation: "off"
+    fallthrough:
+      variation: "off"
+    prerequisites: []
+  staging:
+    enabled: false
+    targets: []
+    rules:
+      - description: ""
+        clauses:
+          - attribute: key
+            operator: in_segment
+            values:
+              - beta-users
+              - internal-staging
+            negate: false
+        variation: "on"
+    fallthrough:
+      variation: "on"
+    prerequisites: []

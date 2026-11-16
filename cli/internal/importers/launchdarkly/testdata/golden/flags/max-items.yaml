@@ -1,0 +1,40 @@
+name: Max items
+description: ""
+type: number
+tags:
+  - cart
+variations:
+  - key: v0
+    name: ""
+    description: ""
+    value: 10
+  - key: v1
+    name: ""
+    description: ""
+    value: 2.5
+off_variation: v0
+permanent: true
+archived: true
+environments:
+  production:
+    enabled: false
+    targets: []
+    rules:
+      - description: ""
+        clauses:
+          - attribute: signup
+            operator: before
+            values:
+              - 1700000000000
+            negate: false
+        variation: v1
+    fallthrough:
+      variation: v0
+    prerequisites: []
+  staging:
+    enabled: true
+    targets: []
+    rules: []
+    fallthrough:
+      variation: v1
+    prerequisites: []
