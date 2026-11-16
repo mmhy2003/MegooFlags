@@ -111,7 +111,8 @@ func run(ctx context.Context, args []string, io IO) int {
 	pf.StringVar(&g.config, "config", "", "config file (default $XDG_CONFIG_HOME/megooflags/config.yaml)")
 
 	root.AddCommand(newVersionCmd(), newCompletionCmd(), newLoginCmd(a), newLogoutCmd(a), newWhoamiCmd(a),
-		newProjectCmd(a), newEnvCmd(a), newSegmentCmd(a), newFlagCmd(a))
+		newProjectCmd(a), newEnvCmd(a), newSegmentCmd(a), newFlagCmd(a),
+		newPromoteCmd(a), newEvaluateCmd(a), newRulesetCmd(a))
 
 	err := root.ExecuteContext(ctx)
 	if err == nil {
