@@ -26,6 +26,8 @@ const PAGES: {
     mask: true,
     detail: true,
   })),
+  // global-setup.ts seeds a paused webhook in shop, so the page shows a row that never changes.
+  { name: "integrations", path: "/projects/shop/integrations", mask: true },
   { name: "settings", path: "/settings" },
   { name: "kit", path: "/dev/kit" },
 ];

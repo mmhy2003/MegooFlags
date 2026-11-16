@@ -7,6 +7,10 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
       - "sdks/go/v[0-9]+.[0-9]+.[0-9]+"
       - "sdks/go/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "cli/v[0-9]+.[0-9]+.[0-9]+"
+      - "cli/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "terraform/v[0-9]+.[0-9]+.[0-9]+"
+      - "terraform/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
       - "sdk-node/v[0-9]+.[0-9]+.[0-9]+"
       - "sdk-node/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
       - "sdk-python/v[0-9]+.[0-9]+.[0-9]+"
@@ -225,6 +229,104 @@ jobs:
           done
           echo "::error::proxy.golang.org did not resolve github.com/mmhy2003/MegooFlags/sdks/go@v${v}"
           exit 1
+
+  # The CLI and the Terraform provider ship as GitHub release files only (cross-built archives plus
+  # SHA256SUMS, from scripts/go_release.py), always as pre-releases while they are 0.x.
+  cli-release:
+    if: startsWith(github.ref_name, 'cli/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag is on main
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *-rc.*)
+              echo "$GITHUB_REF_NAME is a release candidate; the main-branch check is skipped."
+              ;;
+            *)
+              if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+                echo "::error::$GITHUB_REF_NAME must point to a commit on main"
+                exit 1
+              fi
+              echo "$GITHUB_REF_NAME is on main."
+              ;;
+          esac
+      - name: Tag matches version
+        run: |
+          v="${GITHUB_REF_NAME#cli/v}"
+          grep -q "const Version = \"${v%%-rc.*}\"" cli/internal/buildinfo/version.go || { echo "::error::tag does not match cli/internal/buildinfo/version.go"; exit 1; }
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+      - run: go vet ./...
+        working-directory: cli
+      - run: go test -race -count=1 ./...
+        working-directory: cli
+      - name: Build the archives
+        run: python3 scripts/go_release.py --kind cli --version "${GITHUB_REF_NAME#cli/v}" --out dist
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#cli/v}"
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "MegooFlags CLI $v" \
+            --notes "See CHANGELOG.md and cli/README.md." \
+            --latest=false --prerelease
+
+  terraform-release:
+    if: startsWith(github.ref_name, 'terraform/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag is on main
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *-rc.*)
+              echo "$GITHUB_REF_NAME is a release candidate; the main-branch check is skipped."
+              ;;
+            *)
+              if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+                echo "::error::$GITHUB_REF_NAME must point to a commit on main"
+                exit 1
+              fi
+              echo "$GITHUB_REF_NAME is on main."
+              ;;
+          esac
+      - name: Tag matches version
+        run: |
+          v="${GITHUB_REF_NAME#terraform/v}"
+          grep -q "const Version = \"${v%%-rc.*}\"" terraform/internal/provider/version.go || { echo "::error::tag does not match terraform/internal/provider/version.go"; exit 1; }
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: terraform/go.mod
+          cache-dependency-path: terraform/go.sum
+      - run: go vet ./...
+        working-directory: terraform
+      - run: go test -race -count=1 ./...
+        working-directory: terraform
+      - name: Build the archives
+        run: python3 scripts/go_release.py --kind terraform --version "${GITHUB_REF_NAME#terraform/v}" --out dist
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#terraform/v}"
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "MegooFlags Terraform provider $v" \
+            --notes "See CHANGELOG.md and terraform/README.md." \
+            --latest=false --prerelease
 
   # SDK releases (sdks/RELEASING.md): sdk-tag checks that the tag is on main, then each
   # sdk-<lang>-release job checks the tag against the SDK's manifest, runs the checks, and builds and

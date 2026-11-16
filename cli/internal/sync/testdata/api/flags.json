@@ -1,0 +1,4 @@
+{"items": [
+  {"key": "banner-text", "name": "Banner text", "description": "", "type": "string", "tags": [], "owner": null, "archived": false, "archived_at": null, "lifecycle": "permanent", "last_evaluated_at": null, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z", "environments": []},
+  {"key": "new-checkout", "name": "New checkout", "description": "The redesigned checkout", "type": "boolean", "tags": ["web", "checkout"], "owner": "mona@example.com", "archived": false, "archived_at": null, "lifecycle": "active", "last_evaluated_at": "2026-02-01T00:00:00Z", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z", "environments": []}
+ ], "next_cursor": null}

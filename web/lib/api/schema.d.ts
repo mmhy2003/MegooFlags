@@ -876,6 +876,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project}/environments/{env}/ruleset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Ruleset
+         * @description The ruleset of the environment, byte for byte what `/sdk/v1/ruleset` serves, for API
+         *     tokens: `megooflags ruleset pull` saves it as a bootstrap file for the SDKs' offline mode.
+         */
+        get: operations["download_ruleset_api_projects__project__environments__env__ruleset_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project}/environments/{env}/sdk-keys": {
         parameters: {
             query?: never;
@@ -1308,6 +1329,140 @@ export interface paths {
         head?: never;
         /** Update Variation */
         patch: operations["update_variation_api_projects__project__flags__flag__variations__variation__patch"];
+        trace?: never;
+    };
+    "/api/projects/{project}/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Integrations
+         * @description The project's webhook, Slack and Teams integrations, by name.
+         */
+        get: operations["list_integrations_api_projects__project__integrations_get"];
+        put?: never;
+        /**
+         * Create Integration
+         * @description Add an integration. The URL must be https on a public address (422 at `url`). A webhook's
+         *     signing secret is returned only here and by rotate-secret.
+         */
+        post: operations["create_integration_api_projects__project__integrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/integrations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Integration */
+        get: operations["read_integration_api_projects__project__integrations__id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Integration
+         * @description Delete the integration and its delivery log.
+         */
+        delete: operations["delete_integration_api_projects__project__integrations__id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Integration
+         * @description Change any of the fields; the kind cannot change.
+         */
+        patch: operations["update_integration_api_projects__project__integrations__id__patch"];
+        trace?: never;
+    };
+    "/api/projects/{project}/integrations/{id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Integration Deliveries
+         * @description The integration's delivery log, newest first. Deliveries are kept for
+         *     `MEGOOFLAGS_WEBHOOK_RETENTION_DAYS` days.
+         */
+        get: operations["list_integration_deliveries_api_projects__project__integrations__id__deliveries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/integrations/{id}/deliveries/{delivery}/redeliver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redeliver Integration Delivery
+         * @description Queue a failed delivery's event again, with the same event id, as a new delivery.
+         *     Only a failed delivery can be sent again (409 `invalid_state`).
+         */
+        post: operations["redeliver_integration_delivery_api_projects__project__integrations__id__deliveries__delivery__redeliver_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/integrations/{id}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Integration Secret
+         * @description Replace a webhook's signing secret; the old one stops working at once. Slack and Teams
+         *     integrations have none (422 at `kind`). The new secret is returned only here.
+         */
+        post: operations["rotate_integration_secret_api_projects__project__integrations__id__rotate_secret_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project}/integrations/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Integration
+         * @description Send a `ping` event now and return its delivery. A failed send is retried like any
+         *     other delivery.
+         */
+        post: operations["test_integration_api_projects__project__integrations__id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/projects/{project}/segments": {
@@ -2262,6 +2417,51 @@ export interface components {
             /** Variant */
             variant?: string | null;
         };
+        /** DeliveryOut */
+        DeliveryOut: {
+            /** Attempts */
+            attempts: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Delivered At */
+            delivered_at: string | null;
+            /** Duration Ms */
+            duration_ms: number | null;
+            /**
+             * Event Id
+             * @description The event's id; a delivery sent again keeps it.
+             */
+            event_id: string;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Status Code */
+            last_status_code: number | null;
+            /** Next Attempt At */
+            next_attempt_at: string | null;
+            /** @description The body sent for the integration's kind. */
+            request_body: components["schemas"]["JsonValue"];
+            /**
+             * Response Body
+             * @description The first 2048 characters of the response.
+             */
+            response_body: string | null;
+            status: components["schemas"]["DeliveryStatus"];
+        };
+        /**
+         * DeliveryStatus
+         * @enum {string}
+         */
+        DeliveryStatus: "pending" | "delivered" | "failed";
         /** EnvironmentCreate */
         EnvironmentCreate: {
             /**
@@ -2398,6 +2598,11 @@ export interface components {
              */
             variants: string[];
         };
+        /**
+         * EventGroup
+         * @enum {string}
+         */
+        EventGroup: "flags" | "targeting" | "segments" | "change_requests";
         /** EventsIn */
         EventsIn: {
             /** Counts */
@@ -2629,6 +2834,144 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** IntegrationCreate */
+        IntegrationCreate: {
+            /**
+             * All Environments
+             * @default true
+             */
+            all_environments: boolean;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Environments
+             * @description Environment keys; used when `all_environments` is false.
+             * @default []
+             */
+            environments: string[];
+            /** Event Groups */
+            event_groups: components["schemas"]["EventGroup"][];
+            kind: components["schemas"]["IntegrationKind"];
+            /** Name */
+            name: string;
+            /**
+             * Url
+             * @description Write-only: reads return `url_hint`. Slack URLs must be on hooks.slack.com.
+             */
+            url: string;
+        };
+        /** IntegrationCreated */
+        IntegrationCreated: {
+            /** All Environments */
+            all_environments: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Environments */
+            environments: string[];
+            /** Event Groups */
+            event_groups: components["schemas"]["EventGroup"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["IntegrationKind"];
+            /** Last Delivery At */
+            last_delivery_at: string | null;
+            /** Last Delivery Ok */
+            last_delivery_ok: boolean | null;
+            /** Name */
+            name: string;
+            /**
+             * Secret
+             * @description Webhook signing secret. Shown only once.
+             */
+            secret: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Url Hint
+             * @description The scheme, host and last characters of the URL.
+             */
+            url_hint: string;
+        };
+        /**
+         * IntegrationKind
+         * @enum {string}
+         */
+        IntegrationKind: "webhook" | "slack" | "teams";
+        /** IntegrationOut */
+        IntegrationOut: {
+            /** All Environments */
+            all_environments: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Environments */
+            environments: string[];
+            /** Event Groups */
+            event_groups: components["schemas"]["EventGroup"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            kind: components["schemas"]["IntegrationKind"];
+            /** Last Delivery At */
+            last_delivery_at: string | null;
+            /** Last Delivery Ok */
+            last_delivery_ok: boolean | null;
+            /** Name */
+            name: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Url Hint
+             * @description The scheme, host and last characters of the URL.
+             */
+            url_hint: string;
+        };
+        /** IntegrationSecret */
+        IntegrationSecret: {
+            /**
+             * Secret
+             * @description The new webhook signing secret. Shown only once.
+             */
+            secret: string;
+        };
+        /** IntegrationUpdate */
+        IntegrationUpdate: {
+            /** All Environments */
+            all_environments?: boolean | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Environments */
+            environments?: string[] | null;
+            /** Event Groups */
+            event_groups?: components["schemas"]["EventGroup"][] | null;
+            /** Name */
+            name?: string | null;
+            /** Url */
+            url?: string | null;
+        };
         /** InvitationAccept */
         InvitationAccept: {
             /** Password */
@@ -2814,6 +3157,13 @@ export interface components {
         Page_ChangeRequestSummary_: {
             /** Items */
             items: components["schemas"]["ChangeRequestSummary"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** Page[DeliveryOut] */
+        Page_DeliveryOut_: {
+            /** Items */
+            items: components["schemas"]["DeliveryOut"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -7699,6 +8049,83 @@ export interface operations {
             };
         };
     };
+    download_ruleset_api_projects__project__environments__env__ruleset_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "if-none-match"?: string | null;
+            };
+            path: {
+                project: string;
+                env: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ruleset (spec/ruleset.schema.json). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description The ruleset matches `If-None-Match`. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_sdk_keys_api_projects__project__environments__env__sdk_keys_get: {
         parameters: {
             query?: never;
@@ -9767,6 +10194,626 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VariationOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_integrations_api_projects__project__integrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_integration_api_projects__project__integrations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationCreated"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_integration_api_projects__project__integrations__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_integration_api_projects__project__integrations__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_integration_api_projects__project__integrations__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_integration_deliveries_api_projects__project__integrations__id__deliveries_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DeliveryOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    redeliver_integration_delivery_api_projects__project__integrations__id__deliveries__delivery__redeliver_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                id: string;
+                delivery: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    rotate_integration_secret_api_projects__project__integrations__id__rotate_secret_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationSecret"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    test_integration_api_projects__project__integrations__id__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryOut"];
                 };
             };
             /** @description Unauthorized */

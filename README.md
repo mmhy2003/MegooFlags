@@ -50,6 +50,12 @@ pnpm lint && pnpm format:check && pnpm typecheck && pnpm build
 pnpm gen:api                                       # regenerate the typed API client
 ```
 
+To manage MegooFlags from a terminal or CI, use the `megooflags` CLI ([docs/cli.md](docs/cli.md)), with
+flags as code ([docs/flags-as-code.md](docs/flags-as-code.md)) and imports from other tools
+([docs/importers.md](docs/importers.md)). Webhooks, Slack and Teams notifications are described in
+[docs/integrations.md](docs/integrations.md), and the Terraform provider in
+[terraform/README.md](terraform/README.md).
+
 The full list of checks that CI runs, including the Postgres setup, migrations, images and the smoke
 test, is in [AGENTS.md](AGENTS.md#9-local-checks-the-same-as-ciyml).
 
@@ -69,6 +75,8 @@ The branching rules and release steps are in [AGENTS.md](AGENTS.md#2-branches-an
 ```
 api/       FastAPI server, Alembic migrations, openapi.json
 web/       Next.js UI and the typed API client
+cli/       megooflags CLI and Go API client
+terraform/ Terraform provider
 deploy/    docker-compose.yml, Caddyfile and .env.example
 scripts/   version, release, migration and smoke-test scripts
 sdks/      SDKs, one directory per language (reserved)

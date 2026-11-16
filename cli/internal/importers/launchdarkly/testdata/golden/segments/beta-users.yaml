@@ -1,0 +1,16 @@
+name: Beta users
+description: Early access
+included:
+  - u1
+  - u2
+  - u3
+excluded:
+  - u9
+rules:
+  - description: Staff
+    clauses:
+      - attribute: email
+        operator: ends_with
+        values:
+          - '@example.com'
+        negate: false

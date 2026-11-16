@@ -1,0 +1,6 @@
+{"key": "shop", "name": "Shop", "description": "The web shop", "stale_after_days": 30,
+ "environments": [
+  {"key": "development", "name": "Development", "description": "", "sort_order": 0, "approvals_required": 0, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"},
+  {"key": "production", "name": "Production", "description": "Live traffic", "sort_order": 1, "approvals_required": 1, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-02T00:00:00Z"}
+ ],
+ "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-03T00:00:00Z"}

@@ -1,16 +1,10 @@
 import { Suspense } from "react";
 
-import { PlaceholderPage } from "@/components/patterns/placeholder-page";
-import { projectTrail } from "@/lib/routes";
+import { IntegrationList } from "@/components/integrations/integration-list";
 
 async function Content({ params }: { params: Promise<{ project: string }> }) {
   const { project } = await params;
-  return (
-    <PlaceholderPage
-      title="Integrations"
-      trail={projectTrail(decodeURIComponent(project))}
-    />
-  );
+  return <IntegrationList project={decodeURIComponent(project)} />;
 }
 
 export default function IntegrationsPage({

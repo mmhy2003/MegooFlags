@@ -1,0 +1,6 @@
+apiVersion: megooflags/v1
+project:
+  key: shop
+  name: Shop
+  description: ""
+environments: []

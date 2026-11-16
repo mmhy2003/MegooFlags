@@ -8,6 +8,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import Protocol
 
 from sqlalchemy import text
@@ -15,6 +16,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
 from megooflags_api import metrics
+from megooflags_api.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -44,16 +46,35 @@ def now_utc() -> datetime:
     return datetime.now(UTC)
 
 
-def default_jobs() -> list[Job]:
+def default_jobs(settings: Settings | None = None) -> list[Job]:
     # The jobs import JobResult from here.
+    from megooflags_api.services.integrations.fanout import run_integration_fanout
+    from megooflags_api.services.integrations.worker import run_delivery_retention
     from megooflags_api.services.lifecycle import run_lifecycle_sweep
     from megooflags_api.services.rollouts import run_due_rollouts
     from megooflags_api.services.schedules import run_due_schedules
 
+    public_url = (
+        None
+        if settings is None or settings.public_url is None
+        else str(settings.public_url).rstrip("/")
+    )
+    retention_days: int = (
+        Settings.model_fields["webhook_retention_days"].default
+        if settings is None
+        else settings.webhook_retention_days
+    )
     return [
         Job("schedules", run_due_schedules),
         Job("rollouts", run_due_rollouts),
         Job("lifecycle", run_lifecycle_sweep, every=timedelta(minutes=15)),
+        # After the jobs that write audit entries, so their events leave on the same tick.
+        Job("integration_fanout", partial(run_integration_fanout, public_url=public_url)),
+        Job(
+            "integration_retention",
+            partial(run_delivery_retention, days=retention_days),
+            every=timedelta(hours=1),
+        ),
     ]
 
 
@@ -68,12 +89,13 @@ class Scheduler:
         jobs: list[Job] | None = None,
         clock: Callable[[], datetime] = now_utc,
         lock_id: int = SCHEDULER_LOCK_ID,
+        settings: Settings | None = None,
     ) -> None:
         self.engine = engine
         self.sessionmaker = sessionmaker
         self.bus = bus
         self.interval = interval
-        self.jobs = default_jobs() if jobs is None else jobs
+        self.jobs = default_jobs(settings) if jobs is None else jobs
         self.clock = clock
         self.lock_id = lock_id
         self.is_leader = False

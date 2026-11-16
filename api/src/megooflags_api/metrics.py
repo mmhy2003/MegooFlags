@@ -48,6 +48,11 @@ SCHEDULER_JOBS = Counter(
     "Rows the scheduler's jobs handled, by outcome (ok, failed, or error for a job that raised).",
     ["job", "outcome"],
 )
+INTEGRATION_DELIVERIES = Counter(
+    "megooflags_integration_deliveries_total",
+    "Integration delivery attempts by kind and outcome.",
+    ["kind", "outcome"],
+)
 BUILD_INFO = Gauge(
     "megooflags_build_info", "MegooFlags API build.", ["version"], multiprocess_mode="max"
 )

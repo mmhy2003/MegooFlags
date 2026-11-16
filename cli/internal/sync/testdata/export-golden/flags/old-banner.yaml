@@ -1,0 +1,32 @@
+name: Old banner
+description: Replaced by banner-text
+type: boolean
+tags:
+  - legacy
+variations:
+  - key: "true"
+    name: ""
+    description: ""
+    value: true
+  - key: "false"
+    name: ""
+    description: ""
+    value: false
+off_variation: "false"
+permanent: false
+archived: true
+environments:
+  development:
+    enabled: false
+    targets: []
+    rules: []
+    fallthrough:
+      variation: "false"
+    prerequisites: []
+  production:
+    enabled: false
+    targets: []
+    rules: []
+    fallthrough:
+      variation: "false"
+    prerequisites: []

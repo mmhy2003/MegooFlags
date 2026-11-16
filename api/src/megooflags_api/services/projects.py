@@ -2,12 +2,12 @@
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.errors import key_conflict, validation_error
-from megooflags_api.models import Environment, Project
+from megooflags_api.models import Environment, Flag, FlagEnvironment, Project
 from megooflags_api.schemas.projects import (
     EnvironmentCreate,
     EnvironmentOut,
@@ -102,5 +102,10 @@ async def update_project(session: AsyncSession, project: Project, body: ProjectU
 
 async def delete_project(session: AsyncSession, project: Project) -> None:
     """Environments, flags, segments and all targeting go with it (ON DELETE CASCADE)."""
+    # The flag configs first: prerequisites and segment clauses reference flags and segments
+    # of the project, and Postgres checks those references before a deeper cascade has
+    # removed them.
+    flags = select(Flag.id).where(Flag.project_id == project.id)
+    await session.execute(delete(FlagEnvironment).where(FlagEnvironment.flag_id.in_(flags)))
     await session.delete(project)
     await session.flush()

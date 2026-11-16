@@ -1,0 +1,43 @@
+name: max_items
+description: ""
+type: number
+tags: []
+variations:
+  - key: default
+    name: ""
+    description: ""
+    value: 10
+  - key: default-prod
+    name: ""
+    description: ""
+    value: 25
+  - key: segment-has-plan
+    name: ""
+    description: ""
+    value: 50
+off_variation: default
+permanent: false
+archived: false
+environments:
+  development:
+    enabled: true
+    targets: []
+    rules:
+      - description: ""
+        clauses:
+          - attribute: key
+            operator: in_segment
+            values:
+              - has-plan
+            negate: false
+        variation: segment-has-plan
+    fallthrough:
+      variation: default
+    prerequisites: []
+  prod:
+    enabled: true
+    targets: []
+    rules: []
+    fallthrough:
+      variation: default-prod
+    prerequisites: []

@@ -844,6 +844,136 @@
         "title": "CountIn",
         "type": "object"
       },
+      "DeliveryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered At"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "event_id": {
+            "description": "The event's id; a delivery sent again keeps it.",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_status_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Status Code"
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Attempt At"
+          },
+          "request_body": {
+            "$ref": "#/components/schemas/JsonValue",
+            "description": "The body sent for the integration's kind."
+          },
+          "response_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The first 2048 characters of the response.",
+            "title": "Response Body"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeliveryStatus"
+          }
+        },
+        "required": [
+          "id",
+          "event_id",
+          "event_type",
+          "status",
+          "attempts",
+          "next_attempt_at",
+          "last_status_code",
+          "last_error",
+          "response_body",
+          "duration_ms",
+          "created_at",
+          "delivered_at",
+          "request_body"
+        ],
+        "title": "DeliveryOut",
+        "type": "object"
+      },
+      "DeliveryStatus": {
+        "enum": [
+          "pending",
+          "delivered",
+          "failed"
+        ],
+        "title": "DeliveryStatus",
+        "type": "string"
+      },
       "EnvironmentCreate": {
         "additionalProperties": false,
         "properties": {
@@ -1190,6 +1320,16 @@
         ],
         "title": "EvaluationSeries",
         "type": "object"
+      },
+      "EventGroup": {
+        "enum": [
+          "flags",
+          "targeting",
+          "segments",
+          "change_requests"
+        ],
+        "title": "EventGroup",
+        "type": "string"
       },
       "EventsIn": {
         "additionalProperties": false,
@@ -1840,6 +1980,371 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "IntegrationCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "all_environments": {
+            "default": true,
+            "title": "All Environments",
+            "type": "boolean"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "environments": {
+            "default": [],
+            "description": "Environment keys; used when `all_environments` is false.",
+            "items": {
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+              "type": "string"
+            },
+            "title": "Environments",
+            "type": "array"
+          },
+          "event_groups": {
+            "items": {
+              "$ref": "#/components/schemas/EventGroup"
+            },
+            "minItems": 1,
+            "title": "Event Groups",
+            "type": "array"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IntegrationKind"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "url": {
+            "description": "Write-only: reads return `url_hint`. Slack URLs must be on hooks.slack.com.",
+            "maxLength": 2000,
+            "minLength": 8,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "url",
+          "event_groups"
+        ],
+        "title": "IntegrationCreate",
+        "type": "object"
+      },
+      "IntegrationCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "all_environments": {
+            "title": "All Environments",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "environments": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Environments",
+            "type": "array"
+          },
+          "event_groups": {
+            "items": {
+              "$ref": "#/components/schemas/EventGroup"
+            },
+            "title": "Event Groups",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IntegrationKind"
+          },
+          "last_delivery_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Delivery At"
+          },
+          "last_delivery_ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Delivery Ok"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Webhook signing secret. Shown only once.",
+            "title": "Secret"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url_hint": {
+            "description": "The scheme, host and last characters of the URL.",
+            "title": "Url Hint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "url_hint",
+          "event_groups",
+          "all_environments",
+          "environments",
+          "enabled",
+          "last_delivery_at",
+          "last_delivery_ok",
+          "created_at",
+          "updated_at",
+          "secret"
+        ],
+        "title": "IntegrationCreated",
+        "type": "object"
+      },
+      "IntegrationKind": {
+        "enum": [
+          "webhook",
+          "slack",
+          "teams"
+        ],
+        "title": "IntegrationKind",
+        "type": "string"
+      },
+      "IntegrationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "all_environments": {
+            "title": "All Environments",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "environments": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Environments",
+            "type": "array"
+          },
+          "event_groups": {
+            "items": {
+              "$ref": "#/components/schemas/EventGroup"
+            },
+            "title": "Event Groups",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IntegrationKind"
+          },
+          "last_delivery_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Delivery At"
+          },
+          "last_delivery_ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Delivery Ok"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url_hint": {
+            "description": "The scheme, host and last characters of the URL.",
+            "title": "Url Hint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "url_hint",
+          "event_groups",
+          "all_environments",
+          "environments",
+          "enabled",
+          "last_delivery_at",
+          "last_delivery_ok",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "IntegrationOut",
+        "type": "object"
+      },
+      "IntegrationSecret": {
+        "additionalProperties": false,
+        "properties": {
+          "secret": {
+            "description": "The new webhook signing secret. Shown only once.",
+            "title": "Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "secret"
+        ],
+        "title": "IntegrationSecret",
+        "type": "object"
+      },
+      "IntegrationUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "all_environments": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All Environments"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "environments": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environments"
+          },
+          "event_groups": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/EventGroup"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Groups"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "minLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "title": "IntegrationUpdate",
+        "type": "object"
+      },
       "InvitationAccept": {
         "additionalProperties": false,
         "properties": {
@@ -2374,6 +2879,35 @@
           "next_cursor"
         ],
         "title": "Page[ChangeRequestSummary]",
+        "type": "object"
+      },
+      "Page_DeliveryOut_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeliveryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "Page[DeliveryOut]",
         "type": "object"
       },
       "Page_FlagSummary_": {
@@ -10996,6 +11530,113 @@
         ]
       }
     },
+    "/api/projects/{project}/environments/{env}/ruleset": {
+      "get": {
+        "description": "The ruleset of the environment, byte for byte what `/sdk/v1/ruleset` serves, for API\ntokens: `megooflags ruleset pull` saves it as a bootstrap file for the SDKs' offline mode.",
+        "operationId": "download_ruleset_api_projects__project__environments__env__ruleset_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "env",
+            "required": true,
+            "schema": {
+              "title": "Env",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "The ruleset (spec/ruleset.schema.json)."
+          },
+          "304": {
+            "description": "The ruleset matches `If-None-Match`."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Download Ruleset",
+        "tags": [
+          "evaluation"
+        ]
+      }
+    },
     "/api/projects/{project}/environments/{env}/sdk-keys": {
       "get": {
         "operationId": "list_sdk_keys_api_projects__project__environments__env__sdk_keys_get",
@@ -14171,6 +14812,871 @@
         "summary": "Update Variation",
         "tags": [
           "flags"
+        ]
+      }
+    },
+    "/api/projects/{project}/integrations": {
+      "get": {
+        "description": "The project's webhook, Slack and Teams integrations, by name.",
+        "operationId": "list_integrations_api_projects__project__integrations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IntegrationOut"
+                  },
+                  "title": "Response List Integrations Api Projects  Project  Integrations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Integrations",
+        "tags": [
+          "integrations"
+        ]
+      },
+      "post": {
+        "description": "Add an integration. The URL must be https on a public address (422 at `url`). A webhook's\nsigning secret is returned only here and by rotate-secret.",
+        "operationId": "create_integration_api_projects__project__integrations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Create Integration",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/projects/{project}/integrations/{id}": {
+      "delete": {
+        "description": "Delete the integration and its delivery log.",
+        "operationId": "delete_integration_api_projects__project__integrations__id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Delete Integration",
+        "tags": [
+          "integrations"
+        ]
+      },
+      "get": {
+        "operationId": "read_integration_api_projects__project__integrations__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Read Integration",
+        "tags": [
+          "integrations"
+        ]
+      },
+      "patch": {
+        "description": "Change any of the fields; the kind cannot change.",
+        "operationId": "update_integration_api_projects__project__integrations__id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Update Integration",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/projects/{project}/integrations/{id}/deliveries": {
+      "get": {
+        "description": "The integration's delivery log, newest first. Deliveries are kept for\n`MEGOOFLAGS_WEBHOOK_RETENTION_DAYS` days.",
+        "operationId": "list_integration_deliveries_api_projects__project__integrations__id__deliveries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DeliveryOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Integration Deliveries",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/projects/{project}/integrations/{id}/deliveries/{delivery}/redeliver": {
+      "post": {
+        "description": "Queue a failed delivery's event again, with the same event id, as a new delivery.\nOnly a failed delivery can be sent again (409 `invalid_state`).",
+        "operationId": "redeliver_integration_delivery_api_projects__project__integrations__id__deliveries__delivery__redeliver_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "delivery",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Delivery",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Redeliver Integration Delivery",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/projects/{project}/integrations/{id}/rotate-secret": {
+      "post": {
+        "description": "Replace a webhook's signing secret; the old one stops working at once. Slack and Teams\nintegrations have none (422 at `kind`). The new secret is returned only here.",
+        "operationId": "rotate_integration_secret_api_projects__project__integrations__id__rotate_secret_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationSecret"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Rotate Integration Secret",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/projects/{project}/integrations/{id}/test": {
+      "post": {
+        "description": "Send a `ping` event now and return its delivery. A failed send is retried like any\nother delivery.",
+        "operationId": "test_integration_api_projects__project__integrations__id__test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Test Integration",
+        "tags": [
+          "integrations"
         ]
       }
     },

@@ -16,6 +16,12 @@ from megooflags_api.models.identity import (
     UserSession,
     WebauthnCredential,
 )
+from megooflags_api.models.integration import (
+    Integration,
+    IntegrationDelivery,
+    IntegrationEnvironment,
+    IntegrationOutbox,
+)
 from megooflags_api.models.project import Environment, Project
 from megooflags_api.models.release import (
     ChangeRequest,
@@ -53,6 +59,10 @@ __all__ = [
     "FlagPrerequisite",
     "FlagRule",
     "FlagTarget",
+    "Integration",
+    "IntegrationDelivery",
+    "IntegrationEnvironment",
+    "IntegrationOutbox",
     "Invitation",
     "OrgSettings",
     "ProgressiveRollout",

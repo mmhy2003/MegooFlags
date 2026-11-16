@@ -1,0 +1,29 @@
+name: Beta Users
+description: ""
+included: []
+excluded: []
+rules:
+  - description: ""
+    clauses:
+      - attribute: plan
+        operator: in
+        values:
+          - pro
+        negate: false
+      - attribute: key
+        operator: matches
+        values:
+          - .*@example\.com$
+        negate: false
+  - description: ""
+    clauses:
+      - attribute: plan
+        operator: in
+        values:
+          - enterprise
+        negate: false
+      - attribute: key
+        operator: matches
+        values:
+          - .*@example\.com$
+        negate: false

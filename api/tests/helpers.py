@@ -27,7 +27,8 @@ from megooflags_api.services.users import create_user
 
 # Empties every table the tests write to, keeping the built-in roles and the org_settings row.
 RESET_SQL = [
-    'TRUNCATE project, "user", team, role_binding, api_token, audit_entry, sso_provider CASCADE',
+    'TRUNCATE project, "user", team, role_binding, api_token, audit_entry, sso_provider, '
+    "integration_outbox CASCADE",
     "DELETE FROM role WHERE NOT builtin",
     "UPDATE org_settings SET require_mfa = false",
 ]
@@ -340,7 +341,13 @@ async def next_events(lines: AsyncIterator[str], count: int, within: float) -> l
 
 def make_scheduler(app: FastAPI, clock: FakeClock) -> Scheduler:
     """The app's jobs on a scheduler whose ticks the test drives with `clock`."""
-    return Scheduler(app.state.engine, app.state.sessionmaker, app.state.change_bus, clock=clock)
+    return Scheduler(
+        app.state.engine,
+        app.state.sessionmaker,
+        app.state.change_bus,
+        clock=clock,
+        settings=app.state.settings,
+    )
 
 
 async def seed_counts(

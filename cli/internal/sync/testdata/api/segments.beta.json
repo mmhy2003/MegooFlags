@@ -1,0 +1,4 @@
+{"key": "beta", "name": "Beta", "description": "Beta testers",
+ "included": ["u1", "u2"], "excluded": ["u9"],
+ "rules": [{"description": "Staff email", "clauses": [{"attribute": "email", "operator": "ends_with", "values": ["@example.com"], "negate": false}]}],
+ "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-05T00:00:00Z"}

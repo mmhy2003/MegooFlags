@@ -160,3 +160,4 @@ async def test_background_jobs_include_scheduler() -> None:
         finally:
             await close_app(app)
         assert names.count("Scheduler.run") == expected
+        assert names.count("DeliveryWorker.run") == expected

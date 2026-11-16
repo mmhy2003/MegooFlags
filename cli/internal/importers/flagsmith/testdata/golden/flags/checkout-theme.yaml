@@ -1,0 +1,71 @@
+name: Checkout Theme
+description: ""
+type: string
+tags: []
+variations:
+  - key: default
+    name: ""
+    description: ""
+    value: blue
+  - key: option-1
+    name: ""
+    description: ""
+    value: green
+  - key: option-2
+    name: ""
+    description: ""
+    value: red
+  - key: segment-power_users
+    name: ""
+    description: ""
+    value: purple
+off_variation: default
+permanent: false
+archived: false
+environments:
+  development:
+    enabled: true
+    targets: []
+    rules: []
+    fallthrough:
+      variation: default
+    prerequisites: []
+  prod:
+    enabled: true
+    targets: []
+    rules:
+      - description: ""
+        clauses:
+          - attribute: key
+            operator: in_segment
+            values:
+              - power_users
+            negate: false
+        variation: segment-power_users
+      - description: ""
+        clauses:
+          - attribute: key
+            operator: in_segment
+            values:
+              - beta-users
+            negate: false
+        variation: option-1
+      - description: ""
+        clauses:
+          - attribute: key
+            operator: in_segment
+            values:
+              - has-plan
+            negate: false
+        variation: default
+    fallthrough:
+      rollout:
+        bucket_by: key
+        weights:
+          - variation: option-1
+            weight: 30000
+          - variation: option-2
+            weight: 20500
+          - variation: default
+            weight: 49500
+    prerequisites: []

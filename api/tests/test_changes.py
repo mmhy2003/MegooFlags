@@ -34,6 +34,13 @@ EXCLUDED = {
     # Approving publishes only when it applies the change; test_change_requests covers it.
     ("POST", "/api/projects/{project}/change-requests/{id}/approve"),
     ("POST", "/api/projects/{project}/change-requests/{id}/reject"),
+    # Integrations are not part of the ruleset.
+    ("POST", "/api/projects/{project}/integrations"),
+    ("PATCH", "/api/projects/{project}/integrations/{id}"),
+    ("DELETE", "/api/projects/{project}/integrations/{id}"),
+    ("POST", "/api/projects/{project}/integrations/{id}/rotate-secret"),
+    ("POST", "/api/projects/{project}/integrations/{id}/test"),
+    ("POST", "/api/projects/{project}/integrations/{id}/deliveries/{delivery}/redeliver"),
 }
 P = "/api/projects/{project}"
 F = f"{P}/flags/{{flag}}"

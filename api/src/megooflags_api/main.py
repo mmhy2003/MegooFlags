@@ -26,6 +26,7 @@ from megooflags_api.routers import (
     flag_environments,
     flags,
     health,
+    integrations,
     ofrep,
     projects,
     roles,
@@ -45,6 +46,7 @@ from megooflags_api.services.events import (
     EventsBodyLimitMiddleware,
     run_retention,
 )
+from megooflags_api.services.integrations.worker import DeliveryWorker
 from megooflags_api.services.rate_limit import RateLimiter
 from megooflags_api.services.ruleset_cache import RulesetCache
 from megooflags_api.services.scheduler import Scheduler
@@ -66,6 +68,7 @@ def background_jobs(app: FastAPI) -> list[Coroutine[Any, Any, None]]:
     ]
     if app.state.settings.scheduler_enabled:
         jobs.append(app.state.scheduler.run())
+        jobs.append(app.state.delivery_worker.run())
     return jobs
 
 
@@ -133,6 +136,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.sessionmaker,
         app.state.change_bus,
         interval=settings.scheduler_interval_seconds,
+        settings=settings,
+    )
+    app.state.delivery_worker = DeliveryWorker(
+        app.state.sessionmaker,
+        settings,
+        app.state.secret_box,
+        is_leader=lambda: app.state.scheduler.is_leader,
     )
     install_error_handlers(app)
     app.add_middleware(EventsBodyLimitMiddleware)
@@ -158,6 +168,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         segments,
         evaluate,
         sdk_keys,
+        integrations,
         roles,
         users,
         teams,

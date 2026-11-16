@@ -1,0 +1,86 @@
+name: checkout-theme
+description: ""
+type: string
+tags: []
+variations:
+  - key: blue
+    name: blue
+    description: ""
+    value: '#00f'
+  - key: green
+    name: green
+    description: ""
+    value: green
+  - key: dark-mode
+    name: Dark Mode
+    description: ""
+    value: Dark Mode
+  - key: disabled
+    name: ""
+    description: ""
+    value: ""
+off_variation: disabled
+permanent: false
+archived: false
+environments:
+  development:
+    enabled: true
+    targets: []
+    rules: []
+    fallthrough:
+      rollout:
+        bucket_by: key
+        weights:
+          - variation: blue
+            weight: 33400
+          - variation: green
+            weight: 33300
+          - variation: dark-mode
+            weight: 33300
+    prerequisites:
+      - flag: new-checkout
+        variation: "true"
+  prod:
+    enabled: true
+    targets: []
+    rules:
+      - description: Swedes
+        clauses:
+          - attribute: country
+            operator: in
+            values:
+              - SE
+            negate: false
+        rollout:
+          bucket_by: key
+          weights:
+            - variation: blue
+              weight: 20000
+            - variation: green
+              weight: 20000
+            - variation: disabled
+              weight: 60000
+      - description: ""
+        clauses:
+          - attribute: key
+            operator: in
+            values:
+              - qa1
+              - qa2
+            negate: false
+        rollout:
+          bucket_by: key
+          weights:
+            - variation: dark-mode
+              weight: 100000
+    fallthrough:
+      rollout:
+        bucket_by: key
+        weights:
+          - variation: blue
+            weight: 70000
+          - variation: green
+            weight: 30000
+    prerequisites:
+      - flag: new-checkout
+        variation: "true"

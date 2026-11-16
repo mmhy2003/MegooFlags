@@ -1,0 +1,357 @@
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// syncTestdata is the sync package's testdata, shared with these tests.
+var syncTestdata = filepath.Join("..", "..", "internal", "sync", "testdata")
+
+// fixtureAPI serves the sync package's API fixtures: a.b.json answers
+// GET /api/projects/shop/a/b and project.json the project. The flag list
+// answers with the live flags first, then flags.archived.json.
+func fixtureAPI(t *testing.T) *fakeAPI {
+	t.Helper()
+	dir := filepath.Join(syncTestdata, "api")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routes := map[string]reply{}
+	for _, e := range entries {
+		body, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		name := strings.TrimSuffix(e.Name(), ".json")
+		if name == "flags.archived" {
+			continue
+		}
+		path := "/api/projects/shop"
+		if name != "project" {
+			path += "/" + strings.ReplaceAll(name, ".", "/")
+		}
+		routes["GET "+path] = reply{body: string(body)}
+	}
+	archived, err := os.ReadFile(filepath.Join(dir, "flags.archived.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := newFakeAPI(t, routes)
+	live := routes["GET /api/projects/shop/flags"]
+	api.queue = map[string][]reply{"GET /api/projects/shop/flags": {live, {body: string(archived)}}}
+	return api
+}
+
+func TestExportWritesFiles(t *testing.T) {
+	api := fixtureAPI(t)
+	s := api.session("shop")
+	dir := filepath.Join(t.TempDir(), "flags-as-code")
+
+	out := ok(t, s, "export", "--dir", dir)
+	if out != "exported 3 flags and 2 segments to "+dir+"\n" {
+		t.Fatalf("out = %q", out)
+	}
+	got, want := readTree(t, dir), readTree(t, filepath.Join(syncTestdata, "export-golden"))
+	if len(got) != len(want) {
+		t.Fatalf("files = %v, want %v", keys(got), keys(want))
+	}
+	for name, wb := range want {
+		if !bytes.Equal(got[name], wb) {
+			t.Errorf("%s =\n%s\nwant\n%s", name, got[name], wb)
+		}
+	}
+	queries := map[string]bool{}
+	for _, r := range api.requests {
+		if r.Path == "/api/projects/shop/flags" {
+			queries[r.Query] = true
+		}
+	}
+	if !queries["limit=500"] || !queries["archived=true&limit=500"] {
+		t.Fatalf("flag list queries = %v, want live and archived", queries)
+	}
+}
+
+func TestExportEnvFilter(t *testing.T) {
+	api := fixtureAPI(t)
+	s := api.session("shop")
+	dir := t.TempDir()
+
+	ok(t, s, "export", "--dir", dir, "--env", "production")
+	b, err := os.ReadFile(filepath.Join(dir, "flags", "new-checkout.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "development:") || !strings.Contains(string(b), "production:") {
+		t.Fatalf("new-checkout.yaml =\n%s", b)
+	}
+	for _, r := range api.requests {
+		if strings.HasSuffix(r.Path, "/environments/development") {
+			t.Fatalf("requested %s", r.Path)
+		}
+	}
+}
+
+func TestExportUsageAndErrors(t *testing.T) {
+	api := fixtureAPI(t)
+	if code, _, _ := api.session("shop").run("export"); code != ExitUsage {
+		t.Fatalf("missing --dir: code = %d", code)
+	}
+	if code, _, _ := api.session("").run("export", "--dir", t.TempDir()); code != ExitUsage {
+		t.Fatalf("no project: code = %d", code)
+	}
+	dir := filepath.Join(t.TempDir(), "out")
+	code, _, errOut := api.session("nope").run("export", "--dir", dir)
+	if code != ExitError || errOut != "error: not_found: Not found\n" {
+		t.Fatalf("code = %d, stderr = %q", code, errOut)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("directory written on error: %v", err)
+	}
+}
+
+func readTree(t *testing.T, root string) map[string][]byte {
+	t.Helper()
+	files := map[string][]byte{}
+	err := filepath.WalkDir(root, func(path string, e fs.DirEntry, err error) error {
+		if err != nil || e.IsDir() {
+			return err
+		}
+		b, err := os.ReadFile(path)
+		rel, _ := filepath.Rel(root, path)
+		files[filepath.ToSlash(rel)] = b
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+func keys[V any](m map[string]V) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// exportedDir copies the export golden directory, which matches the fixture
+// API, to a temporary directory.
+func exportedDir(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "flags-as-code")
+	if err := os.CopyFS(dir, os.DirFS(filepath.Join(syncTestdata, "export-golden"))); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func editFile(t *testing.T, path, old, new string) {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), old) {
+		t.Fatalf("%s has no %q", path, old)
+	}
+	if err := os.WriteFile(path, []byte(strings.Replace(string(b), old, new, 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDiffNoDifferences(t *testing.T) {
+	code, out, errOut := fixtureAPI(t).session("shop").run("diff", "--dir", exportedDir(t))
+	if code != ExitOK || out != "No differences.\n" || errOut != "" {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+}
+
+func TestDiffDrift(t *testing.T) {
+	dir := exportedDir(t)
+	editFile(t, filepath.Join(dir, "megooflags.yaml"), "name: Shop", "name: Shop 2")
+	editFile(t, filepath.Join(dir, "flags", "new-checkout.yaml"), "fallthrough:\n      variation: \"false\"", "fallthrough:\n      variation: \"true\"")
+	editFile(t, filepath.Join(dir, "flags", "new-checkout.yaml"), "development:\n    enabled: true", "development:\n    enabled: false")
+
+	code, out, errOut := fixtureAPI(t).session("shop").run("diff", "--dir", dir, "--env", "production")
+	want := "~ project shop: name\n~ config new-checkout [production]: fallthrough\n"
+	if code != ExitDrift || out != want || errOut != "" {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+}
+
+func TestDiffPrune(t *testing.T) {
+	dir := exportedDir(t)
+	if err := os.Remove(filepath.Join(dir, "segments", "staff.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	api := fixtureAPI(t)
+	if code, out, _ := api.session("shop").run("diff", "--dir", dir); code != ExitOK {
+		t.Fatalf("without --prune: code = %d, stdout = %q", code, out)
+	}
+	api = fixtureAPI(t)
+	code, out, _ := api.session("shop").run("diff", "--dir", dir, "--prune")
+	if code != ExitDrift || out != "- segment staff\n" {
+		t.Fatalf("code = %d, stdout = %q", code, out)
+	}
+}
+
+func TestDiffInvalidFiles(t *testing.T) {
+	dir := exportedDir(t)
+	editFile(t, filepath.Join(dir, "flags", "new-checkout.yaml"), "off_variation: \"false\"", "off_variation: maybe")
+	code, out, errOut := fixtureAPI(t).session("shop").run("diff", "--dir", dir)
+	if code != ExitError || out != "" ||
+		!strings.Contains(errOut, "flags/new-checkout.yaml: off_variation: unknown variation maybe\n") {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+
+	api := fixtureAPI(t)
+	code, _, errOut = api.session("shop").run("diff", "--dir", filepath.Join(t.TempDir(), "missing"))
+	if code != ExitError || errOut == "" || len(api.requests) != 0 {
+		t.Fatalf("missing dir: code = %d, stderr = %q, requests = %d", code, errOut, len(api.requests))
+	}
+	if code, _, _ := api.session("shop").run("diff"); code != ExitUsage {
+		t.Fatalf("missing --dir: code = %d", code)
+	}
+}
+
+// writes lists the requests that were not GETs.
+func (f *fakeAPI) writes() []string {
+	var out []string
+	for _, r := range f.requests {
+		if r.Method != "GET" {
+			out = append(out, r.Method+" "+r.Path)
+		}
+	}
+	return out
+}
+
+const devConfig = "/api/projects/shop/flags/%s/environments/development"
+
+func TestApplyNoChanges(t *testing.T) {
+	api := fixtureAPI(t)
+	code, out, errOut := api.session("shop").run("apply", "--dir", exportedDir(t))
+	if code != ExitOK || out != "No differences.\n" || errOut != "" || len(api.writes()) != 0 {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q, writes = %v", code, out, errOut, api.writes())
+	}
+}
+
+func TestApplyPrintsAppliedAndFailures(t *testing.T) {
+	dir := exportedDir(t)
+	editFile(t, filepath.Join(dir, "flags", "new-checkout.yaml"), "development:\n    enabled: true", "development:\n    enabled: false")
+	editFile(t, filepath.Join(dir, "flags", "banner-text.yaml"), "development:\n    enabled: false", "development:\n    enabled: true")
+	api := fixtureAPI(t)
+	api.routes["PUT "+fmt.Sprintf(devConfig, "banner-text")] = reply{status: 422, body: `{"code":"validation_error","message":"bad config"}`}
+	api.routes["PUT "+fmt.Sprintf(devConfig, "new-checkout")] = api.routes["GET "+fmt.Sprintf(devConfig, "new-checkout")]
+
+	code, out, errOut := api.session("shop").run("apply", "--dir", dir)
+	if code != ExitError || out != "~ config new-checkout [development]: enabled\n" ||
+		errOut != "failed: ~ config banner-text [development]: enabled: validation_error: bad config\n" {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+	put := api.requests[len(api.requests)-1]
+	if body := put.Body.(map[string]any); body["enabled"] != false || body["version"] != float64(2) {
+		t.Fatalf("PUT body = %v", body)
+	}
+}
+
+func approvalDir(t *testing.T) string {
+	t.Helper()
+	dir := exportedDir(t)
+	editFile(t, filepath.Join(dir, "flags", "new-checkout.yaml"), "fallthrough:\n      variation: \"false\"", "fallthrough:\n      variation: \"true\"")
+	return dir
+}
+
+func TestApplyNeedsApproval(t *testing.T) {
+	api := fixtureAPI(t)
+	api.routes["PUT /api/projects/shop/flags/new-checkout/environments/production"] = reply{status: 409, body: approvalRequired}
+
+	code, out, errOut := api.session("shop").run("apply", "--dir", approvalDir(t))
+	if code != ExitNeedsApproval || out != "needs approval: ~ config new-checkout [production]: fallthrough\n" || errOut != "" {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+}
+
+func TestApplyChangeRequests(t *testing.T) {
+	api := fixtureAPI(t)
+	api.routes["PUT /api/projects/shop/flags/new-checkout/environments/production"] = reply{status: 409, body: approvalRequired}
+	api.routes["POST /api/projects/shop/change-requests"] = reply{status: 201, body: `{"id":"cr-9","title":"t","kind":"config","status":"open"}`}
+
+	code, out, errOut := api.session("shop").run("apply", "--dir", approvalDir(t), "--change-requests")
+	if code != ExitOK || out != "opened change request cr-9\n" || errOut != "" {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+	cr := api.requests[len(api.requests)-1].Body.(map[string]any)
+	if cr["title"] != "Apply flags-as-code: new-checkout in production" || cr["kind"] != "config" {
+		t.Fatalf("change request = %v", cr)
+	}
+}
+
+func TestApplyInvalidFilesMakeNoWrites(t *testing.T) {
+	dir := exportedDir(t)
+	editFile(t, filepath.Join(dir, "flags", "new-checkout.yaml"), "name: New checkout", "name: Newer checkout")
+	editFile(t, filepath.Join(dir, "flags", "new-checkout.yaml"), "off_variation: \"false\"", "off_variation: maybe")
+	editFile(t, filepath.Join(dir, "flags", "banner-text.yaml"), "off_variation: hello", "off_variation: bye")
+	api := fixtureAPI(t)
+
+	code, out, errOut := api.session("shop").run("apply", "--dir", dir)
+	if code != ExitError || out != "" || len(api.writes()) != 0 ||
+		!strings.Contains(errOut, "flags/banner-text.yaml: off_variation: unknown variation bye\n") ||
+		!strings.Contains(errOut, "flags/new-checkout.yaml: off_variation: unknown variation maybe\n") {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q, writes = %v", code, out, errOut, api.writes())
+	}
+	if code, _, _ := api.session("shop").run("apply"); code != ExitUsage {
+		t.Fatalf("missing --dir: code = %d", code)
+	}
+}
+
+func TestApplyDryRunMakesNoWrites(t *testing.T) {
+	api := fixtureAPI(t)
+	code, out, errOut := api.session("shop").run("apply", "--dir", approvalDir(t), "--dry-run")
+	if code != ExitOK || out != "~ config new-checkout [production]: fallthrough\n" || errOut != "" || len(api.writes()) != 0 {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q, writes = %v", code, out, errOut, api.writes())
+	}
+}
+
+func TestApplyPrune(t *testing.T) {
+	dir := exportedDir(t)
+	if err := os.Remove(filepath.Join(dir, "segments", "staff.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	api := fixtureAPI(t)
+	api.routes["DELETE /api/projects/shop/segments/staff"] = reply{status: 204}
+
+	code, out, errOut := api.session("shop").run("apply", "--dir", dir, "--prune")
+	if code != ExitOK || out != "- segment staff\n" || errOut != "" {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+	if w := api.writes(); len(w) != 1 || w[0] != "DELETE /api/projects/shop/segments/staff" {
+		t.Fatalf("writes = %v", w)
+	}
+}
+
+// The files name their project; diff and apply refuse to compare them with
+// another one, and use it when no project is set.
+func TestSyncRefusesAnotherProject(t *testing.T) {
+	dir := exportedDir(t)
+	for _, cmd := range []string{"diff", "apply"} {
+		api := fixtureAPI(t)
+		code, out, errOut := api.session("checkout").run(cmd, "--dir", dir, "--prune")
+		if code != ExitUsage || out != "" || len(api.requests) != 0 ||
+			!strings.Contains(errOut, `the files are for project "shop", not "checkout"`) {
+			t.Fatalf("%s: code = %d, stdout = %q, stderr = %q, requests = %d", cmd, code, out, errOut, len(api.requests))
+		}
+	}
+
+	code, out, errOut := fixtureAPI(t).session("").run("diff", "--dir", dir)
+	if code != ExitOK || out != "No differences.\n" {
+		t.Fatalf("no project set: code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+}

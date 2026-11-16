@@ -1,0 +1,150 @@
+{
+  "environments": ["development", "production"],
+  "segments": [
+    {
+      "id": 1,
+      "name": "beta-testers",
+      "description": "Opted into the beta",
+      "constraints": [
+        {"contextName": "email", "operator": "STR_ENDS_WITH", "values": ["@example.com"], "inverted": false, "caseInsensitive": true},
+        {"contextName": "plan", "operator": "IN", "values": ["pro", "enterprise"], "inverted": false, "caseInsensitive": false}
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Office IPs",
+      "description": "",
+      "constraints": [
+        {"contextName": "remoteAddress", "operator": "IN_CIDR", "values": ["10.0.0.0/8"], "inverted": false, "caseInsensitive": false}
+      ]
+    },
+    {"id": 3, "name": "everyone", "description": "No constraints", "constraints": []}
+  ],
+  "perEnv": {
+    "development": {
+      "features": [
+        {"name": "new-checkout", "description": "The one-page checkout", "type": "release", "archived": false},
+        {"name": "checkout-theme", "description": "", "type": "experiment", "archived": false},
+        {"name": "Banner Config", "description": "Banner settings", "type": "operational", "archived": false},
+        {"name": "kill-db", "description": "", "type": "kill-switch", "archived": false}
+      ],
+      "featureEnvironments": [
+        {"featureName": "new-checkout", "environment": "development", "enabled": true, "variants": []},
+        {
+          "featureName": "checkout-theme", "environment": "development", "enabled": true,
+          "variants": [
+            {"name": "blue", "weight": 334, "weightType": "variable", "stickiness": "userId", "payload": {"type": "string", "value": "#00f"},
+             "overrides": [{"contextName": "userId", "values": ["u7"]}]},
+            {"name": "green", "weight": 333, "weightType": "variable", "stickiness": "userId"},
+            {"name": "Dark Mode", "weight": 333, "weightType": "variable", "stickiness": "userId", "payload": {"type": "number", "value": "3"}}
+          ]
+        },
+        {"featureName": "Banner Config", "environment": "development", "enabled": true, "variants": []},
+        {"featureName": "kill-db", "environment": "development", "enabled": false, "variants": []}
+      ],
+      "featureStrategies": [
+        {"name": "default", "featureName": "new-checkout", "title": "", "disabled": false, "sortOrder": 0, "segments": [], "constraints": [], "parameters": {}, "variants": []},
+        {"name": "default", "featureName": "new-checkout", "title": "Never reached", "disabled": false, "sortOrder": 1, "segments": [],
+         "constraints": [{"contextName": "plan", "operator": "IN", "values": ["free"]}], "parameters": {}, "variants": []},
+        {"name": "default", "featureName": "checkout-theme", "title": "", "disabled": false, "sortOrder": 0, "segments": [], "constraints": [], "parameters": {}, "variants": []},
+        {"name": "flexibleRollout", "featureName": "Banner Config", "title": "", "disabled": false, "sortOrder": 0, "segments": [], "constraints": [],
+         "parameters": {"rollout": "100", "stickiness": "default", "groupId": "Banner Config"},
+         "variants": [
+           {"name": "v1", "weight": 1000, "weightType": "variable", "stickiness": "default", "payload": {"type": "json", "value": "{\"color\": \"red\", \"size\": 2}"}},
+           {"name": "plain", "weight": 0, "weightType": "fix", "stickiness": "default", "payload": {"type": "string", "value": "x"}}
+         ]}
+      ],
+      "dependencies": [
+        {"feature": "checkout-theme", "dependencies": [{"feature": "new-checkout"}]},
+        {"feature": "Banner Config", "dependencies": [
+          {"feature": "checkout-theme", "variants": ["blue", "green"]},
+          {"feature": "kill-db", "enabled": false},
+          {"feature": "gone"}
+        ]}
+      ]
+    },
+    "production": {
+      "features": [
+        {"name": "new-checkout", "description": "The one-page checkout", "type": "release", "archived": false},
+        {"name": "checkout-theme", "description": "", "type": "experiment", "archived": false},
+        {"name": "Banner Config", "description": "Banner settings", "type": "operational", "archived": false},
+        {"name": "kill-db", "description": "", "type": "kill-switch", "archived": false}
+      ],
+      "featureEnvironments": [
+        {"featureName": "new-checkout", "environment": "production", "enabled": true, "variants": []},
+        {"featureName": "checkout-theme", "environment": "production", "enabled": true, "variants": []},
+        {"featureName": "Banner Config", "environment": "production", "enabled": false, "variants": []},
+        {"featureName": "kill-db", "environment": "production", "enabled": true, "variants": []}
+      ],
+      "featureStrategies": [
+        {"name": "flexibleRollout", "featureName": "new-checkout", "title": "Beta testers in the Nordics", "disabled": false, "sortOrder": 1, "segments": [1],
+         "constraints": [
+           {"contextName": "country", "operator": "IN", "values": ["SE", "NO"], "inverted": false, "caseInsensitive": false},
+           {"contextName": "appVersion", "operator": "SEMVER_GT", "value": "2.0.0", "values": [], "inverted": false, "caseInsensitive": false}
+         ],
+         "parameters": {"rollout": "25", "stickiness": "default", "groupId": "new-checkout"}, "variants": []},
+        {"name": "userWithId", "featureName": "new-checkout", "title": "", "disabled": false, "sortOrder": 0, "segments": [], "constraints": [],
+         "parameters": {"userIds": "u1, u2,u3,,u1"}, "variants": []},
+        {"name": "flexibleRollout", "featureName": "new-checkout", "title": "Half of the companies", "disabled": false, "sortOrder": 2, "segments": [], "constraints": [],
+         "parameters": {"rollout": "50", "stickiness": "companyId", "groupId": "new-checkout"}, "variants": []},
+        {"name": "default", "featureName": "new-checkout", "title": "Staff", "disabled": false, "sortOrder": 3, "segments": [],
+         "constraints": [
+           {"contextName": "userId", "operator": "NOT_IN", "values": ["blocked"], "inverted": false, "caseInsensitive": false},
+           {"contextName": "email", "operator": "STR_STARTS_WITH", "values": ["staff."], "inverted": false, "caseInsensitive": false},
+           {"contextName": "email", "operator": "STR_CONTAINS", "values": ["+test"], "inverted": true, "caseInsensitive": false},
+           {"contextName": "name", "operator": "REGEX", "value": "^a", "inverted": false, "caseInsensitive": false},
+           {"contextName": "tier", "operator": "NOT_IN", "values": ["trial"], "inverted": true, "caseInsensitive": false}
+         ],
+         "parameters": {}, "variants": []},
+        {"name": "default", "featureName": "new-checkout", "title": "Numbers and dates", "disabled": false, "sortOrder": 4, "segments": [],
+         "constraints": [
+           {"contextName": "age", "operator": "NUM_GTE", "value": "18"},
+           {"contextName": "age", "operator": "NUM_LT", "value": "65.5"},
+           {"contextName": "seats", "operator": "NUM_EQ", "value": "42"},
+           {"contextName": "seats", "operator": "NUM_GT", "value": "1"},
+           {"contextName": "seats", "operator": "NUM_LTE", "value": "100"},
+           {"contextName": "currentTime", "operator": "DATE_AFTER", "value": "2026-01-01T00:00:00.000Z"},
+           {"contextName": "currentTime", "operator": "DATE_BEFORE", "value": "2027-01-01T00:00:00.000Z"},
+           {"contextName": "appVersion", "operator": "SEMVER_EQ", "value": "3.1.0"},
+           {"contextName": "osVersion", "operator": "SEMVER_LT", "value": "17.0.0"}
+         ],
+         "parameters": {}, "variants": []},
+        {"name": "default", "featureName": "new-checkout", "title": "Paused", "disabled": true, "sortOrder": 5, "segments": [],
+         "constraints": [{"contextName": "plan", "operator": "IN", "values": ["pro"]}], "parameters": {}, "variants": []},
+        {"name": "remoteAddress", "featureName": "new-checkout", "title": "", "disabled": false, "sortOrder": 6, "segments": [], "constraints": [],
+         "parameters": {"IPs": "10.0.0.1"}, "variants": []},
+        {"name": "applicationHostname", "featureName": "new-checkout", "title": "", "disabled": false, "sortOrder": 7, "segments": [], "constraints": [],
+         "parameters": {"hostNames": "web-1"}, "variants": []},
+        {"name": "default", "featureName": "new-checkout", "title": "Recent apps", "disabled": false, "sortOrder": 8, "segments": [],
+         "constraints": [{"contextName": "appVersion", "operator": "SEMVER_GTE", "value": "3.0.0"}], "parameters": {}, "variants": []},
+        {"name": "default", "featureName": "new-checkout", "title": "Internal network", "disabled": false, "sortOrder": 9, "segments": [],
+         "constraints": [{"contextName": "remoteAddress", "operator": "IN_CIDR", "values": ["192.168.0.0/16"]}], "parameters": {}, "variants": []},
+        {"name": "flexibleRollout", "featureName": "new-checkout", "title": "Random tenth", "disabled": false, "sortOrder": 10, "segments": [],
+         "constraints": [{"contextName": "plan", "operator": "IN", "values": ["free"]}],
+         "parameters": {"rollout": "10", "stickiness": "random", "groupId": "new-checkout"}, "variants": []},
+        {"name": "default", "featureName": "new-checkout", "title": "From the office", "disabled": false, "sortOrder": 11, "segments": [2, 3],
+         "constraints": [], "parameters": {}, "variants": []},
+
+        {"name": "flexibleRollout", "featureName": "checkout-theme", "title": "Swedes", "disabled": false, "sortOrder": 0, "segments": [],
+         "constraints": [{"contextName": "country", "operator": "IN", "values": ["SE"]}],
+         "parameters": {"rollout": "40", "stickiness": "default", "groupId": "checkout-theme"},
+         "variants": [
+           {"name": "blue", "weight": 500, "weightType": "variable", "stickiness": "default", "payload": {"type": "string", "value": "#00f"}},
+           {"name": "green", "weight": 500, "weightType": "variable", "stickiness": "default"}
+         ]},
+        {"name": "userWithId", "featureName": "checkout-theme", "title": "", "disabled": false, "sortOrder": 1, "segments": [], "constraints": [],
+         "parameters": {"userIds": "qa1,qa2"},
+         "variants": [{"name": "Dark Mode", "weight": 1000, "weightType": "variable", "stickiness": "default", "payload": {"type": "number", "value": "3"}}]},
+        {"name": "default", "featureName": "checkout-theme", "title": "", "disabled": false, "sortOrder": 2, "segments": [], "constraints": [],
+         "parameters": {},
+         "variants": [
+           {"name": "blue", "weight": 700, "weightType": "variable", "stickiness": "random", "payload": {"type": "string", "value": "#00f"}},
+           {"name": "green", "weight": 300, "weightType": "variable", "stickiness": "random"}
+         ]}
+      ],
+      "dependencies": [
+        {"feature": "checkout-theme", "dependencies": [{"feature": "new-checkout", "enabled": true}]}
+      ]
+    }
+  }
+}

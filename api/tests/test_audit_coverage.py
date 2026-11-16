@@ -39,8 +39,8 @@ from sqlalchemy import select
 from sso_fixtures import SAML_KEY, enable_sso, idp_metadata, saml_response
 
 from megooflags_api.main import create_app
-from megooflags_api.models import ApiToken, Environment, Project
-from megooflags_api.models.enums import InvitationPurpose
+from megooflags_api.models import ApiToken, Environment, IntegrationDelivery, Project
+from megooflags_api.models.enums import DeliveryStatus, InvitationPurpose
 from megooflags_api.services import invitations, users
 
 CLIENT_IP = "203.0.113.10"
@@ -184,6 +184,40 @@ async def segment(client: httpx.AsyncClient, app: FastAPI) -> Params:
 async def sdk_key(client: httpx.AsyncClient, app: FastAPI) -> Params:
     params = await project(client, app)
     return params | {"id": (await create_sdk_key(client, "server"))["id"]}
+
+
+async def private_hooks(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """`project`, in an app that may send to private addresses, so no name is resolved."""
+    app.state.settings.webhook_allow_private = True
+    return await project(client, app)
+
+
+async def integration(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    params = await private_hooks(client, app)
+    r = await client.post("/api/projects/demo/integrations", json=WEBHOOK)
+    assert r.status_code == 201, r.text
+    return params | {"id": r.json()["id"]}
+
+
+async def integration_to_test(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    """`integration`, with a worker that sends to a receiver that answers 200."""
+    app.state.delivery_worker.transport = httpx.MockTransport(lambda _: httpx.Response(200))
+    return await integration(client, app)
+
+
+async def failed_delivery(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    params = await integration(client, app)
+    async with app.state.sessionmaker() as session:
+        row = IntegrationDelivery(
+            integration_id=uuid.UUID(params["id"]),
+            event_id="evt_1",
+            event_type="flag.toggle",
+            payload={"id": "evt_1"},
+            status=DeliveryStatus.FAILED,
+        )
+        session.add(row)
+        await session.commit()
+        return params | {"delivery": str(row.id)}
 
 
 async def role(client: httpx.AsyncClient, app: FastAPI) -> Params:
@@ -443,6 +477,7 @@ E = f"{P}/environments/{{env}}"
 F = f"{P}/flags/{{flag}}"
 FE = f"{F}/environments/{{env}}"
 S = f"{P}/segments/{{segment}}"
+IN = f"{P}/integrations/{{id}}"
 CONFIG = {"version": 1, "enabled": True, "fallthrough": {"variation": "b"}}
 RUN_AT = (datetime.now(UTC) + timedelta(days=1)).isoformat()
 ROLLOUT = {
@@ -456,6 +491,12 @@ TOGGLE_CHANGE_REQUEST = {
     "kind": "toggle",
     "title": "Turn color on",
     "payload": {"enabled": True},
+}
+WEBHOOK = {
+    "kind": "webhook",
+    "name": "Hook",
+    "url": "https://127.0.0.1/hook",
+    "event_groups": ["flags"],
 }
 PASSWORD = "a much longer passphrase 42"
 PERSONAL_TOKEN = {"name": "laptop", "permissions": ["project.read"]}
@@ -684,6 +725,18 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
             "sdk_key.rotate",
             sdk_key,
             {"overlap_seconds": 60},
+        ),
+        # Integrations
+        sample("POST", f"{P}/integrations", "integration.create", private_hooks, WEBHOOK),
+        sample("PATCH", IN, "integration.update", integration, {"name": "Deploy hook"}),
+        sample("DELETE", IN, "integration.delete", integration),
+        sample("POST", f"{IN}/rotate-secret", "integration.rotate_secret", integration),
+        sample("POST", f"{IN}/test", "integration.test", integration_to_test),
+        sample(
+            "POST",
+            f"{IN}/deliveries/{{delivery}}/redeliver",
+            "integration.redeliver",
+            failed_delivery,
         ),
         # Roles and bindings
         sample(
