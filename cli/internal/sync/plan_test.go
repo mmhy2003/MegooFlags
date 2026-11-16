@@ -3,6 +3,7 @@ package sync
 import (
 	"bytes"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -404,5 +405,15 @@ func TestDiffOrder(t *testing.T) {
 	}
 	if c[15].Op != OpDelete || c[15].Kind != KindSegment || c[15].Key != "staff" {
 		t.Errorf("segment delete = %+v", c[15])
+	}
+}
+
+// Fields names the differing parts, so that Apply need not read Summary.
+func TestDiffChangeFields(t *testing.T) {
+	files := expected()
+	editFlag(files, "banner-text", func(f *flagfiles.Flag) { f.Type, f.OffVariation = "json", "welcome" })
+	p := Diff(files, expected(), Options{})
+	if len(p.Changes) != 1 || !slices.Equal(p.Changes[0].Fields, []string{"type", "off_variation"}) {
+		t.Fatalf("changes = %+v", p.Changes)
 	}
 }

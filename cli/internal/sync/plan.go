@@ -41,14 +41,16 @@ const (
 
 // Change is one step that brings the server in line with the files. Key is
 // the resource's key (the flag's for variations and configs), Env the
-// environment of a config and Variation the variation's key. Summary names
-// what differs. The pointer that matches Kind carries the files' version.
+// environment of a config and Variation the variation's key. Fields names
+// the parts that differ in an update and Summary says what differs, for
+// people. The pointer that matches Kind carries the files' version.
 type Change struct {
 	Op        Op
 	Kind      Kind
 	Key       string
 	Env       string
 	Variation string
+	Fields    []string
 	Summary   string
 
 	Project        *flagfiles.ProjectMeta
@@ -82,14 +84,19 @@ type Options struct {
 // keep sorted are compared as sets.
 func Diff(files, server *flagfiles.Dir, opts Options) Plan {
 	var p Plan
-	add := func(c Change) { p.Changes = append(p.Changes, c) }
+	add := func(c Change) {
+		if c.Summary == "" {
+			c.Summary = strings.Join(c.Fields, ", ")
+		}
+		p.Changes = append(p.Changes, c)
+	}
 
 	if fields := differing(
 		part{"name", files.Project.Project.Name, server.Project.Project.Name},
 		part{"description", files.Project.Project.Description, server.Project.Project.Description},
-	); fields != "" {
+	); len(fields) > 0 {
 		project := files.Project.Project
-		add(Change{Op: OpUpdate, Kind: KindProject, Key: project.Key, Summary: fields, Project: &project})
+		add(Change{Op: OpUpdate, Kind: KindProject, Key: project.Key, Fields: fields, Project: &project})
 	}
 
 	for _, e := range files.Project.Environments {
@@ -103,8 +110,8 @@ func Diff(files, server *flagfiles.Dir, opts Options) Plan {
 			part{"name", e.Name, s.Name},
 			part{"description", e.Description, s.Description},
 			part{"approvals_required", e.ApprovalsRequired, s.ApprovalsRequired},
-		); fields != "" {
-			add(Change{Op: OpUpdate, Kind: KindEnvironment, Key: e.Key, Summary: fields, Environment: &e})
+		); len(fields) > 0 {
+			add(Change{Op: OpUpdate, Kind: KindEnvironment, Key: e.Key, Fields: fields, Environment: &e})
 		}
 	}
 
@@ -117,8 +124,8 @@ func Diff(files, server *flagfiles.Dir, opts Options) Plan {
 		} else if fields := differing(
 			part{"name", s.Name, old.Name},
 			part{"description", s.Description, old.Description},
-		); fields != "" {
-			add(Change{Op: OpUpdate, Kind: KindSegment, Key: key, Summary: fields, Segment: &s})
+		); len(fields) > 0 {
+			add(Change{Op: OpUpdate, Kind: KindSegment, Key: key, Fields: fields, Segment: &s})
 		}
 	}
 	for _, key := range segmentKeys {
@@ -127,8 +134,8 @@ func Diff(files, server *flagfiles.Dir, opts Options) Plan {
 			part{"included", sortedStrings(s.Included), sortedStrings(old.Included)},
 			part{"excluded", sortedStrings(s.Excluded), sortedStrings(old.Excluded)},
 			part{"rules", s.Rules, old.Rules},
-		); fields != "" {
-			add(Change{Op: OpUpdate, Kind: KindSegmentConfig, Key: key, Summary: fields, Segment: &s})
+		); len(fields) > 0 {
+			add(Change{Op: OpUpdate, Kind: KindSegmentConfig, Key: key, Fields: fields, Segment: &s})
 		}
 	}
 
@@ -145,9 +152,9 @@ func Diff(files, server *flagfiles.Dir, opts Options) Plan {
 			part{"tags", sortedStrings(f.Tags), sortedStrings(old.Tags)},
 			part{"owner", f.Owner, old.Owner},
 			part{"off_variation", f.OffVariation, old.OffVariation},
-		); fields != "" {
+		); len(fields) > 0 {
 			// Apply refuses a changed type: the flag must be deleted and recreated.
-			add(Change{Op: OpUpdate, Kind: KindFlag, Key: key, Summary: fields, Flag: &f})
+			add(Change{Op: OpUpdate, Kind: KindFlag, Key: key, Fields: fields, Flag: &f})
 		}
 		if f.Permanent != old.Permanent {
 			add(Change{Op: OpUpdate, Kind: KindLifecycle, Key: key, Summary: lifecycle(f.Permanent), Flag: &f})
@@ -177,8 +184,8 @@ func Diff(files, server *flagfiles.Dir, opts Options) Plan {
 				part{"name", v.Name, o.Name},
 				part{"description", v.Description, o.Description},
 				part{"value", v.Value, o.Value},
-			); fields != "" {
-				add(Change{Op: OpUpdate, Kind: KindVariation, Key: key, Variation: v.Key, Summary: fields, VariationValue: &v})
+			); len(fields) > 0 {
+				add(Change{Op: OpUpdate, Kind: KindVariation, Key: key, Variation: v.Key, Fields: fields, VariationValue: &v})
 			}
 		}
 	}
@@ -196,8 +203,8 @@ func Diff(files, server *flagfiles.Dir, opts Options) Plan {
 				part{"rules", canonicalRules(e.Rules), canonicalRules(s.Rules)},
 				part{"fallthrough", e.Fallthrough, s.Fallthrough},
 				part{"prerequisites", e.Prerequisites, s.Prerequisites},
-			); fields != "" {
-				add(Change{Op: OpUpdate, Kind: KindConfig, Key: key, Env: env, Summary: fields, Config: &e})
+			); len(fields) > 0 {
+				add(Change{Op: OpUpdate, Kind: KindConfig, Key: key, Env: env, Fields: fields, Config: &e})
 			}
 		}
 	}
@@ -271,15 +278,15 @@ type part struct {
 	files, server any
 }
 
-// differing lists the names of the parts that differ, joined by ", ".
-func differing(parts ...part) string {
+// differing lists the names of the parts that differ.
+func differing(parts ...part) []string {
 	var names []string
 	for _, p := range parts {
 		if !sameMeaning(p.files, p.server) {
 			names = append(names, p.name)
 		}
 	}
-	return strings.Join(names, ", ")
+	return names
 }
 
 // sameMeaning compares a and b as JSON values, so that numbers compare by

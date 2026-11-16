@@ -34,8 +34,10 @@ type store struct {
 	// conflicts is how many times a PUT of config "flag/env" meets a
 	// version that someone else has just moved on.
 	conflicts map[string]int
-	// failCreate lists flag keys whose create fails with 422.
-	failCreate map[string]bool
+	// failCreate lists flag keys whose create fails with 422, and
+	// failVariation "flag/variation" keys likewise.
+	failCreate    map[string]bool
+	failVariation map[string]bool
 	// changeRequests are the change requests opened, in order.
 	changeRequests []client.ChangeRequestCreate
 }
@@ -53,7 +55,7 @@ func newStore(t *testing.T, key string) (*store, *client.Client) {
 		segments:   map[string]*client.Segment{},
 		flags:      map[string]*storedFlag{},
 		conflicts:  map[string]int{},
-		failCreate: map[string]bool{},
+		failCreate: map[string]bool{}, failVariation: map[string]bool{},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(srv.Close)
@@ -418,6 +420,9 @@ func (s *store) variation(r *http.Request, f *client.Flag, parts []string) (any,
 		in, err := decode[client.VariationIn](r)
 		if err != nil {
 			return nil, err
+		}
+		if s.failVariation[f.Key+"/"+in.Key] {
+			return nil, invalid("variation %s cannot be created", in.Key)
 		}
 		v := client.Variation{Key: in.Key, Name: in.Name, Description: in.Description, Value: in.Value}
 		f.Variations = append(f.Variations, v)

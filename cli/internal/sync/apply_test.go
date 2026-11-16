@@ -184,6 +184,9 @@ func TestApplyRetriesVersionConflictOnce(t *testing.T) {
 	}
 }
 
+// A new project whose files require approvals is created with them, so its
+// configs there are never written directly: they need approval, or go into
+// change requests. Approvals are never bypassed, not even on create.
 func TestApplyApprovalRequired(t *testing.T) {
 	production := []string{
 		"~ config banner-text [production]: enabled, rules, fallthrough",
@@ -313,4 +316,66 @@ func lines(cs []Change) []string {
 		out = append(out, c.String())
 	}
 	return out
+}
+
+func TestApplyNewVariationBecomesOffVariation(t *testing.T) {
+	s, c := seeded(t)
+	files := golden(t, false)
+	editFlag(files, "banner-text", func(f *flagfiles.Flag) {
+		f.Name = "Banner"
+		f.Variations = append(slices.Clone(f.Variations), client.Variation{Key: "none", Name: "None", Value: ""})
+		f.OffVariation = "none"
+	})
+
+	noFailures(t, applyFiles(t, c, files, Options{}, ApplyOptions{}))
+	w := s.writesTo()
+	create := slices.Index(w, "POST /api/projects/shop/flags/banner-text/variations")
+	last := slices.Index(w, "PATCH /api/projects/shop/flags/banner-text")
+	for i, req := range w {
+		if req == "PATCH /api/projects/shop/flags/banner-text" {
+			last = i
+		}
+	}
+	if create < 0 || last < create {
+		t.Fatalf("writes = %v, want off_variation set after the variation exists", w)
+	}
+	noDiff(t, c, files, Options{})
+}
+
+func TestApplyRenamedOffVariation(t *testing.T) {
+	_, c := seeded(t)
+	files := golden(t, false)
+	editFlag(files, "old-banner", func(f *flagfiles.Flag) {
+		f.Variations = []client.Variation{{Key: "true", Value: true}, {Key: "off", Value: false}}
+		f.OffVariation = "off"
+		envs := map[string]flagfiles.FlagEnv{}
+		for k, e := range f.Environments {
+			e.Fallthrough = client.Serve{Variation: ptr("off")}
+			envs[k] = e
+		}
+		f.Environments = envs
+	})
+
+	noFailures(t, applyFiles(t, c, files, Options{}, ApplyOptions{}))
+	noDiff(t, c, files, Options{})
+}
+
+func TestApplyOffVariationFailureIsReported(t *testing.T) {
+	s, c := seeded(t)
+	files := golden(t, false)
+	editFlag(files, "banner-text", func(f *flagfiles.Flag) {
+		f.Variations = append(slices.Clone(f.Variations), client.Variation{Key: "none", Value: ""})
+		f.OffVariation = "none"
+	})
+	s.failVariation["banner-text/none"] = true
+
+	r := applyFiles(t, c, files, Options{}, ApplyOptions{})
+	var failed []string
+	for _, f := range r.Failures {
+		failed = append(failed, f.Change.String())
+	}
+	sameLines(t, failed, []string{"+ variation banner-text/none", "~ flag banner-text: off_variation"})
+	if len(r.Applied) != 0 {
+		t.Fatalf("applied = %v", lines(r.Applied))
+	}
 }

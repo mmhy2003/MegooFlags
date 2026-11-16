@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"strings"
 
 	"github.com/mmhy2003/MegooFlags/cli/client"
 	"github.com/mmhy2003/MegooFlags/cli/internal/flagfiles"
@@ -39,6 +38,10 @@ type Failure struct {
 }
 
 var errTypeChange = errors.New("type cannot change; delete and recreate the flag")
+
+// errOffVariationLater marks a flag update whose off variation is sent
+// after the flag's new variations.
+var errOffVariationLater = errors.New("off variation set later")
 
 // errHeldForApproval marks a config that waits for approval, in
 // NeedsApproval or in a change request.
@@ -80,23 +83,58 @@ func Apply(ctx context.Context, c *client.Client, project string, plan Plan, opt
 	}
 	a := &applier{ctx: ctx, c: c, project: project, opts: opts, plan: plan, failedFlags: map[string]bool{}}
 	for _, ch := range plan.Changes {
+		if afterVariations(ch) {
+			a.setOffVariations()
+		}
 		if a.failedFlags[ch.Key] && ch.Kind != KindSegment && ch.Kind != KindSegmentConfig &&
 			ch.Kind != KindProject && ch.Kind != KindEnvironment {
 			a.res.Failures = append(a.res.Failures, Failure{ch, fmt.Errorf("skipped: flag %s was not created", ch.Key)})
 			continue
 		}
-		switch err := a.apply(ch); {
-		case err == nil:
-			a.res.Applied = append(a.res.Applied, ch)
-		case errors.Is(err, errHeldForApproval):
-		default:
-			if ch.Kind == KindFlag && ch.Op == OpCreate {
-				a.failedFlags[ch.Key] = true
-			}
-			a.res.Failures = append(a.res.Failures, Failure{ch, err})
-		}
+		a.record(ch, a.apply(ch))
 	}
+	a.setOffVariations()
 	return a.res
+}
+
+func (a *applier) record(ch Change, err error) {
+	switch {
+	case err == nil:
+		a.res.Applied = append(a.res.Applied, ch)
+	case errors.Is(err, errHeldForApproval), errors.Is(err, errOffVariationLater):
+	default:
+		if ch.Kind == KindFlag && ch.Op == OpCreate {
+			a.failedFlags[ch.Key] = true
+		}
+		a.res.Failures = append(a.res.Failures, Failure{ch, err})
+	}
+}
+
+// afterVariations reports whether ch comes after the new and changed
+// variations in apply order: a config, a removed variation, or a prune.
+func afterVariations(ch Change) bool {
+	switch ch.Kind {
+	case KindConfig:
+		return true
+	case KindVariation:
+		return ch.Op == OpDelete
+	case KindSegment:
+		return ch.Op == OpDelete
+	case KindFlag:
+		return ch.Flag == nil // a pruned flag
+	}
+	return false
+}
+
+// setOffVariations sends the off variations held back from flag updates,
+// now that the variations they name exist. The flag update counts as
+// applied once its off variation is set.
+func (a *applier) setOffVariations() {
+	for _, ch := range a.pendingOff {
+		_, err := a.c.UpdateFlag(a.ctx, a.project, ch.Key, client.FlagUpdate{OffVariation: &ch.Flag.OffVariation})
+		a.record(ch, err)
+	}
+	a.pendingOff = nil
 }
 
 type applier struct {
@@ -111,6 +149,9 @@ type applier struct {
 	// new environments.
 	projectCreated bool
 	failedFlags    map[string]bool
+	// pendingOff are flag updates whose off variation waits for the flag's
+	// new variations: the update may name one that does not exist yet.
+	pendingOff []Change
 }
 
 func (a *applier) apply(ch Change) error {
@@ -220,14 +261,26 @@ func (a *applier) flag(ch Change) error {
 		}
 		_, err = c.CreateFlag(ctx, p, in)
 	case OpUpdate:
-		if slices.Contains(strings.Split(ch.Summary, ", "), "type") {
+		if slices.Contains(ch.Fields, "type") {
 			return errTypeChange
 		}
 		tags := f.Tags
-		_, err = c.UpdateFlag(ctx, p, ch.Key, client.FlagUpdate{
+		in := client.FlagUpdate{
 			Name: &f.Name, Description: &f.Description, Tags: &tags,
-			Owner: f.Owner, ClearOwner: f.Owner == nil, OffVariation: &f.OffVariation,
-		})
+			Owner: f.Owner, ClearOwner: f.Owner == nil,
+		}
+		if !slices.Contains(ch.Fields, "off_variation") {
+			in.OffVariation = &f.OffVariation
+			_, err = c.UpdateFlag(ctx, p, ch.Key, in)
+			break
+		}
+		if len(ch.Fields) > 1 {
+			if _, err = c.UpdateFlag(ctx, p, ch.Key, in); err != nil {
+				break
+			}
+		}
+		a.pendingOff = append(a.pendingOff, ch)
+		return errOffVariationLater
 	case OpArchive:
 		_, err = c.ArchiveFlag(ctx, p, ch.Key)
 	case OpRestore:
