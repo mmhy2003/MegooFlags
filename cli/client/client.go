@@ -65,11 +65,21 @@ func New(baseURL, token string, opts ...Option) *Client {
 // is not nil, and decodes a 2xx JSON response into out when out is not nil
 // and the status is not 204. A non-2xx response is returned as *Error.
 func (c *Client) Do(ctx context.Context, method, path string, query url.Values, in, out any) error {
+	resp, err := c.request(ctx, method, path, query, in, nil)
+	if err != nil {
+		return err
+	}
+	return c.handle(resp, out)
+}
+
+// request sends a request with the extra header, retrying a GET, and
+// returns the final response without checking its status.
+func (c *Client) request(ctx context.Context, method, path string, query url.Values, in any, header http.Header) (*http.Response, error) {
 	var body []byte
 	if in != nil {
 		var err error
 		if body, err = json.Marshal(in); err != nil {
-			return fmt.Errorf("encode request: %w", err)
+			return nil, fmt.Errorf("encode request: %w", err)
 		}
 	}
 	target := c.BaseURL + path
@@ -81,10 +91,10 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 		retries = c.MaxRetries
 	}
 	for attempt := 0; ; attempt++ {
-		resp, err := c.send(ctx, method, target, body)
+		resp, err := c.send(ctx, method, target, body, header)
 		if err != nil {
 			if ctx.Err() != nil || attempt >= retries {
-				return err
+				return nil, err
 			}
 			c.Sleep(backoff(attempt, ""))
 			continue
@@ -95,11 +105,11 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 			c.Sleep(wait)
 			continue
 		}
-		return c.handle(resp, out)
+		return resp, nil
 	}
 }
 
-func (c *Client) send(ctx context.Context, method, target string, body []byte) (*http.Response, error) {
+func (c *Client) send(ctx context.Context, method, target string, body []byte, header http.Header) (*http.Response, error) {
 	var r io.Reader
 	if body != nil {
 		r = bytes.NewReader(body)
@@ -107,6 +117,9 @@ func (c *Client) send(ctx context.Context, method, target string, body []byte) (
 	req, err := http.NewRequestWithContext(ctx, method, target, r)
 	if err != nil {
 		return nil, err
+	}
+	for k, v := range header {
+		req.Header[k] = v
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Accept", "application/json")
