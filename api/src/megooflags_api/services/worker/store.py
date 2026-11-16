@@ -196,6 +196,10 @@ class SnapshotStore:
             expires_at=key.expires_at,
         )
 
+    def keys_by_id(self, key_ids: set[uuid.UUID]) -> dict[uuid.UUID, SnapshotKey]:
+        """The stored keys among `key_ids`, by id; a key in no snapshot is left out."""
+        return {key.id: key for key, _ in self._keys.values() if key.id in key_ids}
+
     def entry(self, environment_id: uuid.UUID) -> CachedRuleset | None:
         """The parsed ruleset, from memory or else from its file; None when not stored."""
         cached = self._parsed.get(environment_id)
