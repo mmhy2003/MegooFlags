@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/mmhy2003/MegooFlags/cli/client"
 	"github.com/mmhy2003/MegooFlags/cli/internal/flagfiles"
 	flagsync "github.com/mmhy2003/MegooFlags/cli/internal/sync"
 )
@@ -91,6 +93,86 @@ func newDiffCmd(a *app) *cobra.Command {
 	f.BoolVar(&opts.Prune, "prune", false, "include archiving flags and deleting segments missing from the files")
 	_ = cmd.MarkFlagRequired("dir")
 	return cmd
+}
+
+func newApplyCmd(a *app) *cobra.Command {
+	var dir string
+	var opts flagsync.Options
+	var aopts flagsync.ApplyOptions
+	cmd := &cobra.Command{
+		Use:   "apply --dir DIR [--env e ...] [--prune] [--dry-run] [--change-requests]",
+		Short: "Bring the server in line with the flags-as-code files",
+		Long: "Check the flags-as-code files in DIR, then make the changes diff shows, in order,\n" +
+			"creating the project when it does not exist. Nothing is written when the files\n" +
+			"have problems. A failed change does not stop the others. Configs in an\n" +
+			"environment that requires approvals are left as \"needs approval\", or with\n" +
+			"--change-requests proposed in config change requests. With --prune, live flags\n" +
+			"and segments missing from the files are archived and deleted. --dry-run only\n" +
+			"prints the changes. Exits 1 when a change failed, 4 when changes need approval.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			files, err := flagfiles.Load(dir)
+			if err != nil {
+				return err
+			}
+			c, v, err := a.projectClient()
+			if err != nil {
+				return err
+			}
+			server, err := flagsync.SnapshotOrEmpty(cmd.Context(), c, v.Project, opts.Envs)
+			if err != nil {
+				return err
+			}
+			if err := validate(cmd.ErrOrStderr(), files, server); err != nil {
+				return err
+			}
+			plan := flagsync.Diff(files, server, opts)
+			out := cmd.OutOrStdout()
+			if len(plan.Changes) == 0 {
+				_, err := fmt.Fprintln(out, "No differences.")
+				return err
+			}
+			aopts.Out = out
+			res := flagsync.Apply(cmd.Context(), c, v.Project, plan, aopts)
+			for _, ch := range res.Applied {
+				fmt.Fprintln(out, ch)
+			}
+			for _, ch := range res.NeedsApproval {
+				fmt.Fprintln(out, "needs approval:", ch)
+			}
+			for _, id := range res.ChangeRequests {
+				fmt.Fprintln(out, "opened change request", id)
+			}
+			for _, f := range res.Failures {
+				fmt.Fprintf(cmd.ErrOrStderr(), "failed: %s: %s\n", f.Change, apiMessage(f.Err))
+			}
+			switch {
+			case len(res.Failures) > 0:
+				return quietExit(ExitError)
+			case len(res.NeedsApproval) > 0:
+				return quietExit(ExitNeedsApproval)
+			}
+			return nil
+		},
+	}
+	f := cmd.Flags()
+	f.StringVar(&dir, "dir", "", "flags-as-code directory")
+	f.StringArrayVar(&opts.Envs, "env", nil, "environment to apply flag configs in (repeatable; default all)")
+	f.BoolVar(&opts.Prune, "prune", false, "archive flags and delete segments missing from the files")
+	f.BoolVar(&aopts.DryRun, "dry-run", false, "print the changes without making them")
+	f.BoolVar(&aopts.ChangeRequests, "change-requests", false, "open config change requests where approvals are required")
+	_ = cmd.MarkFlagRequired("dir")
+	return cmd
+}
+
+// apiMessage is "<code>: <message>" for an API error, without the HTTP
+// status, and the error's text otherwise.
+func apiMessage(err error) string {
+	var apiErr *client.Error
+	if errors.As(err, &apiErr) {
+		return apiErr.Code + ": " + apiErr.Message
+	}
+	return err.Error()
 }
 
 // validate checks files, letting them refer to the server's segments, and

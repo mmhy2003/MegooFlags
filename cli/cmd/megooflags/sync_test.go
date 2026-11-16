@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -218,5 +219,120 @@ func TestDiffInvalidFiles(t *testing.T) {
 	}
 	if code, _, _ := api.session("shop").run("diff"); code != ExitUsage {
 		t.Fatalf("missing --dir: code = %d", code)
+	}
+}
+
+// writes lists the requests that were not GETs.
+func (f *fakeAPI) writes() []string {
+	var out []string
+	for _, r := range f.requests {
+		if r.Method != "GET" {
+			out = append(out, r.Method+" "+r.Path)
+		}
+	}
+	return out
+}
+
+const devConfig = "/api/projects/shop/flags/%s/environments/development"
+
+func TestApplyNoChanges(t *testing.T) {
+	api := fixtureAPI(t)
+	code, out, errOut := api.session("shop").run("apply", "--dir", exportedDir(t))
+	if code != ExitOK || out != "No differences.\n" || errOut != "" || len(api.writes()) != 0 {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q, writes = %v", code, out, errOut, api.writes())
+	}
+}
+
+func TestApplyPrintsAppliedAndFailures(t *testing.T) {
+	dir := exportedDir(t)
+	editFile(t, filepath.Join(dir, "flags", "new-checkout.yaml"), "development:\n    enabled: true", "development:\n    enabled: false")
+	editFile(t, filepath.Join(dir, "flags", "banner-text.yaml"), "development:\n    enabled: false", "development:\n    enabled: true")
+	api := fixtureAPI(t)
+	api.routes["PUT "+fmt.Sprintf(devConfig, "banner-text")] = reply{status: 422, body: `{"code":"validation_error","message":"bad config"}`}
+	api.routes["PUT "+fmt.Sprintf(devConfig, "new-checkout")] = api.routes["GET "+fmt.Sprintf(devConfig, "new-checkout")]
+
+	code, out, errOut := api.session("shop").run("apply", "--dir", dir)
+	if code != ExitError || out != "~ config new-checkout [development]: enabled\n" ||
+		errOut != "failed: ~ config banner-text [development]: enabled: validation_error: bad config\n" {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+	put := api.requests[len(api.requests)-1]
+	if body := put.Body.(map[string]any); body["enabled"] != false || body["version"] != float64(2) {
+		t.Fatalf("PUT body = %v", body)
+	}
+}
+
+func approvalDir(t *testing.T) string {
+	t.Helper()
+	dir := exportedDir(t)
+	editFile(t, filepath.Join(dir, "flags", "new-checkout.yaml"), "fallthrough:\n      variation: \"false\"", "fallthrough:\n      variation: \"true\"")
+	return dir
+}
+
+func TestApplyNeedsApproval(t *testing.T) {
+	api := fixtureAPI(t)
+	api.routes["PUT /api/projects/shop/flags/new-checkout/environments/production"] = reply{status: 409, body: approvalRequired}
+
+	code, out, errOut := api.session("shop").run("apply", "--dir", approvalDir(t))
+	if code != ExitNeedsApproval || out != "needs approval: ~ config new-checkout [production]: fallthrough\n" || errOut != "" {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+}
+
+func TestApplyChangeRequests(t *testing.T) {
+	api := fixtureAPI(t)
+	api.routes["PUT /api/projects/shop/flags/new-checkout/environments/production"] = reply{status: 409, body: approvalRequired}
+	api.routes["POST /api/projects/shop/change-requests"] = reply{status: 201, body: `{"id":"cr-9","title":"t","kind":"config","status":"open"}`}
+
+	code, out, errOut := api.session("shop").run("apply", "--dir", approvalDir(t), "--change-requests")
+	if code != ExitOK || out != "opened change request cr-9\n" || errOut != "" {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+	cr := api.requests[len(api.requests)-1].Body.(map[string]any)
+	if cr["title"] != "Apply flags-as-code: new-checkout in production" || cr["kind"] != "config" {
+		t.Fatalf("change request = %v", cr)
+	}
+}
+
+func TestApplyInvalidFilesMakeNoWrites(t *testing.T) {
+	dir := exportedDir(t)
+	editFile(t, filepath.Join(dir, "flags", "new-checkout.yaml"), "name: New checkout", "name: Newer checkout")
+	editFile(t, filepath.Join(dir, "flags", "new-checkout.yaml"), "off_variation: \"false\"", "off_variation: maybe")
+	editFile(t, filepath.Join(dir, "flags", "banner-text.yaml"), "off_variation: hello", "off_variation: bye")
+	api := fixtureAPI(t)
+
+	code, out, errOut := api.session("shop").run("apply", "--dir", dir)
+	if code != ExitError || out != "" || len(api.writes()) != 0 ||
+		!strings.Contains(errOut, "flags/banner-text.yaml: off_variation: unknown variation bye\n") ||
+		!strings.Contains(errOut, "flags/new-checkout.yaml: off_variation: unknown variation maybe\n") {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q, writes = %v", code, out, errOut, api.writes())
+	}
+	if code, _, _ := api.session("shop").run("apply"); code != ExitUsage {
+		t.Fatalf("missing --dir: code = %d", code)
+	}
+}
+
+func TestApplyDryRunMakesNoWrites(t *testing.T) {
+	api := fixtureAPI(t)
+	code, out, errOut := api.session("shop").run("apply", "--dir", approvalDir(t), "--dry-run")
+	if code != ExitOK || out != "~ config new-checkout [production]: fallthrough\n" || errOut != "" || len(api.writes()) != 0 {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q, writes = %v", code, out, errOut, api.writes())
+	}
+}
+
+func TestApplyPrune(t *testing.T) {
+	dir := exportedDir(t)
+	if err := os.Remove(filepath.Join(dir, "segments", "staff.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	api := fixtureAPI(t)
+	api.routes["DELETE /api/projects/shop/segments/staff"] = reply{status: 204}
+
+	code, out, errOut := api.session("shop").run("apply", "--dir", dir, "--prune")
+	if code != ExitOK || out != "- segment staff\n" || errOut != "" {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+	if w := api.writes(); len(w) != 1 || w[0] != "DELETE /api/projects/shop/segments/staff" {
+		t.Fatalf("writes = %v", w)
 	}
 }

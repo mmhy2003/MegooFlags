@@ -232,25 +232,30 @@ func Diff(files, server *flagfiles.Dir, opts Options) Plan {
 // and deletes "-", and updates "~".
 func (p Plan) Print(w io.Writer) {
 	for _, c := range p.Changes {
-		sign := "~"
-		switch c.Op {
-		case OpCreate, OpRestore:
-			sign = "+"
-		case OpArchive, OpDelete:
-			sign = "-"
-		}
-		line := sign + " " + string(c.Kind) + " " + c.Key
-		if c.Variation != "" {
-			line += "/" + c.Variation
-		}
-		if c.Env != "" {
-			line += " [" + c.Env + "]"
-		}
-		if c.Summary != "" {
-			line += ": " + c.Summary
-		}
-		fmt.Fprintln(w, line)
+		fmt.Fprintln(w, c)
 	}
+}
+
+// String is the change's line in Print.
+func (c Change) String() string {
+	sign := "~"
+	switch c.Op {
+	case OpCreate, OpRestore:
+		sign = "+"
+	case OpArchive, OpDelete:
+		sign = "-"
+	}
+	line := sign + " " + string(c.Kind) + " " + c.Key
+	if c.Variation != "" {
+		line += "/" + c.Variation
+	}
+	if c.Env != "" {
+		line += " [" + c.Env + "]"
+	}
+	if c.Summary != "" {
+		line += ": " + c.Summary
+	}
+	return line
 }
 
 func lifecycle(permanent bool) string {
