@@ -89,12 +89,14 @@ func configValue(v types.String, env string) string {
 func (p *megooflagsProvider) Resources(context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		newProjectResource,
+		newFlagResource,
 	}
 }
 
 func (p *megooflagsProvider) DataSources(context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		newProjectDataSource,
+		newFlagDataSource,
 	}
 }
 

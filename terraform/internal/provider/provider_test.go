@@ -28,11 +28,13 @@ func TestProviderSchemaValid(t *testing.T) {
 	for _, d := range resp.Diagnostics {
 		t.Errorf("diagnostic: %s: %s", d.Summary, d.Detail)
 	}
-	if _, ok := resp.ResourceSchemas["megooflags_project"]; !ok {
-		t.Error("megooflags_project resource missing")
-	}
-	if _, ok := resp.DataSourceSchemas["megooflags_project"]; !ok {
-		t.Error("megooflags_project data source missing")
+	for _, name := range []string{"megooflags_project", "megooflags_flag"} {
+		if _, ok := resp.ResourceSchemas[name]; !ok {
+			t.Errorf("%s resource missing", name)
+		}
+		if _, ok := resp.DataSourceSchemas[name]; !ok {
+			t.Errorf("%s data source missing", name)
+		}
 	}
 }
 
