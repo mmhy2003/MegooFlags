@@ -308,8 +308,33 @@ jobs:
       - name: gofmt
         run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "::error::gofmt"; exit 1; }
       - run: go vet ./...
+      - name: go vet (e2e)
+        working-directory: cli/e2e
+        run: go vet -tags e2e ./...
       - run: go test -race -count=1 ./...
       - run: go build -o bin/megooflags ./cmd/megooflags
+
+  cli-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-cli
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: |
+            cli/go.sum
+            cli/e2e/go.sum
+      - name: E2E
+        working-directory: cli/e2e
+        run: go test -tags e2e -count=1 -v ./...
+      - if: failure()
+        run: docker compose -p megooflags-cli -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: always()
+        run: docker compose -p megooflags-cli -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
 
   sdk-go:
     runs-on: ubuntu-24.04

@@ -223,7 +223,6 @@ func TestApplyPrune(t *testing.T) {
 	s, c := seeded(t)
 	if _, err := c.CreateFlag(context.Background(), "shop", client.FlagCreate{
 		Key: "legacy", Name: "Legacy", Type: "boolean", OffVariation: ptr("false"),
-		Variations: []client.VariationIn{{Key: "true", Value: true}, {Key: "false", Value: false}},
 	}); err != nil {
 		t.Fatal(err)
 	}

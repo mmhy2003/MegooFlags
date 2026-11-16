@@ -466,6 +466,35 @@ async def test_delete_archived_204(api: httpx.AsyncClient) -> None:
     await create_flag(api)
 
 
+async def test_delete_archived_with_targeting_204(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await api.post("/api/projects/demo/segments", json={"key": "beta", "name": "Beta"})
+    await create_flag(api, type="string", variations=STRING_VARIATIONS, off_variation="b")
+    r = await api.put(
+        "/api/projects/demo/flags/new-ui/environments/production",
+        json={
+            "version": 1,
+            "enabled": True,
+            "targets": [{"variation": "a", "values": ["u1"]}],
+            "rules": [
+                {"clauses": [{"operator": "in_segment", "values": ["beta"]}], "variation": "b"},
+                {
+                    "clauses": [{"attribute": "country", "operator": "in", "values": ["EG"]}],
+                    "rollout": {"weights": [{"variation": "a", "weight": 100000}]},
+                },
+            ],
+            "fallthrough": {"rollout": {"weights": [{"variation": "b", "weight": 100000}]}},
+        },
+    )
+    assert r.status_code == 200, r.text
+    await api.post("/api/projects/demo/flags/new-ui/archive")
+
+    r = await api.delete("/api/projects/demo/flags/new-ui")
+
+    assert r.status_code == 204, r.text
+    assert_error(await api.get("/api/projects/demo/flags/new-ui"), 404, "not_found")
+
+
 async def test_archive_and_delete_blocked_by_prerequisite_dependent(api: httpx.AsyncClient) -> None:
     await create_project(api)
     await create_flag(api, key="a")

@@ -74,6 +74,9 @@ func (v *validator) flag(key string, f Flag) {
 			v.errorf(fmt.Sprintf("variations[%d].value", i), "must be a %s", f.Type)
 		}
 	}
+	if f.Type == "boolean" && !booleanVariations(f.Variations) {
+		v.errorf("variations", `a boolean flag has exactly the variations "true": true and "false": false`)
+	}
 	v.variation("off_variation", f.OffVariation)
 
 	envKeys := slices.Sorted(maps.Keys(f.Environments))
@@ -147,6 +150,21 @@ func (v *validator) variation(field, key string) {
 	if !v.variations[key] {
 		v.errorf(field, "unknown variation %s", key)
 	}
+}
+
+// booleanVariations reports whether vs are the two variations the API gives
+// every boolean flag, in any order: "true" with value true and "false" with
+// value false.
+func booleanVariations(vs []client.Variation) bool {
+	if len(vs) != 2 {
+		return false
+	}
+	for _, vr := range vs {
+		if b, ok := vr.Value.(bool); !ok || vr.Key != fmt.Sprint(b) {
+			return false
+		}
+	}
+	return vs[0].Key != vs[1].Key
 }
 
 // valueHasType reports whether a decoded YAML value is valid for the flag

@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import exists, func, or_, select, text
+from sqlalchemy import delete, exists, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -273,6 +273,9 @@ async def delete_flag(session: AsyncSession, flag: Flag) -> None:
     if flag.archived_at is None:
         raise not_archived(flag.key)
     await _check_not_prerequisite(session, flag)
+    # The config first: targets and rules reference the variations, and Postgres checks
+    # those references before a cascade two levels deep has removed them.
+    await session.execute(delete(FlagEnvironment).where(FlagEnvironment.flag_id == flag.id))
     await session.delete(flag)
     await session.flush()
 

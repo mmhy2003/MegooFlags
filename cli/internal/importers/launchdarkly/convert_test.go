@@ -73,15 +73,67 @@ func TestConvertDefaultsWithoutEnvMap(t *testing.T) {
 		t.Fatalf("environment key = %q", got)
 	}
 	f := d.Flags["f"]
-	if f.OffVariation != "v1" || f.Environments["prod"].Fallthrough.Variation == nil {
+	if f.OffVariation != "false" || f.Environments["prod"].Fallthrough.Variation == nil {
 		t.Fatalf("flag = %+v", f)
 	}
 	want := []importers.ReportLine{
 		{Resource: "environment", Key: "prod", Message: `key "Prod" was renamed to "prod"`},
-		{Resource: "flag", Key: "f", Message: "has no off variation in any environment; v1 is served when the flag is off"},
+		{Resource: "flag", Key: "f", Message: "has no off variation in any environment; false is served when the flag is off"},
 	}
 	if !reflect.DeepEqual(report.Lines, want) {
 		t.Fatalf("report = %#v", report.Lines)
+	}
+}
+
+func TestConvertBooleanKeysAndDates(t *testing.T) {
+	e := &Export{
+		Environments: []Environment{{Key: "production", Name: "Production"}},
+		Flags: map[string][]Flag{"production": {
+			{
+				Key: "gate", Name: "Gate", Kind: "boolean",
+				Variations: []Variation{{Name: "On", Value: true}, {Name: "Off", Value: false}},
+				Environments: map[string]FlagConfig{"production": {
+					On: true, OffVariation: ptr(1), Fallthrough: Serve{Variation: ptr(0)},
+					Targets: []Target{{Values: []string{"u1"}, Variation: 1}},
+					Rules: []Rule{{
+						Clauses: []Clause{
+							{Attribute: "signup", Op: "before", Values: []any{float64(1700000000000)}},
+							{Attribute: "seen", Op: "after", Values: []any{"2026-01-01T00:00:00Z"}},
+						},
+						Serve: Serve{Variation: ptr(1)},
+					}},
+				}},
+			},
+			{
+				Key: "child", Name: "Child", Kind: "boolean",
+				Variations: []Variation{{Value: true}, {Value: false}},
+				Environments: map[string]FlagConfig{"production": {
+					OffVariation: ptr(1), Fallthrough: Serve{Variation: ptr(0)},
+					Prerequisites: []Prerequisite{{Key: "gate", Variation: 0}},
+				}},
+			},
+		}},
+	}
+	d, _ := Convert(e, importers.Options{Project: "shop"})
+
+	gate := d.Flags["gate"]
+	keys := []string{gate.Variations[0].Key, gate.Variations[1].Key}
+	if !reflect.DeepEqual(keys, []string{"true", "false"}) || gate.Variations[0].Name != "On" || gate.OffVariation != "false" {
+		t.Fatalf("gate = %+v", gate)
+	}
+	cfg := gate.Environments["production"]
+	if cfg.Targets[0].Variation != "false" || *cfg.Fallthrough.Variation != "true" || *cfg.Rules[0].Variation != "false" {
+		t.Fatalf("gate config = %+v", cfg)
+	}
+	values := []any{cfg.Rules[0].Clauses[0].Values[0], cfg.Rules[0].Clauses[1].Values[0]}
+	if want := []any{"2023-11-14T22:13:20.000Z", "2026-01-01T00:00:00Z"}; !reflect.DeepEqual(values, want) {
+		t.Fatalf("date values = %#v, want %#v", values, want)
+	}
+	if p := d.Flags["child"].Environments["production"].Prerequisites; len(p) != 1 || p[0].Variation != "true" {
+		t.Fatalf("child prerequisites = %+v", p)
+	}
+	if errs := flagfiles.Validate(d, nil); len(errs) > 0 {
+		t.Fatalf("does not validate: %v", errs)
 	}
 }
 

@@ -1,6 +1,6 @@
 import httpx
 import pytest
-from helpers import assert_error, create_project
+from helpers import assert_error, create_flag, create_project
 
 
 async def test_create_returns_201_with_default_envs(api: httpx.AsyncClient) -> None:
@@ -167,3 +167,29 @@ async def test_delete_204_then_404(api: httpx.AsyncClient) -> None:
     assert r.status_code == 204
     assert_error(await api.get("/api/projects/demo"), 404, "not_found")
     assert_error(await api.delete("/api/projects/demo"), 404, "not_found")
+
+
+async def test_delete_with_prerequisites_and_segment_rules_204(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await api.post("/api/projects/demo/segments", json={"key": "beta", "name": "Beta"})
+    await create_flag(api, key="a")
+    await create_flag(api, key="b")
+    r = await api.put(
+        "/api/projects/demo/flags/b/environments/production",
+        json={
+            "version": 1,
+            "enabled": True,
+            "targets": [{"variation": "true", "values": ["u1"]}],
+            "rules": [
+                {"clauses": [{"operator": "in_segment", "values": ["beta"]}], "variation": "true"}
+            ],
+            "fallthrough": {"variation": "false"},
+            "prerequisites": [{"flag": "a", "variation": "true"}],
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    r = await api.delete("/api/projects/demo")
+
+    assert r.status_code == 204, r.text
+    assert_error(await api.get("/api/projects/demo"), 404, "not_found")

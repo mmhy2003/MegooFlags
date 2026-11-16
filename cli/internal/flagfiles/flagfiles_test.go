@@ -244,6 +244,24 @@ func TestValidateNumberValues(t *testing.T) {
 	}
 }
 
+func TestValidateBooleanVariations(t *testing.T) {
+	f := Flag{Key: "dark", Name: "Dark", Type: "boolean", OffVariation: "off",
+		Variations: []client.Variation{{Key: "on", Value: true}, {Key: "off", Value: false}}}
+	d := &Dir{Project: ProjectFile{APIVersion: APIVersion}, Flags: map[string]Flag{"dark": f}}
+	got := errorStrings(Validate(d, nil))
+	want := []string{`flags/dark.yaml: variations: a boolean flag has exactly the variations "true": true and "false": false`}
+	if !slices.Equal(got, want) {
+		t.Fatalf("got %v", got)
+	}
+
+	f.Variations = []client.Variation{{Key: "true", Name: "On", Value: true}, {Key: "false", Value: false}}
+	f.OffVariation = "false"
+	d.Flags["dark"] = f
+	if errs := Validate(d, nil); len(errs) != 0 {
+		t.Fatalf("true and false with names should be valid: %v", errs)
+	}
+}
+
 func TestValidateServerSegments(t *testing.T) {
 	d := mustLoad(t, "testdata/valid")
 	d.Flags["new-checkout"].Environments["production"].Rules[0].Clauses[0].Values[1] = "vip"

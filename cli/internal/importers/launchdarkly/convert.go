@@ -6,6 +6,8 @@ import (
 	"math"
 	"reflect"
 	"slices"
+	"strconv"
+	"time"
 
 	"github.com/mmhy2003/MegooFlags/cli/client"
 	"github.com/mmhy2003/MegooFlags/cli/internal/flagfiles"
@@ -244,6 +246,11 @@ func (c *converter) convertFlags() {
 		info := flagInfo{key: importers.NormalizeKey(ldKey, used, c.r, "flag")}
 		varUsed := map[string]bool{}
 		for i, v := range f.Variations {
+			// MegooFlags boolean flags always have the variations true and false.
+			if b, ok := v.Value.(bool); ok && f.Kind == "boolean" {
+				info.variations = append(info.variations, importers.Unique(strconv.FormatBool(b), varUsed))
+				continue
+			}
 			base := importers.Slug(v.Name)
 			if base == "" {
 				base = fmt.Sprintf("v%d", i)
@@ -518,6 +525,10 @@ func (c *converter) clauses(in []Clause, ldEnv string) ([]client.Clause, error) 
 		values := make([]any, len(cl.Values))
 		for i, v := range cl.Values {
 			values[i] = scalar(v)
+			// LaunchDarkly dates may be Unix milliseconds; MegooFlags wants RFC 3339.
+			if n, ok := v.(float64); ok && (op == "before" || op == "after") {
+				values[i] = time.UnixMilli(int64(n)).UTC().Format("2006-01-02T15:04:05.000Z07:00")
+			}
 		}
 		out = append(out, client.Clause{Attribute: cl.Attribute, Operator: op, Values: values, Negate: cl.Negate})
 	}

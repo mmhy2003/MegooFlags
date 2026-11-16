@@ -73,7 +73,7 @@ environments:
             weight: 0
     prerequisites:
       - flag: newcheckout
-        variation: "on"
+        variation: "true"
   staging:
     enabled: true
     targets:
@@ -86,4 +86,4 @@ environments:
       variation: blue
     prerequisites:
       - flag: newcheckout
-        variation: "off"
+        variation: "false"

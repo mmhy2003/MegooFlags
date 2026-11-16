@@ -25,7 +25,7 @@ environments:
           - attribute: signup
             operator: before
             values:
-              - 1700000000000
+              - "2023-11-14T22:13:20.000Z"
             negate: false
         variation: v1
     fallthrough:

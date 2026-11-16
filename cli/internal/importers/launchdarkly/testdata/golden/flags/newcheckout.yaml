@@ -6,25 +6,25 @@ tags:
   - web
 owner: mona@example.com
 variations:
-  - key: "on"
+  - key: "true"
     name: "On"
     description: ""
     value: true
-  - key: "off"
+  - key: "false"
     name: "Off"
     description: ""
     value: false
-off_variation: "off"
+off_variation: "false"
 permanent: false
 archived: false
 environments:
   production:
     enabled: true
     targets:
-      - variation: "on"
+      - variation: "true"
         values:
           - u1
-      - variation: "off"
+      - variation: "false"
         values:
           - u5
     rules:
@@ -35,7 +35,7 @@ environments:
             values:
               - '@example.com'
             negate: false
-        variation: "on"
+        variation: "true"
       - description: ""
         clauses:
           - attribute: key
@@ -43,7 +43,7 @@ environments:
             values:
               - beta-users
             negate: false
-        variation: "on"
+        variation: "true"
       - description: Not internal
         clauses:
           - attribute: key
@@ -51,9 +51,9 @@ environments:
             values:
               - internal-production
             negate: true
-        variation: "off"
+        variation: "false"
     fallthrough:
-      variation: "off"
+      variation: "false"
     prerequisites: []
   staging:
     enabled: false
@@ -67,7 +67,7 @@ environments:
               - beta-users
               - internal-staging
             negate: false
-        variation: "on"
+        variation: "true"
     fallthrough:
-      variation: "on"
+      variation: "true"
     prerequisites: []

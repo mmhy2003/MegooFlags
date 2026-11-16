@@ -256,10 +256,27 @@ func (a *applier) flag(ch Change) error {
 			Key: ch.Key, Name: f.Name, Description: f.Description, Type: f.Type,
 			Tags: f.Tags, Owner: f.Owner, OffVariation: &f.OffVariation,
 		}
-		for _, v := range f.Variations {
-			in.Variations = append(in.Variations, variationIn(v))
+		// The API gives a boolean flag its true and false variations and
+		// refuses a list; their names and descriptions are set afterwards.
+		if f.Type != "boolean" {
+			for _, v := range f.Variations {
+				in.Variations = append(in.Variations, variationIn(v))
+			}
 		}
-		_, err = c.CreateFlag(ctx, p, in)
+		if _, err = c.CreateFlag(ctx, p, in); err != nil || f.Type != "boolean" {
+			break
+		}
+		for _, v := range f.Variations {
+			if v.Name == "" && v.Description == "" {
+				continue
+			}
+			name, description := v.Name, v.Description
+			if _, err = c.UpdateVariation(ctx, p, ch.Key, v.Key, client.VariationUpdate{
+				Name: &name, Description: &description,
+			}); err != nil {
+				break
+			}
+		}
 	case OpUpdate:
 		if slices.Contains(ch.Fields, "type") {
 			return errTypeChange

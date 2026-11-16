@@ -396,6 +396,13 @@ func (s *store) createFlag(r *http.Request) (any, *apiError) {
 		Key: in.Key, Name: in.Name, Description: in.Description, Type: in.Type,
 		Tags: in.Tags, Owner: in.Owner, Lifecycle: "active",
 	}}
+	// As the API: a boolean flag gets true and false, and may not list them.
+	if in.Type == "boolean" {
+		if in.Variations != nil {
+			return nil, invalid("boolean flags always have the variations true and false")
+		}
+		f.Variations = []client.Variation{{Key: "true", Value: true}, {Key: "false", Value: false}}
+	}
 	for _, v := range in.Variations {
 		f.Variations = append(f.Variations, client.Variation{Key: v.Key, Name: v.Name, Description: v.Description, Value: v.Value})
 	}
