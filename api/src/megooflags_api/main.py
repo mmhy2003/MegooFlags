@@ -27,6 +27,7 @@ from megooflags_api.routers import (
     flags,
     health,
     integrations,
+    nodes,
     ofrep,
     projects,
     roles,
@@ -180,6 +181,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         teams,
         api_tokens,
         audit,
+        nodes,
     ):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_principal)])
     app.include_router(sso.admin_router, prefix="/api", dependencies=[Depends(get_principal)])

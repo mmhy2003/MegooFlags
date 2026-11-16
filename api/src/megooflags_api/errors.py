@@ -198,6 +198,30 @@ def payload_too_large(message: str) -> ApiError:
     return ApiError(413, "payload_too_large", message)
 
 
+def not_control_plane() -> ApiError:
+    return ApiError(
+        409,
+        "not_control_plane",
+        "this instance runs with MEGOOFLAGS_ROLE=standalone; "
+        "set MEGOOFLAGS_ROLE=control-plane to manage worker nodes",
+    )
+
+
+def node_revoked() -> ApiError:
+    return ApiError(403, "node_revoked", "this node's token is revoked or expired")
+
+
+def incompatible_version(worker: str, control_plane: str, reason: str) -> ApiError:
+    return ApiError(
+        409, "incompatible_version", reason, {"worker": worker, "control_plane": control_plane}
+    )
+
+
+def not_ready(code: str, message: str) -> ApiError:
+    """A worker that cannot serve yet ("not_ready") or any more ("revoked")."""
+    return ApiError(503, code, message)
+
+
 def integrity_error_status_code(sqlstate: str | None) -> tuple[int, str]:
     """Map a Postgres integrity violation that escaped the services' own checks."""
     match sqlstate:
