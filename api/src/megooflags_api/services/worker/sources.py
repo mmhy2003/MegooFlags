@@ -2,17 +2,20 @@
 
 A worker has no Postgres and no Valkey, so these implement the `services/delivery.py` interfaces
 on the `SnapshotStore`. Reading a ruleset may parse a snapshot file, so it runs in a thread.
+Events go to the `EventBuffer`, which forwards them to the control plane.
 """
 
 import asyncio
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 
+from megooflags_api.schemas.events import EventsIn
 from megooflags_api.services.ruleset import EnvRef
 from megooflags_api.services.ruleset_cache import CachedRuleset
 from megooflags_api.services.sdk_keys import SdkPrincipal, hash_key, key_kind
+from megooflags_api.services.worker.buffer import EventBuffer
 from megooflags_api.services.worker.store import SnapshotStore
 
 
@@ -59,6 +62,30 @@ class StoreStreamSource:
             or key.revoked_at is not None
             or (key.expires_at is not None and key.expires_at <= now)
         }
+
+
+class BufferEventSink:
+    """Evaluation counts and SDK events, buffered until the control plane accepts them."""
+
+    def __init__(self, buffer: EventBuffer, persist_context: Callable[[], bool]) -> None:
+        self._buffer = buffer
+        self._persist_context = persist_context
+
+    def record_counts(
+        self, environment_id: uuid.UUID, results: Iterable[tuple[str, str | None]]
+    ) -> None:
+        self._buffer.add_counts(environment_id, results)
+
+    async def store(self, environment_id: uuid.UUID, body: EventsIn, now: datetime) -> None:
+        """Buffer the batch; a future exposure timestamp is clamped to `now`, as on the DB path."""
+        exposures = [
+            item if item.timestamp <= now else item.model_copy(update={"timestamp": now})
+            for item in body.exposures
+        ]
+        self._buffer.add_exposures(
+            environment_id, exposures, persist_context=self._persist_context()
+        )
+        self._buffer.add_count_items(environment_id, body.counts)
 
 
 class MemoryRateLimiter:
