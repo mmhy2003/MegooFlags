@@ -172,11 +172,13 @@ class Worker:
         self.client.backoff_max = 0.04
         self.sleeps: list[float] = []
         self.incompatible: list[str | None] = []  # `state.incompatible` during each sleep
+        self.reasons: list[str | None] = []  # `state.unavailable_reason()` during each sleep
         real_sleep = self.client._sleep
 
         async def sleep(seconds: float) -> None:
             self.sleeps.append(seconds)
             self.incompatible.append(self.state.incompatible)
+            self.reasons.append(self.state.unavailable_reason())
             await real_sleep(0.001)
 
         self.client._sleep = sleep  # type: ignore[method-assign]
@@ -325,13 +327,57 @@ async def test_new_public_key_replaces_snapshots(make: Callable[..., Worker]) ->
     worker.store.mark_synced()
     worker.start()
 
-    await until(lambda: worker.store.meta.public_key == OTHER_SIGNER.public_key)
-    await until(lambda: worker.store.meta.synced)
+    await until(lambda: worker.hub.notified == [PROJECT_ID])
 
+    assert worker.store.meta.public_key == OTHER_SIGNER.public_key
     assert worker.store.versions() == {ENV_A: 3}
     reopened = SnapshotStore(worker.store._dir)
     reopened.load()
     assert reopened.valid and reopened.versions() == {ENV_A: 3}
+
+
+async def test_new_public_key_keeps_serving_if_resync_is_cut(
+    make: Callable[..., Worker],
+) -> None:
+    cp = ControlPlane(
+        [hello(public_key=OTHER_SIGNER.public_key)],
+        [
+            hello(public_key=OTHER_SIGNER.public_key),
+            StreamEvent.put(snapshot(ENV_A, 3, signer=OTHER_SIGNER)).frame(),
+            synced(3),
+        ],
+        close=True,
+    )
+    worker = make(cp)
+    worker.store.meta.public_key = SIGNER.public_key
+    assert worker.store.apply(snapshot(ENV_A, 3))
+    worker.store.mark_synced()
+    worker.start()
+
+    await until(lambda: len(cp.requests) == 2)
+    # The first stream ended before the put: the old snapshot is still served.
+    assert worker.reasons[0] is None
+    # Reconnecting, the snapshot not yet re-signed is not reported as held.
+    assert json.loads(cp.requests[1].content) == {
+        "versions": {},
+        "public_key": OTHER_SIGNER.public_key,
+    }
+    await until(lambda: len(cp.requests) == 3)
+    assert worker.hub.notified == [PROJECT_ID]
+    assert worker.store.versions() == {ENV_A: 3}
+    assert json.loads(cp.requests[2].content)["versions"] == {str(ENV_A): 3}
+
+
+async def test_backoff_grows_when_stream_ends_before_synced(
+    make: Callable[..., Worker],
+) -> None:
+    cp = ControlPlane([hello()], [hello()], [hello()], close=True)
+    worker = make(cp)
+    worker.start()
+
+    await until(lambda: len(cp.requests) == 4)
+
+    assert worker.sleeps == [0.01, 0.02, 0.04]
 
 
 async def test_bad_signature_put_ignored(make: Callable[..., Worker]) -> None:
@@ -546,6 +592,10 @@ async def test_heartbeat_loop_survives_errors(make: Callable[..., Worker]) -> No
         (httpx.Response(400), "rejected"),
         (httpx.Response(503), "retry"),
         (httpx.Response(401), "retry"),
+        (httpx.Response(404), "retry"),
+        (httpx.Response(408), "retry"),
+        (httpx.Response(429), "retry"),
+        (httpx.Response(413), "rejected"),
         (httpx.Response(403), "retry"),
         (httpx.Response(409), "retry"),
         (httpx.ConnectError("refused"), "retry"),

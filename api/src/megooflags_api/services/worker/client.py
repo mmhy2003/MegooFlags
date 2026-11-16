@@ -37,7 +37,9 @@ VERSION_HEADER = "X-MegooFlags-Version"  # as routers/cluster.py reads it
 REQUEST_TIMEOUT = 10.0
 HELLO_READ_TIMEOUT = 45.0  # until `hello` gives the ping interval
 NOT_CONTROL_PLANE_RETRY = 60.0
-RETRY_STATUSES = {401, 403, 409}  # an event batch sent again later, not dropped
+# The statuses that say the batch itself is bad, so it is dropped. Any other failure, including
+# a proxy's 404, 408 or 429 in front of the control plane, keeps it for a later round.
+REJECTED_STATUSES = {400, 413, 422}
 
 
 class SdkStreams(Protocol):
@@ -119,6 +121,8 @@ class ControlPlaneClient:
         self.read_timeout = HELLO_READ_TIMEOUT
         self._delay = self.backoff_min
         self._drain_task: asyncio.Task[None] | None = None
+        # Environments held under the control plane's previous signing key, until re-signed.
+        self._rekeying: set[uuid.UUID] = set()
 
     async def run(self) -> None:
         """Keep the snapshot stream open until the node is revoked."""
@@ -179,7 +183,7 @@ class ControlPlaneClient:
         status = response.status_code
         if 200 <= status < 300:
             return "accepted"
-        if 400 <= status < 500 and status not in RETRY_STATUSES:
+        if status in REJECTED_STATUSES:
             return "rejected"
         return "retry"
 
@@ -202,7 +206,12 @@ class ControlPlaneClient:
 
     async def _sync(self) -> float | None:
         """One stream: the seconds to wait before the next, or None to stop."""
-        body = StreamIn(versions=self._store.versions(), public_key=self._store.meta.public_key)
+        versions = {
+            env_id: version
+            for env_id, version in self._store.versions().items()
+            if env_id not in self._rekeying
+        }
+        body = StreamIn(versions=versions, public_key=self._store.meta.public_key)
         self.read_timeout = HELLO_READ_TIMEOUT
         async with self._http.stream(
             "POST",
@@ -284,7 +293,9 @@ class ControlPlaneClient:
             if ref is not None:
                 self._hub.notify_project(ref.project_id)
         elif event == "synced":
+            self._rekeying.clear()
             self._store.mark_synced()
+            self._delay = self.backoff_min
         elif event == "state":
             self._set_draining(json.loads(data)["state"] == "draining")
         elif event == "revoked":
@@ -297,11 +308,10 @@ class ControlPlaneClient:
         meta = self._store.meta
         public_key = str(hello["public_key"])
         if meta.public_key is not None and meta.public_key != public_key:
-            # The control plane's secret key changed: every snapshot is sent again, with
-            # versions the store already holds, so the old ones must go first.
+            # The control plane's secret key changed: it sends every snapshot again, re-signed
+            # with the versions the store holds. The old ones keep serving until replaced.
             logger.warning("the control plane's signing key changed; resyncing every snapshot")
-            meta.synced = False
-            await asyncio.to_thread(self._forget_snapshots)
+            self._rekeying = set(self._store.versions())
         meta.public_key = public_key
         meta.persist_context = bool(hello["persist_context"])
         meta.control_plane_version = str(hello["version"])
@@ -309,11 +319,6 @@ class ControlPlaneClient:
         self.read_timeout = 3 * float(hello["ping_seconds"])
         self._set_draining(hello["state"] == "draining")
         self._state.connected = True
-        self._delay = self.backoff_min
-
-    def _forget_snapshots(self) -> None:
-        for environment_id in self._store.versions():
-            self._store.remove(environment_id)
 
     async def _put(self, data: bytes) -> None:
         try:
@@ -322,7 +327,9 @@ class ControlPlaneClient:
             logger.warning("ignoring a malformed snapshot: %s", exc)
             return
         header = snap.header
-        if await asyncio.to_thread(self._store.apply, snap):
+        replace_equal = header.environment_id in self._rekeying
+        if await asyncio.to_thread(self._store.apply, snap, replace_equal=replace_equal):
+            self._rekeying.discard(header.environment_id)
             self._hub.notify_project(header.project_id)
         else:
             logger.warning(

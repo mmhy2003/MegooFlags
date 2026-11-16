@@ -158,6 +158,22 @@ def test_apply_rejects_older_or_equal_version(tmp_path: Path) -> None:
     assert entry.ruleset.flags["new-ui"].enabled is False
 
 
+def test_apply_replace_equal_takes_same_version(tmp_path: Path) -> None:
+    store = new_store(tmp_path)
+    assert store.apply(snapshot(version=5, keys=(key(1),)))
+    store.meta.public_key = OTHER_SIGNER.public_key
+    store.save_meta()
+    resigned = snapshot(version=5, keys=(key(1),), signer=OTHER_SIGNER)
+
+    assert store.apply(resigned) is False
+    assert store.apply(snapshot(version=4, signer=OTHER_SIGNER), replace_equal=True) is False
+    assert store.apply(resigned, replace_equal=True)
+
+    assert store.versions() == {ENV_A: 5}
+    assert store.principal(key(1).hash) is not None
+    assert reopened(tmp_path).versions() == {ENV_A: 5}
+
+
 def test_corrupt_file_discarded_on_load(tmp_path: Path) -> None:
     store = new_store(tmp_path)
     store.apply(snapshot(ENV_A, keys=(key(1),)))

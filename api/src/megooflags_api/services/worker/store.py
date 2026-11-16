@@ -163,12 +163,18 @@ class SnapshotStore:
         with self._lock:
             return max((header.version for header in self._headers.values()), default=0)
 
-    def apply(self, snap: SignedSnapshot) -> bool:
-        """Store `snap`; False, keeping the old one, unless it is valid and newer."""
+    def apply(self, snap: SignedSnapshot, *, replace_equal: bool = False) -> bool:
+        """Store `snap`; False, keeping the old one, unless it is valid and newer. With
+        `replace_equal`, the same version is replaced too (signed again under a new key)."""
         header = snap.header
         with self._lock:
             current = self._headers.get(header.environment_id)
-        if header.format != FORMAT or (current is not None and header.version <= current.version):
+        if current is not None and (
+            header.version < current.version
+            or (header.version == current.version and not replace_equal)
+        ):
+            return False
+        if header.format != FORMAT:
             return False
         if self.meta.public_key is None or not snap.verify(self.meta.public_key):
             return False
