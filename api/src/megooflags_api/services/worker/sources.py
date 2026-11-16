@@ -82,10 +82,14 @@ class BufferEventSink:
             item if item.timestamp <= now else item.model_copy(update={"timestamp": now})
             for item in body.exposures
         ]
-        self._buffer.add_exposures(
-            environment_id, exposures, persist_context=self._persist_context()
-        )
         self._buffer.add_count_items(environment_id, body.counts)
+        # Past the memory limit this seals, which writes and syncs files.
+        await asyncio.to_thread(
+            self._buffer.add_exposures,
+            environment_id,
+            exposures,
+            persist_context=self._persist_context(),
+        )
 
 
 class MemoryRateLimiter:

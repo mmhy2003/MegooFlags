@@ -1,3 +1,6 @@
+import asyncio
+import contextlib
+import threading
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -268,3 +271,131 @@ async def test_sink_records_counts_and_events(tmp_path: Path) -> None:
     assert [e.context for e in exposures] == [None, {"user": "u1"}]
     assert all(e.timestamp == START for e in exposures)
     assert {b.environment_id for b in found} == {ENV_A}
+
+
+def test_count_totals_above_max_are_split(tmp_path: Path) -> None:
+    buffer = new_buffer(tmp_path)
+    big = CountIn(flag_key="a", variant="on", hour=START, count=1_000_000_000)
+    buffer.add_count_items(ENV_A, [big, big, big.model_copy(update={"count": 5})])
+    buffer.add_exposures(ENV_A, [exposure()], persist_context=False)
+
+    buffer.seal()
+
+    found = batches(tmp_path)
+    [counts] = [b.counts for b in found if b.counts]
+    assert sorted(c.count for c in counts) == [5, 1_000_000_000, 1_000_000_000]
+    assert [len(b.exposures) for b in found if b.exposures] == [1]
+    assert buffer.pending_events == 4
+
+
+def test_unsent_count_files_merge_across_seals(tmp_path: Path) -> None:
+    clock = Clock(START)
+    buffer = new_buffer(tmp_path, clock)
+    for _ in range(50):
+        clock.now += timedelta(seconds=10)
+        buffer.add_counts(ENV_A, [("a", "on"), ("b", None)], hour=START)
+        buffer.seal()
+
+    [batch] = batches(tmp_path)
+    assert {(c.flag_key, c.count) for c in batch.counts} == {("a", 50), ("b", 50)}
+    assert buffer.pending_events == 2
+
+
+async def test_sent_count_file_is_never_merged_into(tmp_path: Path) -> None:
+    buffer = new_buffer(tmp_path)
+    buffer.add_counts(ENV_A, [("a", "on")], hour=START)
+    buffer.seal()
+    send = Sender(["retry"])
+    await buffer.forward(send)
+
+    buffer.add_counts(ENV_A, [("a", "on")], hour=START)
+    buffer.seal()
+    buffer.add_counts(ENV_A, [("a", "on")], hour=START)
+    buffer.seal()
+
+    first, second = batches(tmp_path)
+    assert first == send.sent[0]
+    assert [c.count for c in second.counts] == [2]
+    await buffer.forward(send)
+    assert [b.batch_id for b in send.sent] == [first.batch_id, first.batch_id, second.batch_id]
+
+
+def test_counts_do_not_grow_files_past_flags_times_hours(tmp_path: Path) -> None:
+    clock = Clock(START)
+    buffer = new_buffer(tmp_path, clock)
+    for hour in range(6):
+        for second in range(3):
+            clock.now = START + timedelta(hours=hour, seconds=second)
+            buffer.add_counts(ENV_A, [(f"flag-{i}", "on") for i in range(400)])
+            buffer.seal()
+
+    found = batches(tmp_path)
+    assert sum(len(b.counts) for b in found) == 6 * 400
+    assert len(found) == 3
+    assert all(len(b.counts) <= 1000 for b in found)
+
+
+async def test_file_being_sent_is_not_dropped_for_size(tmp_path: Path) -> None:
+    clock = Clock(START)
+    first = new_buffer(tmp_path, clock)
+    first.add_exposures(ENV_A, [exposure("first")] * 10, persist_context=False)
+    first.seal()
+    [path] = files(tmp_path)
+    buffer = new_buffer(tmp_path, clock, max_bytes=path.stat().st_size * 3 // 2)
+
+    async def send(batch: ClusterEventsIn) -> SendResult:
+        clock.now += timedelta(seconds=1)
+        buffer.add_exposures(ENV_A, [exposure("second")] * 10, persist_context=False)
+        buffer.seal()
+        return "accepted"
+
+    await buffer.forward(send)
+
+    assert buffer.dropped_total == 10
+    assert files(tmp_path) == []
+
+
+async def test_forwarder_survives_errors(tmp_path: Path) -> None:
+    buffer = new_buffer(tmp_path)
+    buffer.forward_seconds = 0
+    calls: list[int] = []
+    called_again = asyncio.Event()
+
+    async def forward(send: object) -> None:
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("disk gone")
+        called_again.set()
+
+    buffer.forward = forward  # type: ignore[method-assign,assignment]
+    task = asyncio.create_task(buffer.run_forwarder(Sender([])))
+    await asyncio.wait_for(called_again.wait(), 2)
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
+async def test_seal_runs_off_the_event_loop(tmp_path: Path) -> None:
+    buffer = new_buffer(tmp_path, memory_items=0)
+    sealed_in: list[int] = []
+    sealed_twice = threading.Event()
+    seal = buffer.seal
+
+    def record() -> None:
+        sealed_in.append(threading.get_ident())
+        seal()
+        if len(sealed_in) >= 2:
+            sealed_twice.set()
+
+    buffer.seal = record  # type: ignore[method-assign]
+    buffer.seal_seconds = 0
+    await BufferEventSink(buffer, lambda: False).store(
+        ENV_A, EventsIn(exposures=[exposure()]), START
+    )
+    task = asyncio.create_task(buffer.run_sealer())
+    assert await asyncio.to_thread(sealed_twice.wait, 2)
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+    assert threading.get_ident() not in sealed_in
