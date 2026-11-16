@@ -1,0 +1,170 @@
+name: new-checkout
+description: The one-page checkout
+type: boolean
+tags: []
+variations:
+  - key: "true"
+    name: ""
+    description: ""
+    value: true
+  - key: "false"
+    name: ""
+    description: ""
+    value: false
+off_variation: "false"
+permanent: false
+archived: false
+environments:
+  development:
+    enabled: true
+    targets: []
+    rules: []
+    fallthrough:
+      variation: "true"
+    prerequisites: []
+  prod:
+    enabled: true
+    targets:
+      - variation: "true"
+        values:
+          - u1
+          - u2
+          - u3
+    rules:
+      - description: Beta testers in the Nordics
+        clauses:
+          - attribute: country
+            operator: in
+            values:
+              - SE
+              - "NO"
+            negate: false
+          - attribute: appVersion
+            operator: semver_gt
+            values:
+              - 2.0.0
+            negate: false
+          - attribute: key
+            operator: in_segment
+            values:
+              - beta-testers
+            negate: false
+        rollout:
+          bucket_by: key
+          weights:
+            - variation: "true"
+              weight: 25000
+            - variation: "false"
+              weight: 75000
+      - description: Staff
+        clauses:
+          - attribute: key
+            operator: in
+            values:
+              - blocked
+            negate: true
+          - attribute: email
+            operator: starts_with
+            values:
+              - staff.
+            negate: false
+          - attribute: email
+            operator: contains
+            values:
+              - +test
+            negate: true
+          - attribute: name
+            operator: matches
+            values:
+              - ^a
+            negate: false
+          - attribute: tier
+            operator: in
+            values:
+              - trial
+            negate: false
+        variation: "true"
+      - description: Numbers and dates
+        clauses:
+          - attribute: age
+            operator: gte
+            values:
+              - 18
+            negate: false
+          - attribute: age
+            operator: lt
+            values:
+              - 65.5
+            negate: false
+          - attribute: seats
+            operator: in
+            values:
+              - 42
+            negate: false
+          - attribute: seats
+            operator: gt
+            values:
+              - 1
+            negate: false
+          - attribute: seats
+            operator: lte
+            values:
+              - 100
+            negate: false
+          - attribute: currentTime
+            operator: after
+            values:
+              - "2026-01-01T00:00:00.000Z"
+            negate: false
+          - attribute: currentTime
+            operator: before
+            values:
+              - "2027-01-01T00:00:00.000Z"
+            negate: false
+          - attribute: appVersion
+            operator: semver_eq
+            values:
+              - 3.1.0
+            negate: false
+          - attribute: osVersion
+            operator: semver_lt
+            values:
+              - 17.0.0
+            negate: false
+        variation: "true"
+      - description: Random tenth
+        clauses:
+          - attribute: plan
+            operator: in
+            values:
+              - free
+            negate: false
+        rollout:
+          bucket_by: key
+          weights:
+            - variation: "true"
+              weight: 10000
+            - variation: "false"
+              weight: 90000
+      - description: From the office
+        clauses:
+          - attribute: key
+            operator: in_segment
+            values:
+              - office-ips
+            negate: false
+          - attribute: key
+            operator: in_segment
+            values:
+              - everyone
+            negate: false
+        variation: "true"
+    fallthrough:
+      rollout:
+        bucket_by: companyId
+        weights:
+          - variation: "true"
+            weight: 50000
+          - variation: "false"
+            weight: 50000
+    prerequisites: []
