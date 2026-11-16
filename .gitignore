@@ -19,3 +19,12 @@ out/
 .DS_Store
 .idea/
 .vscode/
+
+# Go CLI and Terraform provider
+cli/bin/
+cli/dist/
+terraform/bin/
+terraform/dist/
+.terraform/
+*.tfstate*
+terraform/internal/**/.terraform.lock.hcl

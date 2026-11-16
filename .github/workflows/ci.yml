@@ -294,6 +294,23 @@ jobs:
           cache-from: type=gha,scope=web
       - run: bash scripts/smoke.sh ${{ matrix.mode }}
 
+  cli:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "::error::gofmt"; exit 1; }
+      - run: go vet ./...
+      - run: go test -race -count=1 ./...
+      - run: go build -o bin/megooflags ./cmd/megooflags
+
   sdk-go:
     runs-on: ubuntu-24.04
     defaults:
