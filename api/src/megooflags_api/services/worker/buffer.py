@@ -9,8 +9,9 @@ dropped when they are loaded.
 
 Count files this process wrote and never offered are rewritten in place as new counts arrive, so
 an outage grows them with the number of flags, variants and hours, not with time. The files are
-bounded by `max_bytes`: past it, the oldest exposure files are deleted, except the one being sent.
-Count files are never dropped for size.
+bounded by `max_bytes`: past it, the oldest exposure files are deleted. The one being sent is
+skipped, so the next oldest goes instead, which may be the newest. Count files are never dropped
+for size.
 
 Sealing writes and syncs files, so it runs in a worker thread (`run_sealer`, `BufferEventSink`).
 The memory queues and the file index each have a short lock; file operations are serialised by a
@@ -264,13 +265,17 @@ class EventBuffer:
                 for name, (env, held) in self._unsent_counts.items()
                 if env == environment_id
             ]
-            for key, n in pending.items():
-                target = next((t for t in targets if key in t.counts and t.fits(key, n)), None)
-                target = target or next((t for t in targets if t.fits(key, n)), None)
-                if target is None:
-                    target = _CountTarget(environment_id)
-                    targets.append(target)
-                target.add(key, n)
+            for key, total in pending.items():
+                # One entry's worth at a time, so a key above a whole batch spreads over files.
+                while total > 0:
+                    n = min(total, MAX_COUNT)
+                    target = next((t for t in targets if key in t.counts and t.fits(key, n)), None)
+                    target = target or next((t for t in targets if t.fits(key, n)), None)
+                    if target is None:
+                        target = _CountTarget(environment_id)
+                        targets.append(target)
+                    target.add(key, n)
+                    total -= n
             for target in targets:
                 if target.added:
                     self._write_counts(target)
@@ -282,12 +287,12 @@ class EventBuffer:
             match = FILE_NAME.match(target.name)
             assert match is not None
             batch_id = uuid.UUID(match.group(3))
-        batch = ClusterEventsIn(
-            batch_id=batch_id,
-            environment_id=target.environment_id,
-            counts=_count_items(target.counts),
-        )
         try:
+            batch = ClusterEventsIn(
+                batch_id=batch_id,
+                environment_id=target.environment_id,
+                counts=_count_items(target.counts),
+            )
             name = self._write("counts", batch, target.name)
         except Exception:
             logger.exception("writing buffered counts failed; keeping them in memory")

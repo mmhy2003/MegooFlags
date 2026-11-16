@@ -399,3 +399,21 @@ async def test_seal_runs_off_the_event_loop(tmp_path: Path) -> None:
         await task
 
     assert threading.get_ident() not in sealed_in
+
+
+def test_one_key_above_a_batch_spreads_over_files(tmp_path: Path) -> None:
+    buffer = new_buffer(tmp_path, max_bytes=64 * MB)
+    big = [CountIn(flag_key="a", variant="on", hour=START, count=1_000_000_000)] * 1000
+    buffer.add_count_items(ENV_A, big)
+    buffer.add_count_items(ENV_A, big)
+    buffer.add_exposures(ENV_A, [exposure()], persist_context=False)
+
+    buffer.seal()
+
+    found = batches(tmp_path)
+    count_batches = [b.counts for b in found if b.counts]
+    assert sorted(len(counts) for counts in count_batches) == [1000, 1000]
+    assert sum(c.count for counts in count_batches for c in counts) == 2_000_000_000_000
+    assert [len(b.exposures) for b in found if b.exposures] == [1]
+    assert buffer.pending_events == 2001
+    assert buffer.dropped_total == 0
