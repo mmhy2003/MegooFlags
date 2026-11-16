@@ -62,13 +62,22 @@ class _Entry:
     invalidated_epoch: int = -1  # newer than checked_epoch: a change message came since
 
 
+def _etag(body: bytes) -> str:
+    return '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
+
+
 def _prepare(raw: dict[str, Any], fingerprint: str) -> CachedRuleset:
     body = json.dumps(raw, separators=(",", ":"), ensure_ascii=False).encode()
     return CachedRuleset(
-        fingerprint=fingerprint,
-        ruleset=parse_ruleset(raw),
-        body=body,
-        etag='"' + hashlib.sha256(body).hexdigest()[:32] + '"',
+        fingerprint=fingerprint, ruleset=parse_ruleset(raw), body=body, etag=_etag(body)
+    )
+
+
+def from_body(body: bytes) -> CachedRuleset:
+    """A ruleset from the JSON bytes SDKs download, with the same ETag the cache gives them."""
+    etag = _etag(body)
+    return CachedRuleset(
+        fingerprint=etag, ruleset=parse_ruleset(json.loads(body)), body=body, etag=etag
     )
 
 

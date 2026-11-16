@@ -42,6 +42,7 @@ from megooflags_api.routers import (
 )
 from megooflags_api.services.changes import ChangeBus
 from megooflags_api.services.cluster.signing import SnapshotSigner
+from megooflags_api.services.delivery import db_delivery
 from megooflags_api.services.events import (
     EvaluationCounter,
     EventsBodyLimitMiddleware,
@@ -135,6 +136,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.change_bus.on_key_revoked.append(app.state.stream_hub.notify_key_revoked)
     app.state.change_bus.on_resubscribe.append(app.state.stream_hub.recheck_all)
     app.state.evaluation_counter = EvaluationCounter()
+    app.state.delivery = db_delivery(app)
     app.state.scheduler = Scheduler(
         app.state.engine,
         app.state.sessionmaker,

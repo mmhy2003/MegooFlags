@@ -10,7 +10,6 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Header, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from megooflags_api.db import SessionDep
 from megooflags_api.errors import SDK_ERROR_RESPONSES
 from megooflags_api.etags import canonical_json, derived_etag, etag_matches
 from megooflags_api.evaluation import ErrorCode, evaluate_all
@@ -19,17 +18,11 @@ from megooflags_api.schemas.evaluation import EvaluateIn
 from megooflags_api.schemas.events import EventsIn
 from megooflags_api.schemas.sdk import SdkEvaluateOut, SdkEvaluationResult
 from megooflags_api.sdk_auth import AnyKeyDep, ServerKeyDep, StreamKeyDep
-from megooflags_api.services.events import (
-    CountKey,
-    EvaluationCounter,
-    add_counts,
-    limit_body_size,
-    record_exposures,
-    truncate_hour,
-)
-from megooflags_api.services.ruleset_cache import SDK_MAX_AGE, CachedRuleset, RulesetCache
-from megooflags_api.services.sdk_keys import KeyResolver, SdkPrincipal
-from megooflags_api.services.streams import Revoked, StreamHub
+from megooflags_api.services.delivery import get_delivery
+from megooflags_api.services.events import limit_body_size
+from megooflags_api.services.ruleset_cache import CachedRuleset
+from megooflags_api.services.sdk_keys import SdkPrincipal
+from megooflags_api.services.streams import Closed, Revoked, StreamHub
 
 router = APIRouter(prefix="/sdk/v1", tags=["sdk"], responses=SDK_ERROR_RESPONSES)
 
@@ -41,9 +34,7 @@ REVOKED_FRAME = b"event: revoked\ndata: {}\n\n"
 
 
 async def _entry(request: Request, principal: SdkPrincipal) -> CachedRuleset:
-    cache: RulesetCache = request.app.state.ruleset_cache
-    async with request.app.state.sessionmaker() as session:
-        return await cache.get_entry(session, principal.environment, max_age=SDK_MAX_AGE)
+    return await get_delivery(request).rulesets.get_entry(principal.environment)
 
 
 def _not_modified(etag: str) -> Response:
@@ -94,8 +85,7 @@ async def evaluate_flags(
         return _not_modified(etag)
     server = principal.kind == SdkKeyKind.SERVER
     resolutions = evaluate_all(entry.ruleset, body.context, body.flags)
-    counter: EvaluationCounter = request.app.state.evaluation_counter
-    counter.record(
+    get_delivery(request).events.record_counts(
         principal.environment.id,
         [
             (key, r.variant)
@@ -147,9 +137,7 @@ async def _events(
                 item = await asyncio.wait_for(sub.queue.get(), heartbeat)
             except TimeoutError:
                 # Re-validate the key, so a revocation whose message was lost still closes.
-                resolver: KeyResolver = request.app.state.key_resolver
-                async with request.app.state.sessionmaker() as session:
-                    current = await resolver.resolve_hash(session, principal.secret_hash)
+                current = await get_delivery(request).keys.resolve_hash(principal.secret_hash)
                 if current is None or current.inactive(datetime.now(UTC)):
                     yield REVOKED_FRAME
                     return
@@ -157,6 +145,8 @@ async def _events(
                 continue
             if isinstance(item, Revoked):
                 yield REVOKED_FRAME
+                return
+            if isinstance(item, Closed):
                 return
             if item.etag != last:
                 yield _frame(principal, item)
@@ -207,22 +197,8 @@ async def send_events(
     request: Request,
     principal: Annotated[SdkPrincipal, Depends(_events_key)],
     body: EventsIn,
-    session: SessionDep,
 ) -> Response:
     """Store exposures and add evaluation counts, at most 1000 of each and 1 MB per batch. The
     context is dropped unless `MEGOOFLAGS_PERSIST_CONTEXT` is enabled; unknown flags are kept."""
-    env_id = principal.environment.id
-    await record_exposures(
-        session,
-        env_id,
-        body.exposures,
-        persist_context=request.app.state.settings.persist_context,
-        now=datetime.now(UTC),
-    )
-    counts: dict[CountKey, int] = {}
-    for c in body.counts:
-        key = (env_id, c.flag_key, c.variant or "", truncate_hour(c.hour))
-        counts[key] = counts.get(key, 0) + c.count
-    await add_counts(session, counts)
-    await session.commit()
+    await get_delivery(request).events.store(principal.environment.id, body, datetime.now(UTC))
     return Response(status_code=202)
