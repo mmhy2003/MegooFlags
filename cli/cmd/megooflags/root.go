@@ -112,7 +112,7 @@ func run(ctx context.Context, args []string, io IO) int {
 
 	root.AddCommand(newVersionCmd(), newCompletionCmd(), newLoginCmd(a), newLogoutCmd(a), newWhoamiCmd(a),
 		newProjectCmd(a), newEnvCmd(a), newSegmentCmd(a), newFlagCmd(a),
-		newPromoteCmd(a), newEvaluateCmd(a), newRulesetCmd(a), newExportCmd(a), newDiffCmd(a), newApplyCmd(a))
+		newPromoteCmd(a), newEvaluateCmd(a), newRulesetCmd(a), newExportCmd(a), newDiffCmd(a), newApplyCmd(a), newImportCmd(a))
 
 	err := root.ExecuteContext(ctx)
 	if err == nil {
