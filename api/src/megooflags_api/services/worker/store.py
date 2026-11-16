@@ -5,11 +5,15 @@ Under the data directory, `snapshots/<environment_id>.snap` holds `SignedSnapsho
 synced, then replaces the file, so a crash never leaves a half-written snapshot. Every file is
 verified against the control plane's public key when it is loaded; a bad one is deleted and the
 store stays invalid until the next full sync.
+
+Rulesets are read from worker threads (`asyncio.to_thread`) while the event loop applies and
+removes snapshots, so the in-memory indexes are only touched under one lock.
 """
 
 import json
 import logging
 import os
+import threading
 import uuid
 from collections import OrderedDict
 from dataclasses import asdict, dataclass
@@ -106,10 +110,15 @@ class SnapshotStore:
         self._parsed: OrderedDict[uuid.UUID, CachedRuleset] = OrderedDict()
         self.meta = ClusterMeta()
         self.valid = True
+        self._lock = threading.Lock()
 
     def load(self) -> None:
         """Read cluster.json and every snapshot; delete the files that fail to verify."""
         self._snapshots.mkdir(parents=True, exist_ok=True)
+        with self._lock:
+            self._load()
+
+    def _load(self) -> None:
         self._headers.clear()
         self._keys.clear()
         self._parsed.clear()
@@ -147,15 +156,18 @@ class SnapshotStore:
         self.save_meta()
 
     def versions(self) -> dict[uuid.UUID, int]:
-        return {env_id: header.version for env_id, header in self._headers.items()}
+        with self._lock:
+            return {env_id: header.version for env_id, header in self._headers.items()}
 
     def max_version(self) -> int:
-        return max((header.version for header in self._headers.values()), default=0)
+        with self._lock:
+            return max((header.version for header in self._headers.values()), default=0)
 
     def apply(self, snap: SignedSnapshot) -> bool:
         """Store `snap`; False, keeping the old one, unless it is valid and newer."""
         header = snap.header
-        current = self._headers.get(header.environment_id)
+        with self._lock:
+            current = self._headers.get(header.environment_id)
         if header.format != FORMAT or (current is not None and header.version <= current.version):
             return False
         if self.meta.public_key is None or not snap.verify(self.meta.public_key):
@@ -165,25 +177,28 @@ class SnapshotStore:
         except ValueError:
             logger.warning("rejecting the snapshot of %s: bad ruleset", header.environment_id)
             return False
-        write_atomic(self._path(header.environment_id), snap.to_bytes())
-        self._unindex(header.environment_id)
-        self._index(header)
-        self._remember(header.environment_id, parsed)
+        with self._lock:
+            write_atomic(self._path(header.environment_id), snap.to_bytes())
+            self._unindex(header.environment_id)
+            self._index(header)
+            self._remember(header.environment_id, parsed)
         return True
 
     def remove(self, environment_id: uuid.UUID) -> EnvRef | None:
         """Forget the environment and delete its file; None when it was not stored."""
-        header = self._headers.get(environment_id)
-        if header is None:
-            return None
-        self._unindex(environment_id)
-        self._parsed.pop(environment_id, None)
-        self._path(environment_id).unlink(missing_ok=True)
+        with self._lock:
+            header = self._headers.get(environment_id)
+            if header is None:
+                return None
+            self._unindex(environment_id)
+            self._parsed.pop(environment_id, None)
+            self._path(environment_id).unlink(missing_ok=True)
         _sync_directory(self._snapshots)
         return header.env_ref()
 
     def principal(self, secret_hash: str) -> SdkPrincipal | None:
-        found = self._keys.get(secret_hash)
+        with self._lock:
+            found = self._keys.get(secret_hash)
         if found is None:
             return None
         key, header = found
@@ -198,24 +213,33 @@ class SnapshotStore:
 
     def keys_by_id(self, key_ids: set[uuid.UUID]) -> dict[uuid.UUID, SnapshotKey]:
         """The stored keys among `key_ids`, by id; a key in no snapshot is left out."""
-        return {key.id: key for key, _ in self._keys.values() if key.id in key_ids}
+        with self._lock:
+            return {key.id: key for key, _ in self._keys.values() if key.id in key_ids}
 
     def entry(self, environment_id: uuid.UUID) -> CachedRuleset | None:
         """The parsed ruleset, from memory or else from its file; None when not stored."""
-        cached = self._parsed.get(environment_id)
-        if cached is not None:
-            self._parsed.move_to_end(environment_id)
-            return cached
-        header = self._headers.get(environment_id)
-        if header is None:
-            return None
-        snap = self._read(self._path(environment_id))
-        if snap is None or snap.header.version != header.version:
-            logger.warning("snapshot file of %s changed on disk", environment_id)
-            return None
-        parsed = from_body(snap.ruleset)
-        self._remember(environment_id, parsed)
-        return parsed
+        while True:
+            with self._lock:
+                cached = self._parsed.get(environment_id)
+                if cached is not None:
+                    self._parsed.move_to_end(environment_id)
+                    return cached
+                header = self._headers.get(environment_id)
+            if header is None:
+                return None
+            # Read and parse outside the lock. A snapshot applied or removed meanwhile means
+            # starting again; only a file changed behind the store's back is an error.
+            snap = self._read(self._path(environment_id))
+            if snap is not None and snap.header.version == header.version:
+                parsed = from_body(snap.ruleset)
+                with self._lock:
+                    if self._headers.get(environment_id) is header:
+                        self._remember(environment_id, parsed)
+                return parsed
+            with self._lock:
+                if self._headers.get(environment_id) is header:
+                    logger.warning("snapshot file of %s changed on disk", environment_id)
+                    return None
 
     def _path(self, environment_id: uuid.UUID) -> Path:
         return self._snapshots / f"{environment_id}{SNAPSHOT_SUFFIX}"

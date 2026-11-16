@@ -1,7 +1,12 @@
 import json
+import sys
+import threading
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+
+import pytest
 
 from megooflags_api.models.enums import SdkKeyKind
 from megooflags_api.services.cluster.signing import SnapshotSigner
@@ -305,3 +310,54 @@ def test_no_tmp_files_left(tmp_path: Path) -> None:
     reopened(tmp_path)
     names = sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*"))
     assert names == ["cluster.json", "snapshots", f"snapshots/{ENV_A}.snap"]
+
+
+def test_keys_by_id(tmp_path: Path) -> None:
+    store = new_store(tmp_path)
+    store.apply(snapshot(ENV_A, keys=(key(1), key(2))))
+    store.apply(snapshot(ENV_B, keys=(key(3),)))
+
+    found = store.keys_by_id({key(1).id, key(3).id, uuid.UUID(int=9)})
+
+    assert found == {key(1).id: key(1), key(3).id: key(3)}
+    assert store.keys_by_id(set()) == {}
+
+
+@pytest.fixture
+def fast_switching() -> Iterator[None]:
+    interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    yield
+    sys.setswitchinterval(interval)
+
+
+@pytest.mark.usefixtures("fast_switching")
+def test_concurrent_reads_while_applying(tmp_path: Path) -> None:
+    store = new_store(tmp_path, max_parsed=1)
+    store.apply(snapshot(ENV_A))
+    store.apply(snapshot(ENV_B))
+    errors: list[BaseException] = []
+    done = threading.Event()
+
+    def read(environment_id: uuid.UUID) -> None:
+        try:
+            while not done.is_set():
+                store.entry(environment_id)
+        except BaseException as exc:
+            errors.append(exc)
+
+    readers = [threading.Thread(target=read, args=(env,)) for env in (ENV_A, ENV_B) * 3]
+    for thread in readers:
+        thread.start()
+    for version in range(2, 200):
+        store.apply(snapshot(ENV_A, version=version))
+        if version % 10 == 0:
+            store.remove(ENV_B)
+            store.apply(snapshot(ENV_B, version=version))
+    done.set()
+    for thread in readers:
+        thread.join()
+
+    assert errors == []
+    entry = store.entry(ENV_A)
+    assert entry is not None
