@@ -1,0 +1,91 @@
+# Flags as code: bring changes made in the MegooFlags UI back into Git.
+# Copy to .github/workflows/ in the repository that holds flags/. Set the
+# MEGOOFLAGS_URL and MEGOOFLAGS_PROJECT variables and the MEGOOFLAGS_API_TOKEN
+# secret, and allow GitHub Actions to create pull requests (Settings > Actions >
+# General > Workflow permissions). Every run exports MegooFlags into flags/ and,
+# if anything differs from main, rebuilds the megooflags/export branch and opens
+# its pull request unless one is already open.
+name: MegooFlags export
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: megooflags-export
+  cancel-in-progress: false
+
+env:
+  MEGOOFLAGS_CLI_VERSION: 0.1.0
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    env:
+      MEGOOFLAGS_URL: ${{ vars.MEGOOFLAGS_URL }}
+      MEGOOFLAGS_API_TOKEN: ${{ secrets.MEGOOFLAGS_API_TOKEN }}
+      MEGOOFLAGS_PROJECT: ${{ vars.MEGOOFLAGS_PROJECT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Install the MegooFlags CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP"
+          gh release download "cli/v$MEGOOFLAGS_CLI_VERSION" --repo mmhy2003/MegooFlags \
+            --pattern "megooflags_${MEGOOFLAGS_CLI_VERSION}_linux_amd64.tar.gz" --pattern SHA256SUMS --clobber
+          sha256sum --check --ignore-missing SHA256SUMS
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "megooflags_${MEGOOFLAGS_CLI_VERSION}_linux_amd64.tar.gz" -C "$RUNNER_TEMP/bin" megooflags
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Export MegooFlags into flags/
+        run: megooflags export --dir flags
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if [ -z "$(git status --porcelain flags)" ]; then
+            echo "flags/ matches MegooFlags; nothing to sync."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push the megooflags/export branch
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git switch -C megooflags/export
+          git add flags
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "Sync flags from MegooFlags"
+          git push --force origin megooflags/export
+
+      - name: Open the pull request
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh pr view megooflags/export --json state --jq .state | grep -qx OPEN; then
+            echo "The megooflags/export pull request is already open; its branch was updated."
+            exit 0
+          fi
+          gh pr create --head megooflags/export --base main \
+            --title "Sync flag changes from MegooFlags" \
+            --body "$(cat <<'EOF'
+          Changes made in the MegooFlags UI since the last sync appear here. This branch is rebuilt from main and MegooFlags on every run of the export workflow, so do not push to it: edit flags/ on another branch instead.
+
+          Merging this pull request runs the apply workflow, which finds nothing to change.
+
+          Caveat: a change merged from Git into an environment that requires approvals waits in an open change request. Until that change request is approved, MegooFlags still has the old value, so this pull request can show that Git change being undone. Approve or reject the change request in MegooFlags before merging this pull request.
+          EOF
+          )"

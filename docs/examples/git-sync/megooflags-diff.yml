@@ -1,0 +1,54 @@
+# Flags as code: show what merging this pull request would change in MegooFlags.
+# Copy to .github/workflows/ in the repository that holds flags/. Set the
+# MEGOOFLAGS_URL and MEGOOFLAGS_PROJECT variables and the MEGOOFLAGS_API_TOKEN
+# secret. `megooflags diff` exits 3 when flags/ differs from MegooFlags, which
+# fails this check with the plan in the log and in the job summary.
+name: MegooFlags diff
+
+on:
+  pull_request:
+    paths:
+      - "flags/**"
+
+permissions:
+  contents: read
+
+env:
+  MEGOOFLAGS_CLI_VERSION: 0.1.0
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    env:
+      MEGOOFLAGS_URL: ${{ vars.MEGOOFLAGS_URL }}
+      MEGOOFLAGS_API_TOKEN: ${{ secrets.MEGOOFLAGS_API_TOKEN }}
+      MEGOOFLAGS_PROJECT: ${{ vars.MEGOOFLAGS_PROJECT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the MegooFlags CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP"
+          gh release download "cli/v$MEGOOFLAGS_CLI_VERSION" --repo mmhy2003/MegooFlags \
+            --pattern "megooflags_${MEGOOFLAGS_CLI_VERSION}_linux_amd64.tar.gz" --pattern SHA256SUMS --clobber
+          sha256sum --check --ignore-missing SHA256SUMS
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "megooflags_${MEGOOFLAGS_CLI_VERSION}_linux_amd64.tar.gz" -C "$RUNNER_TEMP/bin" megooflags
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Diff flags/ against MegooFlags
+        shell: bash
+        run: |
+          set -o pipefail
+          status=0
+          megooflags diff --dir flags | tee plan.txt || status=$?
+          {
+            echo "## MegooFlags plan"
+            echo
+            echo '```'
+            cat plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
