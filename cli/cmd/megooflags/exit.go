@@ -26,6 +26,12 @@ func (e *exitError) Unwrap() error { return e.err }
 
 func usageError(err error) error { return &exitError{code: ExitUsage, err: err} }
 
+// errQuiet ends a command that has already said everything, such as diff
+// finding changes, with an exit code but no "Error:" line.
+var errQuiet = errors.New("quiet exit")
+
+func quietExit(code int) error { return &exitError{code: code, err: errQuiet} }
+
 // exitCode maps an error from a command to the process exit code.
 func exitCode(err error) int {
 	if err == nil {

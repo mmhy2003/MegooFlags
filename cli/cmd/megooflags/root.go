@@ -112,7 +112,7 @@ func run(ctx context.Context, args []string, io IO) int {
 
 	root.AddCommand(newVersionCmd(), newCompletionCmd(), newLoginCmd(a), newLogoutCmd(a), newWhoamiCmd(a),
 		newProjectCmd(a), newEnvCmd(a), newSegmentCmd(a), newFlagCmd(a),
-		newPromoteCmd(a), newEvaluateCmd(a), newRulesetCmd(a), newExportCmd(a))
+		newPromoteCmd(a), newEvaluateCmd(a), newRulesetCmd(a), newExportCmd(a), newDiffCmd(a))
 
 	err := root.ExecuteContext(ctx)
 	if err == nil {
@@ -120,6 +120,9 @@ func run(ctx context.Context, args []string, io IO) int {
 	}
 	if !started {
 		err = usageError(err)
+	}
+	if errors.Is(err, errQuiet) {
+		return exitCode(err)
 	}
 	if !printAPIError(io.Err, err) {
 		fmt.Fprintln(io.Err, "Error:", err)

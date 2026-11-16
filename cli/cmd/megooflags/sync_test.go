@@ -140,3 +140,83 @@ func keys[V any](m map[string]V) []string {
 	}
 	return out
 }
+
+// exportedDir copies the export golden directory, which matches the fixture
+// API, to a temporary directory.
+func exportedDir(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "flags-as-code")
+	if err := os.CopyFS(dir, os.DirFS(filepath.Join(syncTestdata, "export-golden"))); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func editFile(t *testing.T, path, old, new string) {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), old) {
+		t.Fatalf("%s has no %q", path, old)
+	}
+	if err := os.WriteFile(path, []byte(strings.Replace(string(b), old, new, 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDiffNoDifferences(t *testing.T) {
+	code, out, errOut := fixtureAPI(t).session("shop").run("diff", "--dir", exportedDir(t))
+	if code != ExitOK || out != "No differences.\n" || errOut != "" {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+}
+
+func TestDiffDrift(t *testing.T) {
+	dir := exportedDir(t)
+	editFile(t, filepath.Join(dir, "megooflags.yaml"), "name: Shop", "name: Shop 2")
+	editFile(t, filepath.Join(dir, "flags", "new-checkout.yaml"), "fallthrough:\n      variation: \"false\"", "fallthrough:\n      variation: \"true\"")
+	editFile(t, filepath.Join(dir, "flags", "new-checkout.yaml"), "development:\n    enabled: true", "development:\n    enabled: false")
+
+	code, out, errOut := fixtureAPI(t).session("shop").run("diff", "--dir", dir, "--env", "production")
+	want := "~ project shop: name\n~ config new-checkout [production]: fallthrough\n"
+	if code != ExitDrift || out != want || errOut != "" {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+}
+
+func TestDiffPrune(t *testing.T) {
+	dir := exportedDir(t)
+	if err := os.Remove(filepath.Join(dir, "segments", "staff.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	api := fixtureAPI(t)
+	if code, out, _ := api.session("shop").run("diff", "--dir", dir); code != ExitOK {
+		t.Fatalf("without --prune: code = %d, stdout = %q", code, out)
+	}
+	api = fixtureAPI(t)
+	code, out, _ := api.session("shop").run("diff", "--dir", dir, "--prune")
+	if code != ExitDrift || out != "- segment staff\n" {
+		t.Fatalf("code = %d, stdout = %q", code, out)
+	}
+}
+
+func TestDiffInvalidFiles(t *testing.T) {
+	dir := exportedDir(t)
+	editFile(t, filepath.Join(dir, "flags", "new-checkout.yaml"), "off_variation: \"false\"", "off_variation: maybe")
+	code, out, errOut := fixtureAPI(t).session("shop").run("diff", "--dir", dir)
+	if code != ExitError || out != "" ||
+		!strings.Contains(errOut, "flags/new-checkout.yaml: off_variation: unknown variation maybe\n") {
+		t.Fatalf("code = %d, stdout = %q, stderr = %q", code, out, errOut)
+	}
+
+	api := fixtureAPI(t)
+	code, _, errOut = api.session("shop").run("diff", "--dir", filepath.Join(t.TempDir(), "missing"))
+	if code != ExitError || errOut == "" || len(api.requests) != 0 {
+		t.Fatalf("missing dir: code = %d, stderr = %q, requests = %d", code, errOut, len(api.requests))
+	}
+	if code, _, _ := api.session("shop").run("diff"); code != ExitUsage {
+		t.Fatalf("missing --dir: code = %d", code)
+	}
+}
