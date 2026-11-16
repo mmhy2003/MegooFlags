@@ -1,0 +1,49 @@
+name: power_users
+description: ""
+included: []
+excluded: []
+rules:
+  - description: ""
+    clauses:
+      - attribute: age
+        operator: gte
+        values:
+          - 18
+        negate: false
+      - attribute: logins
+        operator: lt
+        values:
+          - 100
+        negate: false
+      - attribute: score
+        operator: lte
+        values:
+          - 9.5
+        negate: false
+      - attribute: country
+        operator: in
+        values:
+          - SE
+          - "NO"
+          - DK
+        negate: false
+      - attribute: email
+        operator: contains
+        values:
+          - +test
+        negate: true
+      - attribute: status
+        operator: in
+        values:
+          - active
+        negate: false
+      - attribute: email
+        operator: contains
+        values:
+          - '@competitor.com'
+        negate: true
+      - attribute: strikes
+        operator: gt
+        values:
+          - 3
+        negate: true
