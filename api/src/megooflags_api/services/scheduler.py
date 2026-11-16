@@ -48,6 +48,7 @@ def now_utc() -> datetime:
 
 def default_jobs(settings: Settings | None = None) -> list[Job]:
     # The jobs import JobResult from here.
+    from megooflags_api.services.cluster.ingest import delete_old_batches
     from megooflags_api.services.integrations.fanout import run_integration_fanout
     from megooflags_api.services.integrations.worker import run_delivery_retention
     from megooflags_api.services.lifecycle import run_lifecycle_sweep
@@ -75,6 +76,7 @@ def default_jobs(settings: Settings | None = None) -> list[Job]:
             partial(run_delivery_retention, days=retention_days),
             every=timedelta(hours=1),
         ),
+        Job("node_event_batches", delete_old_batches, every=timedelta(hours=1)),
     ]
 
 

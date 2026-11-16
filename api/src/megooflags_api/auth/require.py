@@ -41,6 +41,9 @@ PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/auth/sso/{provider}/saml/acs"),
         ("GET", "/api/invitations/{token}"),
         ("POST", "/api/invitations/{token}"),
+        # Worker nodes; routers.cluster.require_node checks the node token.
+        ("POST", "/api/cluster/v1/heartbeat"),
+        ("POST", "/api/cluster/v1/events"),
     }
 )
 

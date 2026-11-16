@@ -20,11 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from megooflags_api.models import Environment, SdkKey
 from megooflags_api.schemas.events import EventsIn
 from megooflags_api.services.events import (
-    CountKey,
     EvaluationCounter,
     add_counts,
     record_exposures,
-    truncate_hour,
+    sum_counts,
 )
 from megooflags_api.services.rate_limit import RateLimiter
 from megooflags_api.services.ruleset import EnvRef
@@ -131,11 +130,7 @@ class DbEventSink:
                 persist_context=self._app.state.settings.persist_context,
                 now=now,
             )
-            counts: dict[CountKey, int] = {}
-            for c in body.counts:
-                key = (environment_id, c.flag_key, c.variant or "", truncate_hour(c.hour))
-                counts[key] = counts.get(key, 0) + c.count
-            await add_counts(session, counts)
+            await add_counts(session, sum_counts(environment_id, body.counts))
             await session.commit()
 
 

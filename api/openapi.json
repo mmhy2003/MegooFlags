@@ -707,6 +707,44 @@
         "title": "ClauseOut",
         "type": "object"
       },
+      "ClusterEventsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "description": "Fixed by the worker; a batch seen before is ignored.",
+            "format": "uuid",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "counts": {
+            "items": {
+              "$ref": "#/components/schemas/CountIn"
+            },
+            "maxItems": 1000,
+            "title": "Counts",
+            "type": "array"
+          },
+          "environment_id": {
+            "format": "uuid",
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "exposures": {
+            "items": {
+              "$ref": "#/components/schemas/ExposureIn"
+            },
+            "maxItems": 1000,
+            "title": "Exposures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "batch_id",
+          "environment_id"
+        ],
+        "title": "ClusterEventsIn",
+        "type": "object"
+      },
       "CodeIn": {
         "additionalProperties": false,
         "description": "A TOTP code, or a recovery code (`xxxxx-xxxxx`, any case).",
@@ -1978,6 +2016,75 @@
           "version"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "HeartbeatIn": {
+        "additionalProperties": false,
+        "properties": {
+          "buffered_events": {
+            "minimum": 0.0,
+            "title": "Buffered Events",
+            "type": "integer"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "sdk_streams": {
+            "minimum": 0.0,
+            "title": "Sdk Streams",
+            "type": "integer"
+          },
+          "snapshot_age_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Seconds since the worker last synced; None before its first sync.",
+            "title": "Snapshot Age Seconds"
+          },
+          "snapshot_version": {
+            "minimum": 0.0,
+            "title": "Snapshot Version",
+            "type": "integer"
+          },
+          "version": {
+            "maxLength": 50,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "snapshot_version",
+          "sdk_streams",
+          "buffered_events",
+          "ready"
+        ],
+        "title": "HeartbeatIn",
+        "type": "object"
+      },
+      "HeartbeatOut": {
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "active",
+              "draining"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "HeartbeatOut",
         "type": "object"
       },
       "IntegrationCreate": {
@@ -10022,6 +10129,163 @@
         "summary": "Delete Binding",
         "tags": [
           "bindings"
+        ]
+      }
+    },
+    "/api/cluster/v1/events": {
+      "post": {
+        "description": "Store a batch of exposures and counts a worker received from its SDKs, once per\n`batch_id`. The data of a deleted environment is dropped.",
+        "operationId": "send_events_api_cluster_v1_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClusterEventsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "The batch was stored, or was seen before."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Send Events",
+        "tags": [
+          "cluster"
+        ]
+      }
+    },
+    "/api/cluster/v1/heartbeat": {
+      "post": {
+        "description": "Record the worker's state and answer with the state it should be in.",
+        "operationId": "heartbeat_api_cluster_v1_heartbeat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Heartbeat",
+        "tags": [
+          "cluster"
         ]
       }
     },

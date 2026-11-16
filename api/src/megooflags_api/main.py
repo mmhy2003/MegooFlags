@@ -21,6 +21,7 @@ from megooflags_api.routers import (
     audit,
     auth,
     change_requests,
+    cluster,
     environments,
     evaluate,
     flag_environments,
@@ -164,6 +165,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(users.public_router, prefix="/api")
     app.include_router(account.router, prefix="/api")
     app.include_router(sso.flow_router, prefix="/api")
+    app.include_router(cluster.router, prefix="/api")
     for module in (
         projects,
         environments,

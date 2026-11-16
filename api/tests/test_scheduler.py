@@ -3,17 +3,27 @@
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from conftest import close_app
+from fastapi import FastAPI
 from helpers import FakeClock
 from prometheus_client import REGISTRY
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from megooflags_api.db import create_engine, create_sessionmaker
 from megooflags_api.main import background_jobs, create_app
-from megooflags_api.services.scheduler import SCHEDULER_LOCK_ID, Job, JobResult, Scheduler
+from megooflags_api.models import NodeEventBatch
+from megooflags_api.services.cluster import nodes
+from megooflags_api.services.cluster.ingest import delete_old_batches
+from megooflags_api.services.scheduler import (
+    SCHEDULER_LOCK_ID,
+    Job,
+    JobResult,
+    Scheduler,
+    default_jobs,
+)
 from megooflags_api.settings import Settings
 
 TEST_LOCK_ID = SCHEDULER_LOCK_ID + 1000
@@ -161,3 +171,25 @@ async def test_background_jobs_include_scheduler() -> None:
             await close_app(app)
         assert names.count("Scheduler.run") == expected
         assert names.count("DeliveryWorker.run") == expected
+
+
+async def test_batch_retention_deletes_after_7_days(app: FastAPI) -> None:
+    now = datetime.now(UTC)
+    async with app.state.sessionmaker() as session:
+        node, _ = await nodes.create_node(session, "worker-1")
+        ages = {"old": timedelta(days=7, minutes=1), "recent": timedelta(days=6, hours=23)}
+        ids = {name: uuid.uuid4() for name in ages}
+        session.add_all(
+            NodeEventBatch(batch_id=ids[name], node_id=node.id, received_at=now - age)
+            for name, age in ages.items()
+        )
+        await session.commit()
+
+    result = await delete_old_batches(app.state.sessionmaker, now)
+
+    assert result.ok == 1
+    async with app.state.sessionmaker() as session:
+        assert set(await session.scalars(select(NodeEventBatch.batch_id))) == {ids["recent"]}
+    job = {job.name: job for job in default_jobs()}["node_event_batches"]
+    assert job.run is delete_old_batches
+    assert job.every == timedelta(hours=1)

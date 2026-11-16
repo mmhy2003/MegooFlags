@@ -20,7 +20,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from megooflags_api.errors import payload_too_large
 from megooflags_api.models import EvaluationCount, ExposureEvent
-from megooflags_api.schemas.events import ExposureIn
+from megooflags_api.schemas.events import CountIn, ExposureIn
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +107,15 @@ async def record_exposures(
         for item in items
     ]
     await session.execute(insert(ExposureEvent).values(rows))
+
+
+def sum_counts(environment_id: uuid.UUID, items: Iterable[CountIn]) -> dict[CountKey, int]:
+    """The counts of a batch summed per key, so `add_counts` gets unique keys."""
+    counts: dict[CountKey, int] = {}
+    for c in items:
+        key = (environment_id, c.flag_key, c.variant or "", truncate_hour(c.hour))
+        counts[key] = counts.get(key, 0) + c.count
+    return counts
 
 
 async def add_counts(session: AsyncSession, counts: Mapping[CountKey, int]) -> None:

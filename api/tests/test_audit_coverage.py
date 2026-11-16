@@ -53,6 +53,9 @@ NOT_AUDITED = {
     ("POST", "/api/auth/webauthn/options"),
     # Personal UI settings.
     ("PATCH", "/api/account/preferences"),
+    # Worker traffic (heartbeats and forwarded SDK events), not admin actions.
+    ("POST", "/api/cluster/v1/heartbeat"),
+    ("POST", "/api/cluster/v1/events"),
 }
 
 Params = dict[str, str]

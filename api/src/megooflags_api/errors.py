@@ -198,13 +198,13 @@ def payload_too_large(message: str) -> ApiError:
     return ApiError(413, "payload_too_large", message)
 
 
-def not_control_plane() -> ApiError:
-    return ApiError(
-        409,
-        "not_control_plane",
+def not_control_plane(
+    message: str = (
         "this instance runs with MEGOOFLAGS_ROLE=standalone; "
-        "set MEGOOFLAGS_ROLE=control-plane to manage worker nodes",
-    )
+        "set MEGOOFLAGS_ROLE=control-plane to manage worker nodes"
+    ),
+) -> ApiError:
+    return ApiError(409, "not_control_plane", message)
 
 
 def node_revoked() -> ApiError:

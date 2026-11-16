@@ -634,6 +634,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cluster/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Events
+         * @description Store a batch of exposures and counts a worker received from its SDKs, once per
+         *     `batch_id`. The data of a deleted environment is dropped.
+         */
+        post: operations["send_events_api_cluster_v1_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cluster/v1/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Heartbeat
+         * @description Record the worker's state and answer with the state it should be in.
+         */
+        post: operations["heartbeat_api_cluster_v1_heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/invitations/{token}": {
         parameters: {
             query?: never;
@@ -2474,6 +2515,24 @@ export interface components {
             /** Values */
             values: (string | number | boolean)[];
         };
+        /** ClusterEventsIn */
+        ClusterEventsIn: {
+            /**
+             * Batch Id
+             * Format: uuid
+             * @description Fixed by the worker; a batch seen before is ignored.
+             */
+            batch_id: string;
+            /** Counts */
+            counts?: components["schemas"]["CountIn"][];
+            /**
+             * Environment Id
+             * Format: uuid
+             */
+            environment_id: string;
+            /** Exposures */
+            exposures?: components["schemas"]["ExposureIn"][];
+        };
         /**
          * CodeIn
          * @description A TOTP code, or a recovery code (`xxxxx-xxxxx`, any case).
@@ -2952,6 +3011,32 @@ export interface components {
             status: string;
             /** Version */
             version: string;
+        };
+        /** HeartbeatIn */
+        HeartbeatIn: {
+            /** Buffered Events */
+            buffered_events: number;
+            /** Ready */
+            ready: boolean;
+            /** Sdk Streams */
+            sdk_streams: number;
+            /**
+             * Snapshot Age Seconds
+             * @description Seconds since the worker last synced; None before its first sync.
+             */
+            snapshot_age_seconds?: number | null;
+            /** Snapshot Version */
+            snapshot_version: number;
+            /** Version */
+            version: string;
+        };
+        /** HeartbeatOut */
+        HeartbeatOut: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "draining";
         };
         /** IntegrationCreate */
         IntegrationCreate: {
@@ -6899,6 +6984,142 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    send_events_api_cluster_v1_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClusterEventsIn"];
+            };
+        };
+        responses: {
+            /** @description The batch was stored, or was seen before. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    heartbeat_api_cluster_v1_heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeartbeatIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeartbeatOut"];
+                };
             };
             /** @description Unauthorized */
             401: {
