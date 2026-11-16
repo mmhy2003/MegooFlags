@@ -332,6 +332,33 @@ jobs:
       - run: go vet ./...
       - run: go test -race -count=1 ./...
       - run: go build -o bin/terraform-provider-megooflags .
+      - name: docs up to date
+        run: go tool tfplugindocs generate --provider-name megooflags && git diff --exit-code -- docs
+
+  terraform-e2e:
+    runs-on: ubuntu-24.04
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/sdk-e2e-stack
+        with:
+          project: megooflags-terraform
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: terraform/go.mod
+          cache-dependency-path: |
+            terraform/go.sum
+            cli/go.sum
+      - name: E2E
+        working-directory: terraform
+        run: TF_ACC=1 go test -count=1 -v -run TestAcc ./...
+      - if: failure()
+        run: docker compose -p megooflags-terraform -f deploy/docker-compose.yml -f deploy/compose.ci.yml logs --no-color
+      - if: always()
+        run: docker compose -p megooflags-terraform -f deploy/docker-compose.yml -f deploy/compose.ci.yml down -v
 
   cli-e2e:
     runs-on: ubuntu-24.04
