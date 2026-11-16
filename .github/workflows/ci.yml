@@ -186,6 +186,8 @@ jobs:
       MEGOOFLAGS_PUBLIC_URL: http://localhost:3000
       MEGOOFLAGS_API_URL: http://localhost:8000
       MEGOOFLAGS_API_WORKERS: "1"
+      # integrations.spec.ts sends webhooks to a receiver on 127.0.0.1.
+      MEGOOFLAGS_WEBHOOK_ALLOW_PRIVATE: "true"
       MEGOOFLAGS_UI_KIT: "1"
       HOME: /root
     steps:

@@ -146,6 +146,30 @@ async function clearShopReferences(admin: APIRequestContext): Promise<void> {
   });
 }
 
+/**
+ * The integration the visual matrix shows. Paused, so it never sends and its row never changes.
+ * Its 127.0.0.1 URL needs MEGOOFLAGS_WEBHOOK_ALLOW_PRIVATE=true, as the e2e API runs.
+ */
+async function ensureMatrixWebhook(admin: APIRequestContext): Promise<void> {
+  const path = `/api/projects/${SHOP}/integrations`;
+  const list = await ok(await admin.get(path), "list shop integrations");
+  const items = (await list.json()) as { name: string }[];
+  if (items.some((i) => i.name === "matrix-webhook")) return;
+  await ok(
+    await admin.post(path, {
+      data: {
+        kind: "webhook",
+        name: "matrix-webhook",
+        url: "http://127.0.0.1:9/matrix",
+        event_groups: ["flags", "targeting", "segments", "change_requests"],
+        all_environments: true,
+        enabled: false,
+      },
+    }),
+    "create matrix-webhook",
+  );
+}
+
 /** Recreates the shop project the flag specs use, so every run starts from the same data. */
 async function seedShop(admin: APIRequestContext): Promise<void> {
   const project = `/api/projects/${SHOP}`;
@@ -266,6 +290,8 @@ async function seedShop(admin: APIRequestContext): Promise<void> {
     await admin.post(`${checkout}/staging/toggle`, { data: { enabled: true } }),
     "turn checkout-v2 on in staging",
   );
+
+  await ensureMatrixWebhook(admin);
 
   const created = await ok(
     await admin.post(`${project}/environments/development/sdk-keys`, {

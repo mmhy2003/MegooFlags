@@ -176,11 +176,12 @@ bash scripts/check_migrations.sh
 (cd web && pnpm install --frozen-lockfile && pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test)
 
 # web e2e (Playwright + axe against the real API, Postgres and Valkey from above).
-# The API must accept the browser's Origin, so set its public URL to the web app.
-# Global setup creates the users and the demo data; it is safe to run again.
+# The API must accept the browser's Origin, so set its public URL to the web app. The
+# integrations spec sends webhooks to a receiver on 127.0.0.1, which only the private-address
+# setting allows. Global setup creates the users and the demo data; it is safe to run again.
 (cd api && uv run alembic upgrade head)
 (cd api && MEGOOFLAGS_PUBLIC_URL=http://localhost:3000 MEGOOFLAGS_API_WORKERS=1 \
-  uv run python -m megooflags_api.serve) &
+  MEGOOFLAGS_WEBHOOK_ALLOW_PRIVATE=true uv run python -m megooflags_api.serve) &
 (cd web && pnpm exec playwright install chromium)  # once
 (cd web && pnpm build && pnpm e2e)
 # Visual baselines must come from the pinned Playwright image that CI uses, never from your
