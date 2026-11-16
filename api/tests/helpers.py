@@ -28,7 +28,7 @@ from megooflags_api.services.users import create_user
 # Empties every table the tests write to, keeping the built-in roles and the org_settings row.
 RESET_SQL = [
     'TRUNCATE project, "user", team, role_binding, api_token, audit_entry, sso_provider, '
-    "integration_outbox CASCADE",
+    "integration_outbox, node CASCADE",
     "DELETE FROM role WHERE NOT builtin",
     "UPDATE org_settings SET require_mfa = false",
 ]

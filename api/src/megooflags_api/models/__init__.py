@@ -1,6 +1,7 @@
 """All models, imported so that `Base.metadata` is complete."""
 
 from megooflags_api.models.audit import AuditEntry
+from megooflags_api.models.cluster import EnvironmentSnapshot, Node, NodeEventBatch, NodeToken
 from megooflags_api.models.flag import Flag, Variation
 from megooflags_api.models.identity import (
     ApiToken,
@@ -52,6 +53,7 @@ __all__ = [
     "Clause",
     "ClauseSegment",
     "Environment",
+    "EnvironmentSnapshot",
     "EvaluationCount",
     "ExposureEvent",
     "Flag",
@@ -64,6 +66,9 @@ __all__ = [
     "IntegrationEnvironment",
     "IntegrationOutbox",
     "Invitation",
+    "Node",
+    "NodeEventBatch",
+    "NodeToken",
     "OrgSettings",
     "ProgressiveRollout",
     "Project",
