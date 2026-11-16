@@ -368,6 +368,29 @@ async def test_new_public_key_keeps_serving_if_resync_is_cut(
     assert json.loads(cp.requests[2].content)["versions"] == {str(ENV_A): 3}
 
 
+async def test_environment_deleted_during_cut_rekey_is_removed_on_synced(
+    make: Callable[..., Worker],
+) -> None:
+    cp = ControlPlane(
+        [hello(public_key=OTHER_SIGNER.public_key)],
+        [hello(public_key=OTHER_SIGNER.public_key), synced(0)],
+        close=True,
+    )
+    worker = make(cp)
+    worker.store.meta.public_key = SIGNER.public_key
+    assert worker.store.apply(snapshot(ENV_A, 3))
+    worker.store.mark_synced()
+    worker.start()
+
+    # ENV_A was deleted meanwhile: the second stream has no put for it, and no remove either,
+    # as the worker did not report it as held.
+    await until(lambda: worker.hub.notified == [PROJECT_ID])
+
+    assert worker.store.versions() == {}
+    assert worker.store.entry(ENV_A) is None
+    assert json.loads(cp.requests[1].content)["versions"] == {}
+
+
 async def test_backoff_grows_when_stream_ends_before_synced(
     make: Callable[..., Worker],
 ) -> None:

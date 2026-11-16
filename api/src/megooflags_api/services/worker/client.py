@@ -288,12 +288,12 @@ class ControlPlaneClient:
         elif event == "put":
             await self._put(data)
         elif event == "remove":
-            environment_id = uuid.UUID(json.loads(data)["environment_id"])
-            ref = await asyncio.to_thread(self._store.remove, environment_id)
-            if ref is not None:
-                self._hub.notify_project(ref.project_id)
+            await self._remove(uuid.UUID(json.loads(data)["environment_id"]))
         elif event == "synced":
-            self._rekeying.clear()
+            # Every live environment got a put, so one still held under the old key is gone.
+            leftover, self._rekeying = self._rekeying, set()
+            for environment_id in leftover:
+                await self._remove(environment_id)
             self._store.mark_synced()
             self._delay = self.backoff_min
         elif event == "state":
@@ -319,6 +319,12 @@ class ControlPlaneClient:
         self.read_timeout = 3 * float(hello["ping_seconds"])
         self._set_draining(hello["state"] == "draining")
         self._state.connected = True
+
+    async def _remove(self, environment_id: uuid.UUID) -> None:
+        """Forget the environment; its SDK streams get `revoked` when the hub refreshes."""
+        ref = await asyncio.to_thread(self._store.remove, environment_id)
+        if ref is not None:
+            self._hub.notify_project(ref.project_id)
 
     async def _put(self, data: bytes) -> None:
         try:
