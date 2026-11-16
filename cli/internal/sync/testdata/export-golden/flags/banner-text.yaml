@@ -1,0 +1,51 @@
+name: Banner text
+description: ""
+type: string
+tags: []
+variations:
+  - key: hello
+    name: Hello
+    description: ""
+    value: Hello!
+  - key: welcome
+    name: Welcome
+    description: ""
+    value: Welcome back
+off_variation: hello
+permanent: true
+archived: false
+environments:
+  development:
+    enabled: false
+    targets: []
+    rules: []
+    fallthrough:
+      variation: hello
+    prerequisites: []
+  production:
+    enabled: true
+    targets: []
+    rules:
+      - description: Mobile
+        clauses:
+          - attribute: device
+            operator: eq
+            values:
+              - mobile
+            negate: false
+        rollout:
+          bucket_by: key
+          weights:
+            - variation: hello
+              weight: 40000
+            - variation: welcome
+              weight: 60000
+    fallthrough:
+      rollout:
+        bucket_by: key
+        weights:
+          - variation: welcome
+            weight: 25000
+          - variation: hello
+            weight: 75000
+    prerequisites: []

@@ -1,0 +1,1 @@
+{"environment": "development", "enabled": false, "version": 1, "targets": [], "rules": [], "fallthrough": {"variation": "hello", "rollout": null}, "prerequisites": [], "updated_at": "2026-01-01T00:00:00Z"}

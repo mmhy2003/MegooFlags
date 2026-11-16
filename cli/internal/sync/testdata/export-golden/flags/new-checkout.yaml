@@ -1,0 +1,58 @@
+name: New checkout
+description: The redesigned checkout
+type: boolean
+tags:
+  - checkout
+  - web
+owner: mona@example.com
+variations:
+  - key: "true"
+    name: "On"
+    description: ""
+    value: true
+  - key: "false"
+    name: "Off"
+    description: ""
+    value: false
+off_variation: "false"
+permanent: false
+archived: false
+environments:
+  development:
+    enabled: true
+    targets: []
+    rules: []
+    fallthrough:
+      variation: "true"
+    prerequisites: []
+  production:
+    enabled: true
+    targets:
+      - variation: "true"
+        values:
+          - u1
+          - u3
+    rules:
+      - description: Beta and staff
+        clauses:
+          - attribute: key
+            operator: in_segment
+            values:
+              - beta
+              - staff
+            negate: false
+        variation: "true"
+      - description: Country
+        clauses:
+          - attribute: country
+            operator: in
+            values:
+              - us
+              - ca
+            negate: true
+        variation: "false"
+    fallthrough:
+      variation: "false"
+    prerequisites:
+      - flag: banner-text
+        variation: hello
