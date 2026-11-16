@@ -36,6 +36,11 @@ func TestProviderSchemaValid(t *testing.T) {
 			t.Errorf("%s data source missing", name)
 		}
 	}
+	for _, name := range []string{"megooflags_flag_environment", "megooflags_segment", "megooflags_sdk_key"} {
+		if _, ok := resp.ResourceSchemas[name]; !ok {
+			t.Errorf("%s resource missing", name)
+		}
+	}
 }
 
 // configure runs the provider's Configure with url and token (nil is null).

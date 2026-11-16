@@ -102,16 +102,17 @@ var (
 		"variation": types.StringType,
 		"values":    types.ListType{ElemType: types.StringType},
 	}}
+	clauseObjectType = types.ObjectType{AttrTypes: map[string]attr.Type{
+		"attribute":   types.StringType,
+		"operator":    types.StringType,
+		"values_json": jsonValueType{},
+		"negate":      types.BoolType,
+	}}
 	ruleObjectType = types.ObjectType{AttrTypes: map[string]attr.Type{
 		"description": types.StringType,
-		"clauses": types.ListType{ElemType: types.ObjectType{AttrTypes: map[string]attr.Type{
-			"attribute":   types.StringType,
-			"operator":    types.StringType,
-			"values_json": jsonValueType{},
-			"negate":      types.BoolType,
-		}}},
-		"variation": types.StringType,
-		"rollout":   rolloutObjectType,
+		"clauses":     types.ListType{ElemType: clauseObjectType},
+		"variation":   types.StringType,
+		"rollout":     rolloutObjectType,
 	}}
 	prerequisiteObjectType = types.ObjectType{AttrTypes: map[string]attr.Type{
 		"flag":      types.StringType,
@@ -160,6 +161,25 @@ func serveFromModel(s *serveModel) client.Serve {
 	return client.Serve{Variation: s.Variation.ValueStringPointer(), Rollout: rolloutFromModel(s.Rollout)}
 }
 
+// clausesFromModel decodes each clause's values_json. An error names the
+// clause, as in "clauses[1]: ...".
+func clausesFromModel(cs []clauseModel) ([]client.Clause, error) {
+	var out []client.Clause
+	for j, c := range cs {
+		values, err := clauseValues(c.ValuesJSON.ValueString())
+		if err != nil {
+			return nil, fmt.Errorf("clauses[%d]: %w", j, err)
+		}
+		out = append(out, client.Clause{
+			Attribute: c.Attribute.ValueString(),
+			Operator:  c.Operator.ValueString(),
+			Values:    values,
+			Negate:    c.Negate.ValueBool(),
+		})
+	}
+	return out, nil
+}
+
 // flagConfigInFromModel builds the PUT body; the caller sets the version.
 func flagConfigInFromModel(m flagEnvironmentModel) (client.FlagConfigIn, error) {
 	in := client.FlagConfigIn{
@@ -175,18 +195,11 @@ func flagConfigInFromModel(m flagEnvironmentModel) (client.FlagConfigIn, error) 
 			Variation:   r.Variation.ValueStringPointer(),
 			Rollout:     rolloutFromModel(r.Rollout),
 		}
-		for j, c := range r.Clauses {
-			values, err := clauseValues(c.ValuesJSON.ValueString())
-			if err != nil {
-				return in, fmt.Errorf("rules[%d].clauses[%d]: %w", i, j, err)
-			}
-			rule.Clauses = append(rule.Clauses, client.Clause{
-				Attribute: c.Attribute.ValueString(),
-				Operator:  c.Operator.ValueString(),
-				Values:    values,
-				Negate:    c.Negate.ValueBool(),
-			})
+		clauses, err := clausesFromModel(r.Clauses)
+		if err != nil {
+			return in, fmt.Errorf("rules[%d].%w", i, err)
 		}
+		rule.Clauses = clauses
 		in.Rules = append(in.Rules, rule)
 	}
 	for _, p := range m.Prerequisites {
@@ -255,6 +268,25 @@ func sameKeySet(text string, values []any) bool {
 	return a != nil && b != nil && slices.Equal(a, b)
 }
 
+// clausesToModel maps API clauses to the model; prior (may be shorter or
+// nil) supplies the values text to keep, clause by clause.
+func clausesToModel(cs []client.Clause, prior []clauseModel) []clauseModel {
+	out := []clauseModel{}
+	for j, c := range cs {
+		var p *clauseModel
+		if j < len(prior) {
+			p = &prior[j]
+		}
+		out = append(out, clauseModel{
+			Attribute:  types.StringValue(c.Attribute),
+			Operator:   types.StringValue(c.Operator),
+			ValuesJSON: newJSONValue(clauseText(c, p)),
+			Negate:     types.BoolValue(c.Negate),
+		})
+	}
+	return out
+}
+
 // flagConfigToModel maps an API config to the model. prior (the plan or
 // state, may be nil) supplies the clause values text to keep.
 func flagConfigToModel(project, flag string, c *client.FlagConfig, prior *flagEnvironmentModel) flagEnvironmentModel {
@@ -280,25 +312,16 @@ func flagConfigToModel(project, flag string, c *client.FlagConfig, prior *flagEn
 		m.Targets = append(m.Targets, targetModel{Variation: types.StringValue(t.Variation), Values: values})
 	}
 	for i, r := range c.Rules {
-		rule := ruleModel{
+		var priorClauses []clauseModel
+		if prior != nil && i < len(prior.Rules) {
+			priorClauses = prior.Rules[i].Clauses
+		}
+		m.Rules = append(m.Rules, ruleModel{
 			Description: types.StringValue(r.Description),
-			Clauses:     []clauseModel{},
+			Clauses:     clausesToModel(r.Clauses, priorClauses),
 			Variation:   types.StringPointerValue(r.Variation),
 			Rollout:     rolloutToModel(r.Rollout),
-		}
-		for j, cl := range r.Clauses {
-			var p *clauseModel
-			if prior != nil && i < len(prior.Rules) && j < len(prior.Rules[i].Clauses) {
-				p = &prior.Rules[i].Clauses[j]
-			}
-			rule.Clauses = append(rule.Clauses, clauseModel{
-				Attribute:  types.StringValue(cl.Attribute),
-				Operator:   types.StringValue(cl.Operator),
-				ValuesJSON: newJSONValue(clauseText(cl, p)),
-				Negate:     types.BoolValue(cl.Negate),
-			})
-		}
-		m.Rules = append(m.Rules, rule)
+		})
 	}
 	for _, p := range c.Prerequisites {
 		m.Prerequisites = append(m.Prerequisites, prerequisiteModel{Flag: types.StringValue(p.Flag), Variation: types.StringValue(p.Variation)})
@@ -368,6 +391,40 @@ func rolloutAttribute(description string) schema.SingleNestedAttribute {
 	}
 }
 
+// clausesAttribute is the clauses of a flag rule or a segment rule.
+func clausesAttribute() schema.ListNestedAttribute {
+	return schema.ListNestedAttribute{
+		Description: "Conditions on the context.",
+		Required:    true,
+		NestedObject: schema.NestedAttributeObject{
+			Attributes: map[string]schema.Attribute{
+				"attribute": schema.StringAttribute{
+					Description: "Context attribute.",
+					Optional:    true,
+					Computed:    true,
+					Default:     stringdefault.StaticString("key"),
+				},
+				"operator": schema.StringAttribute{
+					Description: "Operator: " + strings.Join(operators, ", ") + ".",
+					Required:    true,
+					Validators:  []validator.String{stringvalidator.OneOf(operators...)},
+				},
+				"values_json": schema.StringAttribute{
+					Description: "The values as a JSON array, for example jsonencode([\"gold\", 10]), so numbers and strings keep their types. For in_segment, the segment keys.",
+					Required:    true,
+					CustomType:  jsonValueType{},
+				},
+				"negate": schema.BoolAttribute{
+					Description: "Invert the result.",
+					Optional:    true,
+					Computed:    true,
+					Default:     booldefault.StaticBool(false),
+				},
+			},
+		},
+	}
+}
+
 func (r *flagEnvironmentResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	replace := []planmodifier.String{stringplanmodifier.RequiresReplace()}
 	resp.Schema = schema.Schema{
@@ -421,36 +478,7 @@ func (r *flagEnvironmentResource) Schema(_ context.Context, _ resource.SchemaReq
 							Computed:    true,
 							Default:     stringdefault.StaticString(""),
 						},
-						"clauses": schema.ListNestedAttribute{
-							Description: "Conditions on the context.",
-							Required:    true,
-							NestedObject: schema.NestedAttributeObject{
-								Attributes: map[string]schema.Attribute{
-									"attribute": schema.StringAttribute{
-										Description: "Context attribute.",
-										Optional:    true,
-										Computed:    true,
-										Default:     stringdefault.StaticString("key"),
-									},
-									"operator": schema.StringAttribute{
-										Description: "Operator: " + strings.Join(operators, ", ") + ".",
-										Required:    true,
-										Validators:  []validator.String{stringvalidator.OneOf(operators...)},
-									},
-									"values_json": schema.StringAttribute{
-										Description: "The values as a JSON array, for example jsonencode([\"gold\", 10]), so numbers and strings keep their types. For in_segment, the segment keys.",
-										Required:    true,
-										CustomType:  jsonValueType{},
-									},
-									"negate": schema.BoolAttribute{
-										Description: "Invert the result.",
-										Optional:    true,
-										Computed:    true,
-										Default:     booldefault.StaticBool(false),
-									},
-								},
-							},
-						},
+						"clauses": clausesAttribute(),
 						"variation": schema.StringAttribute{
 							Description: "Variation served when the rule matches. Set this or rollout.",
 							Optional:    true,

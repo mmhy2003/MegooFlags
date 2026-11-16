@@ -91,6 +91,8 @@ func (p *megooflagsProvider) Resources(context.Context) []func() resource.Resour
 		newProjectResource,
 		newFlagResource,
 		newFlagEnvironmentResource,
+		newSegmentResource,
+		newSdkKeyResource,
 	}
 }
 
