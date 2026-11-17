@@ -1,0 +1,18 @@
+# Worker footprint (scripts/perf.sh), on top of docker-compose.worker.yml and
+# scripts/cluster/worker.override.yml: Caddy and the api limited to 1 vCPU / 512 MiB together, with
+# room for the file descriptors of many SDK streams.
+services:
+  caddy:
+    deploy:
+      resources:
+        limits: {cpus: "0.2", memory: 96M}
+    ulimits:
+      nofile: 1048576
+  api:
+    environment:
+      MEGOOFLAGS_API_WORKERS: 1
+    deploy:
+      resources:
+        limits: {cpus: "0.8", memory: 416M}
+    ulimits:
+      nofile: 1048576

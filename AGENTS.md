@@ -213,7 +213,14 @@ bash scripts/proxy_samples_test.sh
 # multi-node failure suite (the cluster job): a control plane, three workers and an nginx LB from
 # the same images; prints "cluster OK"
 bash scripts/cluster_test.sh
+# the load test harness in its tiny profile (the perf-smoke job), without gates; prints "perf OK (tiny)"
+# and writes the git-ignored perf/results/tiny.json
+bash scripts/perf.sh tiny
 ```
+
+For a release, a maintainer runs `bash scripts/perf.sh full` on the build machine (it takes about an
+hour) and commits `perf/results/<VERSION>.json`. CI never runs it:
+shared runners are too small and too noisy for the NFR targets.
 
 If you change a workflow, also run `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest`.
 

@@ -28,3 +28,6 @@ terraform/dist/
 .terraform/
 *.tfstate*
 terraform/internal/**/.terraform.lock.hcl
+
+# Load test results of the tiny profile (scripts/perf.sh tiny)
+perf/results/tiny.json
