@@ -161,12 +161,17 @@ class Cluster:
         self.admin: httpx.AsyncClient  # org admin service token, base_url=cp_url
         self._tmp = tmp
         self._cp_stack = AsyncExitStack()
+        self._cp_open = True  # cp_app's resources are not closed yet
         self.workers: list[Worker] = []
 
     async def serve_control_plane(self, port: int = 0) -> None:
         self.cp_url = await self._cp_stack.enter_async_context(running(self.cp_app, port))
 
     async def stop_control_plane(self) -> None:
+        """Stop serving cp_app and close it; a second call does nothing."""
+        if not self._cp_open:
+            return
+        self._cp_open = False
         stack, self._cp_stack = self._cp_stack, AsyncExitStack()
         await stack.aclose()
         await self.cp_app.state.ruleset_cache.aclose()
@@ -178,6 +183,7 @@ class Cluster:
         assert port is not None
         await self.stop_control_plane()
         self.cp_app = create_app(settings)
+        self._cp_open = True
         await self.serve_control_plane(port)
 
     async def add_worker(
