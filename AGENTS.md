@@ -204,6 +204,8 @@ git diff --exit-code -- api/openapi.json web/lib/api/schema.d.ts
 # images and smoke
 docker build -t megooflags-api:ci api && docker build -t megooflags-web:ci web && bash scripts/smoke.sh http \
   && bash scripts/smoke.sh https
+# the documented quick start against the same images; prints "quick start: Ns", fails at 300 s
+bash scripts/quickstart_test.sh
 # multi-node failure suite (the cluster job): a control plane, three workers and an nginx LB from
 # the same images; prints "cluster OK"
 bash scripts/cluster_test.sh
