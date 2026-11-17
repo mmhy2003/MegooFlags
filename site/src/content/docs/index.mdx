@@ -1,0 +1,34 @@
+---
+title: MegooFlags
+description: Open-source feature flags you host yourself.
+template: splash
+hero:
+  title: MegooFlags
+  tagline: "Open-source feature flags you host yourself: targeting, rollouts and OpenFeature SDKs."
+  actions:
+    - text: GitHub
+      link: https://github.com/mmhy2003/MegooFlags
+      icon: external
+      variant: primary
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+<CardGrid stagger>
+  <Card title="Self-hosted" icon="seti:docker">
+    One Docker Compose bundle on your own server. Your flags and your users'
+    data stay with you.
+  </Card>
+  <Card title="OpenFeature SDKs" icon="puzzle">
+    Server and client SDKs for thirteen platforms, built as OpenFeature
+    providers, with local evaluation and streaming updates.
+  </Card>
+  <Card title="Release workflows" icon="rocket">
+    Targeting rules, percentage rollouts, prerequisites, segments, change
+    requests and an audit log.
+  </Card>
+  <Card title="Multi-node" icon="random">
+    Add worker nodes that serve flags from a local snapshot, and keep serving
+    when the control plane is down.
+  </Card>
+</CardGrid>
