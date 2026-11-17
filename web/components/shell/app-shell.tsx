@@ -65,7 +65,7 @@ export function AppShell({
     shell.permissions,
     shell.permissionsProject,
   );
-  const items = navItems(project, permissions);
+  const items = navItems(project, permissions, shell.me?.role ?? null);
   const isDesktop = useMediaQuery("(min-width: 1024px)", true);
   const [userOpen, setUserOpen] = useState(shell.sidebarOpen);
 

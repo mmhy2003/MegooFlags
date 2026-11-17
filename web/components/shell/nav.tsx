@@ -9,6 +9,7 @@ import {
   Layers,
   Plug,
   ScrollText,
+  Server,
   Settings,
   Target,
   type LucideIcon,
@@ -31,6 +32,7 @@ export const NAV_ICONS: Record<NavKey, LucideIcon> = {
   audit: ScrollText,
   keys: KeyRound,
   integrations: Plug,
+  nodes: Server,
   settings: Settings,
 };
 
