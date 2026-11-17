@@ -2,6 +2,7 @@
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 import starlightLinksValidator from "starlight-links-validator";
+import starlightOpenAPI, { openAPISidebarGroups } from "starlight-openapi";
 
 export default defineConfig({
   site: "https://mmhy2003.github.io",
@@ -30,7 +31,16 @@ export default defineConfig({
         "@fontsource-variable/geist-mono",
         "./src/styles/brand.css",
       ],
-      plugins: [starlightLinksValidator()],
+      plugins: [
+        starlightOpenAPI([
+          {
+            base: "reference/api",
+            label: "REST API",
+            schema: "../api/openapi.json",
+          },
+        ]),
+        starlightLinksValidator(),
+      ],
       sidebar: [
         {
           label: "Deploy",
@@ -70,7 +80,11 @@ export default defineConfig({
         },
         {
           label: "Reference",
-          items: ["reference/evaluation", "reference/delivery"],
+          items: [
+            ...openAPISidebarGroups,
+            "reference/evaluation",
+            "reference/delivery",
+          ],
         },
         { label: "Migrate", items: ["migrate/overview"] },
         {
