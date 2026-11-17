@@ -433,6 +433,22 @@ jobs:
       - run: go test -race -count=1 ./...
       - run: go build -o bin/megooflags ./cmd/megooflags
 
+  perf:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: perf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: perf/go.mod
+          cache: false
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "::error::gofmt"; exit 1; }
+      - run: go vet ./...
+      - run: go test -race ./...
+
   terraform:
     runs-on: ubuntu-24.04
     defaults:
