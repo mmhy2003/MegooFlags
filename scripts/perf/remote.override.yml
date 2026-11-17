@@ -3,6 +3,6 @@
 services:
   api:
     environment:
-      MEGOOFLAGS_API_WORKERS: ${MF_PERF_API_WORKERS:-4}
+      MEGOOFLAGS_API_WORKERS: ${MF_PERF_API_WORKERS:-8}
     deploy:
       replicas: 1

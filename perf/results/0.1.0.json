@@ -1,0 +1,254 @@
+{
+  "version": "0.1.0",
+  "profile": "full",
+  "started_at": "2026-11-17T19:55:22Z",
+  "host": {
+    "cpus": 16,
+    "memory_mib": 32050,
+    "cpu_model": "Intel(R) Xeon(R) CPU E5-4650 v2 @ 2.40GHz",
+    "kernel": "6.8.0-149-generic",
+    "docker": "29.10.0"
+  },
+  "scenarios": {
+    "remote_ofrep": {
+      "status": "full",
+      "reduced_to": null,
+      "limits": {
+        "api": "unlimited",
+        "api_workers": "8",
+        "replicas": "1"
+      },
+      "metrics": {
+        "count": 120000,
+        "errors": 0,
+        "max_ms": 621.870797,
+        "p50_ms": 5.230787,
+        "p95_ms": 25.920707,
+        "p99_ms": 113.703276,
+        "rps": 1999.2361678312461
+      },
+      "notes": "tuned from 4 to 8 uvicorn workers (MF_PERF_API_WORKERS): with 4, OFREP reached 1651 rps at p99 12.7 s"
+    },
+    "remote_evaluate": {
+      "status": "full",
+      "reduced_to": null,
+      "limits": {
+        "api": "unlimited",
+        "api_workers": "8",
+        "replicas": "1"
+      },
+      "metrics": {
+        "count": 119792,
+        "errors": 208,
+        "max_ms": 30157.191373,
+        "p50_ms": 15040.775447,
+        "p95_ms": 28256.463584,
+        "p99_ms": 29642.35397,
+        "rps": 1332.7123263350084
+      },
+      "notes": "tuned from 4 to 8 uvicorn workers (MF_PERF_API_WORKERS): with 4, OFREP reached 1651 rps at p99 12.7 s"
+    },
+    "whole_env_10k": {
+      "status": "full",
+      "reduced_to": null,
+      "limits": {
+        "api": "unlimited",
+        "api_workers": "8",
+        "replicas": "1"
+      },
+      "metrics": {
+        "count": 150,
+        "errors": 0,
+        "max_ms": 5761.859398,
+        "p50_ms": 570.691969,
+        "p95_ms": 3930.54493,
+        "p99_ms": 5505.393423,
+        "rps": 4.34003857748087
+      },
+      "notes": "every flag of the 10000-flag environment in one request, 5 rps for 30 s"
+    },
+    "flags_10k": {
+      "status": "full",
+      "reduced_to": null,
+      "limits": {
+        "api": "unlimited"
+      },
+      "metrics": {
+        "flag_list_ms": 30.544113,
+        "flags": 10000,
+        "ruleset_bytes": 4850089,
+        "ruleset_download_ms": 3791.669013,
+        "errors": 0
+      },
+      "notes": "ruleset_download_ms is the SDK start time: one ruleset download"
+    },
+    "propagation_replicas": {
+      "status": "full",
+      "reduced_to": null,
+      "limits": {
+        "api": "unlimited",
+        "api_workers": "8",
+        "replicas": "3"
+      },
+      "metrics": {
+        "flips": 20,
+        "missed": 444,
+        "prop_max_ms": 13957.486087,
+        "prop_p50_ms": 1665.139204,
+        "prop_p95_ms": 11893.977477,
+        "streams_dropped": 0,
+        "streams_opened": 30,
+        "errors": 0
+      },
+      "notes": "30 streams on the 10000-flag project"
+    },
+    "propagation_cluster": {
+      "status": "full",
+      "reduced_to": null,
+      "limits": {
+        "worker": "1 vCPU / 512 MiB (caddy 0.35 / 256M, api 0.65 / 256M)"
+      },
+      "metrics": {
+        "flips": 20,
+        "missed": 0,
+        "prop_max_ms": 524.819682,
+        "prop_p50_ms": 401.671197,
+        "prop_p95_ms": 485.389321,
+        "streams_dropped": 0,
+        "streams_opened": 30,
+        "errors": 0
+      },
+      "notes": "30 streams over 3 workers"
+    },
+    "streams_100k": {
+      "status": "reduced",
+      "reduced_to": "18758 streams, 12 workers",
+      "limits": {
+        "worker": "1 vCPU / 512 MiB (caddy 0.35 / 256M, api 0.65 / 256M)"
+      },
+      "metrics": {
+        "flips": 20,
+        "missed": 0,
+        "prop_max_ms": 11675.98038,
+        "prop_p50_ms": 3654.872949,
+        "prop_p95_ms": 8204.754212,
+        "streams_dropped": 0,
+        "streams_opened": 18758,
+        "workers": 12.0,
+        "mem_max_mib": 489.4,
+        "restarts": 0.0,
+        "oom_killed": 0.0,
+        "capacity_per_worker": 1954.0,
+        "errors": 0
+      },
+      "notes": "mem_max_mib is the most any one worker used; a flip every 30 s through the control plane; limits re-split from caddy 0.2 / 96M, api 0.8 / 416M, where Caddy was OOM-killed at about 1000 streams"
+    },
+    "footprint_single": {
+      "status": "full",
+      "reduced_to": null,
+      "limits": {
+        "caddy": "0.25 / 128M",
+        "web": "0.25 / 256M",
+        "api": "1.0 / 768M, 2 workers",
+        "db": "0.4 / 640M",
+        "valkey": "0.1 / 128M"
+      },
+      "metrics": {
+        "flips": 600,
+        "missed": 481,
+        "prop_max_ms": 993.428914,
+        "prop_p50_ms": 258.728927,
+        "prop_p95_ms": 705.322415,
+        "streams_dropped": 0,
+        "streams_opened": 20,
+        "count": 30000,
+        "errors": 0,
+        "max_ms": 3030.326868,
+        "p50_ms": 8.037735,
+        "p95_ms": 322.450473,
+        "p99_ms": 868.028726,
+        "rps": 50.001036037717036,
+        "restarts": 0.0,
+        "oom_killed": 0.0,
+        "mem_max_mib": 533.2
+      },
+      "notes": "100 flags, 20 streams, a flip every second and 50 rps for 600 s; giving the api 1.2 CPU (db 0.3) or 3 workers made p99 worse, so the split is unchanged"
+    },
+    "local_eval_go": {
+      "status": "full",
+      "reduced_to": null,
+      "limits": {},
+      "metrics": {
+        "passed": 1,
+        "p99_ms": 0.013601,
+        "errors": 0
+      },
+      "notes": "the SDK's p99 guard on 10 000 flags"
+    },
+    "local_eval_node": {
+      "status": "full",
+      "reduced_to": null,
+      "limits": {},
+      "metrics": {
+        "passed": 1,
+        "p99_ms": 1.0,
+        "errors": 0
+      },
+      "notes": "the SDK's p99 guard on 10 000 flags"
+    },
+    "local_eval_python": {
+      "status": "full",
+      "reduced_to": null,
+      "limits": {},
+      "metrics": {
+        "passed": 1,
+        "p99_ms": 0.0704,
+        "errors": 0
+      },
+      "notes": "the SDK's p99 guard on 10 000 flags"
+    },
+    "local_eval_java": {
+      "status": "full",
+      "reduced_to": null,
+      "limits": {},
+      "metrics": {
+        "passed": 1,
+        "p99_ms": 0.0271,
+        "errors": 0
+      },
+      "notes": "the SDK's p99 guard on 10 000 flags"
+    },
+    "local_eval_dotnet": {
+      "status": "full",
+      "reduced_to": null,
+      "limits": {},
+      "metrics": {
+        "passed": 1,
+        "errors": 0
+      },
+      "notes": "the SDK's p99 guard on 10 000 flags"
+    },
+    "local_eval_ruby": {
+      "status": "full",
+      "reduced_to": null,
+      "limits": {},
+      "metrics": {
+        "passed": 1,
+        "p99_ms": 0.1065,
+        "errors": 0
+      },
+      "notes": "the SDK's p99 guard on 10 000 flags"
+    },
+    "local_eval_php": {
+      "status": "full",
+      "reduced_to": null,
+      "limits": {},
+      "metrics": {
+        "passed": 1,
+        "p99_ms": 0.0635,
+        "errors": 0
+      },
+      "notes": "the SDK's p99 guard on 10 000 flags"
+    }
+  }
+}

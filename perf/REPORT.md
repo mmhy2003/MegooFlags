@@ -1,26 +1,24 @@
 # Performance and sizing
 
-> **Placeholder until the full run in this release.** These numbers come from the `tiny` profile, which runs every scenario at a small size, so no gate can pass.
-
-MegooFlags 0.1.0 was load tested with the `tiny` profile on 2026-11-17, on a host with 16 CPUs and 32050 MiB of RAM. `scripts/perf.sh` starts each stack from the shipped compose files inside the CPU and memory limits listed below and drives it with `mfload`; `scripts/perf_report.py` renders this page from the run's results file. Each non-functional requirement of the product has a verdict: pass, fail, reduced (the host was too small, so the scenario ran at the size shown and is not a pass) or not run.
+MegooFlags 0.1.0 was load tested with the `full` profile on 2026-11-17, on a host with 16 CPUs and 32050 MiB of RAM. `scripts/perf.sh` starts each stack from the shipped compose files inside the CPU and memory limits listed below and drives it with `mfload`; `scripts/perf_report.py` renders this page from the run's results file. Each non-functional requirement of the product has a verdict: pass, fail, reduced (the host was too small, so the scenario ran at the size shown and is not a pass) or not run.
 
 ## NFR verdicts
 
 | NFR | Target | Measured | Verdict |
 | --- | --- | --- | --- |
-| Local evaluation, Go | p99 < 1 ms (the SDK's p99 guard passes) | - | not run |
-| Local evaluation, Node.js | p99 < 1 ms (the SDK's p99 guard passes) | - | not run |
-| Local evaluation, Python | p99 < 1 ms (the SDK's p99 guard passes) | - | not run |
-| Local evaluation, Java | p99 < 1 ms (the SDK's p99 guard passes) | - | not run |
-| Local evaluation, .NET | p99 < 1 ms (the SDK's p99 guard passes) | - | not run |
-| Local evaluation, Ruby | p99 < 1 ms (the SDK's p99 guard passes) | - | not run |
-| Local evaluation, PHP | p99 < 1 ms (the SDK's p99 guard passes) | - | not run |
-| Remote evaluation, OFREP | p99 < 50 ms, no errors, at 2000 rps per API container | p99 15.3 ms, 0 errors at 50 rps | reduced (tiny: 50 rps for 10 s on 100 flags) |
-| Remote evaluation, /sdk/v1/evaluate | p99 < 50 ms, no errors, at 2000 rps per API container | p99 36.5 ms, 0 errors at 50 rps | reduced (tiny: 50 rps for 10 s on 100 flags) |
-| Propagation across API replicas | p95 < 5 s | propagation p95 0.91 s over 3 flips on 30 streams | reduced (3 flips) |
-| Propagation to worker nodes | p95 < 5 s | propagation p95 0.79 s over 3 flips on 30 streams | reduced (3 flips) |
-| 100k streams per cluster | 100000 streams, none dropped, propagation p95 < 5 s, each worker inside 512 MiB | 200 streams, workers: 1, 0 dropped, propagation p95 1.32 s, worker memory up to 155.2 MiB | reduced (tiny: 200 streams, 1 worker) |
-| Single-node footprint | 2 vCPU / 2 GB: no restart or OOM kill, p99 < 50 ms, propagation p95 < 5 s | 0 restarts, 0 OOM kills, p99 391.4 ms at 50 rps, propagation p95 0.59 s, memory up to 486.3 MiB | reduced (tiny: 30 s) |
+| Local evaluation, Go | p99 < 1 ms (the SDK's p99 guard passes) | guard passed, p99 0.0136 ms | pass |
+| Local evaluation, Node.js | p99 < 1 ms (the SDK's p99 guard passes) | guard passed, p99 1 ms | pass |
+| Local evaluation, Python | p99 < 1 ms (the SDK's p99 guard passes) | guard passed, p99 0.0704 ms | pass |
+| Local evaluation, Java | p99 < 1 ms (the SDK's p99 guard passes) | guard passed, p99 0.0271 ms | pass |
+| Local evaluation, .NET | p99 < 1 ms (the SDK's p99 guard passes) | guard passed | pass |
+| Local evaluation, Ruby | p99 < 1 ms (the SDK's p99 guard passes) | guard passed, p99 0.1065 ms | pass |
+| Local evaluation, PHP | p99 < 1 ms (the SDK's p99 guard passes) | guard passed, p99 0.0635 ms | pass |
+| Remote evaluation, OFREP | p99 < 50 ms, no errors, at 2000 rps per API container | p99 113.7 ms, 0 errors at 1999 rps | fail |
+| Remote evaluation, /sdk/v1/evaluate | p99 < 50 ms, no errors, at 2000 rps per API container | p99 29642.4 ms, 208 errors at 1333 rps | fail |
+| Propagation across API replicas | p95 < 5 s | propagation p95 11.89 s over 20 flips on 30 streams | fail |
+| Propagation to worker nodes | p95 < 5 s | propagation p95 0.49 s over 20 flips on 30 streams | pass |
+| 100k streams per cluster | 100000 streams, none dropped, propagation p95 < 5 s, each worker inside 512 MiB | 18758 streams, workers: 12, 0 dropped, propagation p95 8.2 s, worker memory up to 489.4 MiB | reduced (18758 streams, 12 workers) |
+| Single-node footprint | 2 vCPU / 2 GB: no restart or OOM kill, p99 < 50 ms, propagation p95 < 5 s | 0 restarts, 0 OOM kills, p99 868 ms at 50 rps, propagation p95 0.71 s, memory up to 533.2 MiB | fail |
 
 ## Reported values
 
@@ -28,11 +26,11 @@ These are measured without a target.
 
 | Value | Measured | Run |
 | --- | --- | --- |
-| Flags in the project | 100 | reduced (100 flags) |
-| Ruleset size | 47.5 KiB | reduced (100 flags) |
-| SDK start time (one ruleset download) | 261.5 ms | reduced (100 flags) |
-| Flag list latency | 32.5 ms | reduced (100 flags) |
-| Whole-environment evaluation (every flag in one `/sdk/v1/evaluate` request) | p50 10.3 ms, p95 18 ms, p99 25.8 ms, 0 errors at 5 rps | reduced (tiny: 100 flags for 5 s) |
+| Flags in the project | 10000 | full |
+| Ruleset size | 4.6 MiB | full |
+| SDK start time (one ruleset download) | 3791.7 ms | full |
+| Flag list latency | 30.5 ms | full |
+| Whole-environment evaluation (every flag in one `/sdk/v1/evaluate` request) | p50 570.7 ms, p95 3930.5 ms, p99 5505.4 ms, 0 errors at 4 rps | full |
 
 ## Host and limits
 
@@ -45,27 +43,36 @@ These are measured without a target.
 
 | Scenario | Run | Limits | Notes |
 | --- | --- | --- | --- |
-| `remote_ofrep` | reduced (tiny: 50 rps for 10 s on 100 flags) | api: unlimited, api_workers: 4, replicas: 1 | - |
-| `remote_evaluate` | reduced (tiny: 50 rps for 10 s on 100 flags) | api: unlimited, api_workers: 4, replicas: 1 | - |
-| `whole_env_10k` | reduced (tiny: 100 flags for 5 s) | api: unlimited, api_workers: 4, replicas: 1 | every flag of the 100-flag environment in one request, 5 rps for 5 s |
-| `flags_10k` | reduced (100 flags) | api: unlimited | ruleset_download_ms is the SDK start time: one ruleset download |
-| `propagation_replicas` | reduced (3 flips) | api: unlimited, api_workers: 4, replicas: 3 | 30 streams on the 100-flag project |
-| `propagation_cluster` | reduced (3 flips) | worker: 1 vCPU / 512 MiB (caddy 0.2 / 96M, api 0.8 / 416M) | 30 streams over 3 workers |
-| `streams_100k` | reduced (tiny: 200 streams, 1 worker) | worker: 1 vCPU / 512 MiB (caddy 0.2 / 96M, api 0.8 / 416M) | mem_max_mib is the most any one worker used; a flip every 5 s through the control plane |
-| `footprint_single` | reduced (tiny: 30 s) | caddy: 0.25 / 128M, web: 0.25 / 256M, api: 1.0 / 768M, 2 workers, db: 0.4 / 640M, valkey: 0.1 / 128M | 100 flags, 20 streams, a flip every second and 50 rps for 30 s |
-| `local_eval_go` | not run | - | not in the tiny profile |
-| `local_eval_node` | not run | - | not in the tiny profile |
-| `local_eval_python` | not run | - | not in the tiny profile |
-| `local_eval_java` | not run | - | not in the tiny profile |
-| `local_eval_dotnet` | not run | - | not in the tiny profile |
-| `local_eval_ruby` | not run | - | not in the tiny profile |
-| `local_eval_php` | not run | - | not in the tiny profile |
+| `remote_ofrep` | full | api: unlimited, api_workers: 8, replicas: 1 | tuned from 4 to 8 uvicorn workers (MF_PERF_API_WORKERS): with 4, OFREP reached 1651 rps at p99 12.7 s |
+| `remote_evaluate` | full | api: unlimited, api_workers: 8, replicas: 1 | tuned from 4 to 8 uvicorn workers (MF_PERF_API_WORKERS): with 4, OFREP reached 1651 rps at p99 12.7 s |
+| `whole_env_10k` | full | api: unlimited, api_workers: 8, replicas: 1 | every flag of the 10000-flag environment in one request, 5 rps for 30 s |
+| `flags_10k` | full | api: unlimited | ruleset_download_ms is the SDK start time: one ruleset download |
+| `propagation_replicas` | full | api: unlimited, api_workers: 8, replicas: 3 | 30 streams on the 10000-flag project |
+| `propagation_cluster` | full | worker: 1 vCPU / 512 MiB (caddy 0.35 / 256M, api 0.65 / 256M) | 30 streams over 3 workers |
+| `streams_100k` | reduced (18758 streams, 12 workers) | worker: 1 vCPU / 512 MiB (caddy 0.35 / 256M, api 0.65 / 256M) | mem_max_mib is the most any one worker used; a flip every 30 s through the control plane; limits re-split from caddy 0.2 / 96M, api 0.8 / 416M, where Caddy was OOM-killed at about 1000 streams |
+| `footprint_single` | full | caddy: 0.25 / 128M, web: 0.25 / 256M, api: 1.0 / 768M, 2 workers, db: 0.4 / 640M, valkey: 0.1 / 128M | 100 flags, 20 streams, a flip every second and 50 rps for 600 s; giving the api 1.2 CPU (db 0.3) or 3 workers made p99 worse, so the split is unchanged |
+| `local_eval_go` | full | - | the SDK's p99 guard on 10 000 flags |
+| `local_eval_node` | full | - | the SDK's p99 guard on 10 000 flags |
+| `local_eval_python` | full | - | the SDK's p99 guard on 10 000 flags |
+| `local_eval_java` | full | - | the SDK's p99 guard on 10 000 flags |
+| `local_eval_dotnet` | full | - | the SDK's p99 guard on 10 000 flags |
+| `local_eval_ruby` | full | - | the SDK's p99 guard on 10 000 flags |
+| `local_eval_php` | full | - | the SDK's p99 guard on 10 000 flags |
 
 ## Sizing guidance
 
-- **Single node, 2 vCPU / 2 GB.** Under the small-team load (20 SDK streams, a flag write every second and 50 remote evaluations per second), the whole bundle measured p99 391.4 ms, propagation p95 0.59 s, memory up to 486.3 MiB, 0 restarts. Beyond that load, add API replicas or move to multi-node.
-- **Worker nodes, 1 vCPU / 512 MB.** This run did not measure a worker's stream capacity; the full profile does.
-- **API workers per container.** Remote evaluation ran on one API container with 4 Uvicorn workers (`MEGOOFLAGS_API_WORKERS`) at 50 rps, p99 15.3 ms. For more load, add API containers.
+- **Single node, 2 vCPU / 2 GB.** Under the small-team load (20 SDK streams, a flag write every second and 50 remote evaluations per second), the whole bundle measured p99 868 ms, propagation p95 0.71 s, memory up to 533.2 MiB, 0 restarts. Beyond that load, add API replicas or move to multi-node.
+- **One worker node, 1 vCPU / 512 MB,** held 1954 streams before its memory reached 90 % of the limit.
+- **Workers for N streams:** plan each worker at 80 % of that capacity, `workers = ceil(N / 1563)`.
+
+| Streams | Workers |
+| --- | --- |
+| 10000 | 7 |
+| 50000 | 32 |
+| 100000 | 64 |
+| 250000 | 160 |
+
+- **API workers per container.** Remote evaluation ran on one API container with 8 Uvicorn workers (`MEGOOFLAGS_API_WORKERS`) at 1999 rps, p99 113.7 ms. For more load, add API containers.
 
 ## How to reproduce
 

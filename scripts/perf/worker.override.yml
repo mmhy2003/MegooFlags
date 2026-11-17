@@ -1,11 +1,13 @@
 # Worker footprint (scripts/perf.sh), on top of docker-compose.worker.yml and
 # scripts/cluster/worker.override.yml: Caddy and the api limited to 1 vCPU / 512 MiB together, with
-# room for the file descriptors of many SDK streams.
+# room for the file descriptors of many SDK streams. Each proxied stream costs Caddy about 90 KB and
+# the api about 60 KB, so the memory is split evenly: with Caddy at 96M it was OOM-killed at about
+# 1000 streams.
 services:
   caddy:
     deploy:
       resources:
-        limits: {cpus: "0.2", memory: 96M}
+        limits: {cpus: "0.35", memory: 256M}
     ulimits:
       nofile: 1048576
   api:
@@ -13,6 +15,6 @@ services:
       MEGOOFLAGS_API_WORKERS: 1
     deploy:
       resources:
-        limits: {cpus: "0.8", memory: 416M}
+        limits: {cpus: "0.65", memory: 256M}
     ulimits:
       nofile: 1048576

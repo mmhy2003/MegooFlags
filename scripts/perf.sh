@@ -233,7 +233,9 @@ fi
 echo "mfload built"
 
 # 3. Remote evaluation: one api container behind Caddy, without limits.
-api_workers="${MF_PERF_API_WORKERS:-4}"
+# 8 uvicorn workers measured best on the 16-CPU build machine: 4 reached only 1651 rps (p99 12.7 s),
+# 12 added queueing and errors.
+api_workers="${MF_PERF_API_WORKERS:-8}"
 single up -d --wait --wait-timeout 180 caddy
 base="http://localhost:$http_port"
 wait_ready "$base"
@@ -250,7 +252,8 @@ for mode in ofrep evaluate; do
   load "$mode" evaluate --target http://caddy --key "$k" --mode "$mode" --flag "$flag" --rps "$rps" \
     --duration "$duration" --warmup "$warmup" --out "/out/remote_$mode.json"
   meta "remote_$mode" "$remote_status" "$remote_reduced" \
-    "{\"api\": \"unlimited\", \"api_workers\": \"$api_workers\", \"replicas\": \"1\"}"
+    "{\"api\": \"unlimited\", \"api_workers\": \"$api_workers\", \"replicas\": \"1\"}" \
+    "tuned from 4 to 8 uvicorn workers (MF_PERF_API_WORKERS): with 4, OFREP reached 1651 rps at p99 12.7 s"
 done
 [ "$nflags" -eq 10000 ] && flags_status=full flags_reduced="" || flags_status=reduced flags_reduced="$nflags flags"
 # Every flag of the big environment in one /sdk/v1/evaluate request: reported, not gated.
@@ -331,7 +334,7 @@ for n in 1 2 3; do
   add_worker "$n"
 done
 workers=3 wait_streams || fail "the workers did not connect to the control plane"
-worker_limits='{"worker": "1 vCPU / 512 MiB (caddy 0.2 / 96M, api 0.8 / 416M)"}'
+worker_limits='{"worker": "1 vCPU / 512 MiB (caddy 0.35 / 256M, api 0.65 / 256M)"}'
 load prop-cluster streams --target http://worker-1 --target http://worker-2 --target http://worker-3 \
   --key "$ckey" --streams 30 --ramp-seconds 3 --hold "$prop_hold" --flip-every "$prop_flip" \
   --api "$cp_api" --insecure --token "$token" --project cluster --env "$cenv" --flag "$cflag" \
@@ -400,7 +403,7 @@ combine "$run/streams_100k.json" "$run/streams.json" "workers=$big_workers" \
   "mem_max_mib=$(column_max "$state/workers-mem.log" 2)" "restarts=$restart_count" "oom_killed=$oom_count" \
   ${capacity:+"capacity_per_worker=$capacity"}
 meta streams_100k "$big_status" "$big_reduced" "$worker_limits" \
-  "mem_max_mib is the most any one worker used; a flip every $big_flip s through the control plane"
+  "mem_max_mib is the most any one worker used; a flip every $big_flip s through the control plane; limits re-split from caddy 0.2 / 96M, api 0.8 / 416M, where Caddy was OOM-killed at about 1000 streams"
 cluster_down
 started=0
 echo "many streams done"
@@ -434,7 +437,7 @@ combine "$run/footprint_single.json" "$run/foot_streams.json" "$run/foot_eval.js
 [ "$profile" = full ] && foot_status=full foot_reduced="" || foot_status=reduced foot_reduced="tiny: $foot_hold s"
 meta footprint_single "$foot_status" "$foot_reduced" \
   '{"caddy": "0.25 / 128M", "web": "0.25 / 256M", "api": "1.0 / 768M, 2 workers", "db": "0.4 / 640M", "valkey": "0.1 / 128M"}' \
-  "100 flags, 20 streams, a flip every second and 50 rps for $foot_hold s"
+  "100 flags, 20 streams, a flip every second and 50 rps for $foot_hold s; giving the api 1.2 CPU (db 0.3) or 3 workers made p99 worse, so the split is unchanged"
 single down -v --remove-orphans
 echo "single-node footprint done"
 
