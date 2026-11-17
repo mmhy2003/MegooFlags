@@ -1,0 +1,56 @@
+name: megooflags-worker
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "${MEGOOFLAGS_HTTP_PORT:-80}:80"
+      # 443 is published on the host only when MEGOOFLAGS_SITE_ADDRESS holds a domain (automatic HTTPS).
+      # Left empty (plain HTTP), Docker maps it to a random free host port where nothing listens,
+      # so it never clashes with another proxy on :443.
+      - target: 443
+        published: "${MEGOOFLAGS_SITE_ADDRESS:+443}"
+        protocol: tcp
+      - target: 443
+        published: "${MEGOOFLAGS_SITE_ADDRESS:+443}"
+        protocol: udp
+    environment:
+      MEGOOFLAGS_SITE_ADDRESS: ${MEGOOFLAGS_SITE_ADDRESS:-:80}
+      MEGOOFLAGS_TRUSTED_PROXIES: ${MEGOOFLAGS_TRUSTED_PROXIES:-private_ranges}
+    volumes:
+      - ./Caddyfile.worker:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    image: ghcr.io/mmhy2003/megooflags-api:${MEGOOFLAGS_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      MEGOOFLAGS_ROLE: worker
+      MEGOOFLAGS_CONTROL_PLANE_URL: ${MEGOOFLAGS_CONTROL_PLANE_URL:?set MEGOOFLAGS_CONTROL_PLANE_URL in .env}
+      MEGOOFLAGS_NODE_TOKEN: ${MEGOOFLAGS_NODE_TOKEN:?set MEGOOFLAGS_NODE_TOKEN in .env}
+      MEGOOFLAGS_CONTROL_PLANE_INSECURE: ${MEGOOFLAGS_CONTROL_PLANE_INSECURE:-false}
+      MEGOOFLAGS_CONTROL_PLANE_CA_FILE: ${MEGOOFLAGS_CONTROL_PLANE_CA_FILE:-}
+      MEGOOFLAGS_WORKER_BUFFER_MAX_MB: ${MEGOOFLAGS_WORKER_BUFFER_MAX_MB:-64}
+      MEGOOFLAGS_WORKER_DRAIN_GRACE_SECONDS: ${MEGOOFLAGS_WORKER_DRAIN_GRACE_SECONDS:-30}
+      MEGOOFLAGS_CLIENT_RATE_LIMIT_PER_MINUTE: ${MEGOOFLAGS_CLIENT_RATE_LIMIT_PER_MINUTE:-600}
+      MEGOOFLAGS_SSE_HEARTBEAT_SECONDS: ${MEGOOFLAGS_SSE_HEARTBEAT_SECONDS:-15}
+      MEGOOFLAGS_LOG_LEVEL: ${MEGOOFLAGS_LOG_LEVEL:-INFO}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-megooflags-worker}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+    volumes:
+      # Snapshots and the event buffer: a restarted worker serves from here without the control plane.
+      - worker_data:/var/lib/megooflags
+      # Optional private CA for the control plane (MEGOOFLAGS_CONTROL_PLANE_CA_FILE).
+      - ./certs:/etc/megooflags/certs:ro
+
+volumes:
+  caddy_data:
+  caddy_config:
+  worker_data:
