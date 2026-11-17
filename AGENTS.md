@@ -206,6 +206,9 @@ docker build -t megooflags-api:ci api && docker build -t megooflags-web:ci web &
   && bash scripts/smoke.sh https
 # the documented quick start against the same images; prints "quick start: Ns", fails at 300 s
 bash scripts/quickstart_test.sh
+# the reverse proxy samples (nginx, Caddy, Traefik, HAProxy) in front of the same images, with an SDK
+# stream held through each; prints "proxies OK"
+bash scripts/proxy_samples_test.sh
 # multi-node failure suite (the cluster job): a control plane, three workers and an nginx LB from
 # the same images; prints "cluster OK"
 bash scripts/cluster_test.sh

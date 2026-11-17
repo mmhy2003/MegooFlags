@@ -53,7 +53,9 @@ Leave the value empty rather than setting `:80`: the compose file publishes port
 non-empty value.
 
 Your proxy must not buffer the SDK streams (server-sent events) and must keep idle connections open
-longer than the 15 s heartbeat (`MEGOOFLAGS_SSE_HEARTBEAT_SECONDS`).
+longer than the heartbeat (`MEGOOFLAGS_SSE_HEARTBEAT_SECONDS`). See
+[Behind a reverse proxy](/MegooFlags/deploy/reverse-proxy/) for the rules and tested samples for
+nginx, Caddy, Traefik and HAProxy.
 
 ## `MEGOOFLAGS_PUBLIC_URL`
 

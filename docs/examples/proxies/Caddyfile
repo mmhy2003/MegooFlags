@@ -1,0 +1,16 @@
+# MegooFlags behind a separate Caddy. TLS ends here, with a certificate Caddy gets on its own for
+# MF_DOMAIN; the bundle runs on the same host with MEGOOFLAGS_SITE_ADDRESS= (empty) and
+# MEGOOFLAGS_HTTP_PORT=8080. Run with MF_DOMAIN=flags.example.com.
+{
+	# Port 80 serves the redirect to HTTPS and the ACME HTTP challenge; keep it at 80 in production.
+	http_port {$MF_HTTP_PORT:80}
+}
+
+{$MF_DOMAIN} {
+	reverse_proxy 127.0.0.1:8080 {
+		# SDK streams (server-sent events): pass every event on at once. Caddy sets
+		# X-Forwarded-For, X-Forwarded-Proto and X-Forwarded-Host, and has no idle timeout on
+		# proxied responses.
+		flush_interval -1
+	}
+}

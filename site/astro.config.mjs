@@ -51,6 +51,7 @@ export default defineConfig({
           items: [
             "deploy/single-node",
             "deploy/tls",
+            "deploy/reverse-proxy",
             "deploy/multi-node",
             "deploy/multi-node-migration",
             "deploy/upgrades",
