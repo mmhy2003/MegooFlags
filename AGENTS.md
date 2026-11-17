@@ -9,7 +9,7 @@ Humans follow them too. When a rule here and a habit of yours disagree, this fil
 |---|---|
 | `api/` | FastAPI server (`megooflags_api`, Python 3.12, src layout), Alembic migrations, `openapi.json` |
 | `web/` | Next.js 16 App Router UI (TypeScript, Tailwind 4, shadcn/ui, `output: "standalone"`) |
-| `deploy/` | Reference single-node bundle: `docker-compose.yml`, `Caddyfile`, `.env.example`, and the CI override `compose.ci.yml` |
+| `deploy/` | Reference single-node bundle: `docker-compose.yml`, `Caddyfile`, `.env.example`; the multi-node files `docker-compose.control-plane.yml`, `docker-compose.worker.yml`, `Caddyfile.worker` and `.env.worker.example` (see `docs/multi-node.md`); and the CI override `compose.ci.yml` |
 | `scripts/` | Version, release and check scripts shared by CI, the release workflow and developers |
 | `sdks/` | In-repo SDKs, one directory per language (see `sdks/README.md`) |
 | `spec/` | Reserved for the shared evaluation spec and SDK conformance suite (see `spec/README.md`) |
@@ -352,7 +352,7 @@ Images go to `ghcr.io/mmhy2003/megooflags-api` and `ghcr.io/mmhy2003/megooflags-
 | `X` (only from 1.0.0) | `1` | none |
 | `latest` | `latest` | `latest` |
 
-An rc tag never moves `X.Y`, `X` or `latest`. The GitHub release notes come from the matching `CHANGELOG.md` section, and the release attaches `docker-compose.yml`, `Caddyfile` and `.env.example`.
+An rc tag never moves `X.Y`, `X` or `latest`. The GitHub release notes come from the matching `CHANGELOG.md` section, and the release attaches `docker-compose.yml`, `Caddyfile` and `.env.example`, plus the multi-node files `docker-compose.control-plane.yml`, `docker-compose.worker.yml`, `Caddyfile.worker` and `.env.worker.example`.
 
 ## 11. SDKs
 
