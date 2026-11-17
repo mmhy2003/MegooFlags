@@ -31,7 +31,42 @@ export default defineConfig({
         "./src/styles/brand.css",
       ],
       plugins: [starlightLinksValidator()],
-      sidebar: [],
+      sidebar: [
+        { label: "Use", items: ["use/terraform"] },
+        {
+          label: "SDKs",
+          items: [
+            "sdks/go",
+            "sdks/node",
+            "sdks/python",
+            "sdks/java",
+            "sdks/dotnet",
+            "sdks/ruby",
+            "sdks/php",
+            "sdks/js",
+            "sdks/react",
+            "sdks/react-native",
+            "sdks/ios",
+            "sdks/android",
+            "sdks/flutter",
+          ],
+        },
+        {
+          label: "Reference",
+          items: ["reference/evaluation", "reference/delivery"],
+        },
+        {
+          label: "Project",
+          items: [
+            "project/roadmap",
+            "project/contributing",
+            "project/rfcs",
+            "project/code-of-conduct",
+            "project/security-policy",
+            "project/release-notes",
+          ],
+        },
+      ],
     }),
   ],
 });

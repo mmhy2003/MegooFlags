@@ -1,3 +1,27 @@
 dist/
 .astro/
 node_modules/
+
+# Synced by scripts/sync.mjs from sync.manifest.json
+src/content/docs/sdks/go.md
+src/content/docs/sdks/node.md
+src/content/docs/sdks/python.md
+src/content/docs/sdks/java.md
+src/content/docs/sdks/dotnet.md
+src/content/docs/sdks/ruby.md
+src/content/docs/sdks/php.md
+src/content/docs/sdks/js.md
+src/content/docs/sdks/react.md
+src/content/docs/sdks/react-native.md
+src/content/docs/sdks/ios.md
+src/content/docs/sdks/android.md
+src/content/docs/sdks/flutter.md
+src/content/docs/reference/evaluation.md
+src/content/docs/reference/delivery.md
+src/content/docs/use/terraform.md
+src/content/docs/project/roadmap.md
+src/content/docs/project/contributing.md
+src/content/docs/project/rfcs.md
+src/content/docs/project/code-of-conduct.md
+src/content/docs/project/security-policy.md
+src/content/docs/project/release-notes.md
