@@ -17,6 +17,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - API logs are JSON lines on stdout, with one access-log line per request. Set `MEGOOFLAGS_LOG_LEVEL` to change the level.
 
 ### Added
+- docker-compose.control-plane.yml for the control plane of a multi-node deployment.
 - `MEGOOFLAGS_ROLE` (`standalone`, `control-plane`, `worker`): workers serve `/sdk/*` and `/ofrep/*` from a signed snapshot on disk and keep serving while the control plane is down.
 - Nodes API (`/api/nodes`) to add, drain, resume, rotate, revoke and remove worker nodes on a control plane.
 - `megooflags` CLI 0.1.0: projects, environments, segments and flags (create, update, archive, restore, delete, variations, targeting, on, off, kill), `promote` between environments (with change requests where approvals are required), `evaluate`, and `ruleset pull` for SDK bootstrap files and offline local development. Table, JSON or YAML output and stable exit codes for scripts. Released with `cli/vX.Y.Z` tags as archives for Linux, macOS and Windows with `SHA256SUMS`; see `docs/cli.md`.
