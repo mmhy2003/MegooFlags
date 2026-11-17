@@ -11,8 +11,12 @@ import {
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
+import { AddNodeDialog } from "@/components/nodes/add-node-dialog";
 import { NodeSummary } from "@/components/nodes/node-summary";
+import { RotateNodeDialog } from "@/components/nodes/rotate-node-dialog";
+import { ConfirmDialog } from "@/components/patterns/confirm-dialog";
 import { type Column, DataList } from "@/components/patterns/data-list";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { PageHeader } from "@/components/patterns/page-header";
@@ -31,9 +35,9 @@ import { useApiData } from "@/hooks/use-api-data";
 import { useVisibleInterval } from "@/hooks/use-visible-interval";
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { failureText, must } from "@/lib/flags/errors";
+import { ApiError, failureText, must } from "@/lib/flags/errors";
 import { relativeTime, snapshotText } from "@/lib/nodes/format";
-import { nodePill } from "@/lib/nodes/status";
+import { nodeActions, nodePill } from "@/lib/nodes/status";
 
 type Node = components["schemas"]["NodeOut"];
 type NodeList = components["schemas"]["NodeList"];
@@ -43,7 +47,83 @@ type Loaded = { list: NodeList; now: number };
 
 const REFRESH_MS = 10_000;
 
-function columns(current: number, now: number): Column<Node>[] {
+/** The actions that ask first, with their dialog texts and the toast after them. */
+type Confirmed = "drain" | "resume" | "revoke" | "remove";
+
+const CONFIRMS: Record<
+  Confirmed,
+  {
+    title: (name: string) => string;
+    description: string;
+    label: string;
+    destructive: boolean;
+    done: (name: string) => string;
+  }
+> = {
+  drain: {
+    title: (name) => `Drain ${name}?`,
+    description:
+      "It stops taking new traffic: /readyz turns unready and after the grace time its SDK streams close so SDKs reconnect elsewhere.",
+    label: "Drain",
+    destructive: false,
+    done: (name) => `${name} is draining`,
+  },
+  resume: {
+    title: (name) => `Resume ${name}?`,
+    description: "It becomes ready and takes traffic again.",
+    label: "Resume",
+    destructive: false,
+    done: (name) => `${name} is active again`,
+  },
+  revoke: {
+    title: (name) => `Revoke ${name}?`,
+    description:
+      "It stops serving at once and answers SDK requests with 503. This can't be undone; add a new worker to replace it.",
+    label: "Revoke",
+    destructive: true,
+    done: (name) => `${name} revoked`,
+  },
+  remove: {
+    title: (name) => `Remove ${name}?`,
+    description: "It disappears from this list.",
+    label: "Remove",
+    destructive: true,
+    done: (name) => `${name} removed`,
+  },
+};
+
+function showError(error: unknown, what: string) {
+  if (!(error instanceof ApiError)) console.error(what, error);
+  toast.error(
+    error instanceof ApiError
+      ? failureText(error.failure)
+      : "Couldn't reach the server",
+  );
+}
+
+/** Runs a confirmed action against the API. */
+async function run(action: Confirmed, n: Node): Promise<void> {
+  const params = { params: { path: { id: n.id } } };
+  if (action === "drain") await must(api.POST("/api/nodes/{id}/drain", params));
+  if (action === "resume") {
+    await must(api.POST("/api/nodes/{id}/resume", params));
+  }
+  if (action === "revoke") {
+    await must(api.POST("/api/nodes/{id}/revoke", params));
+  }
+  if (action === "remove") await must(api.DELETE("/api/nodes/{id}", params));
+}
+
+type RowActions = {
+  onConfirm: (action: Confirmed, n: Node) => void;
+  onRotate: (n: Node) => void;
+};
+
+function columns(
+  current: number,
+  now: number,
+  actions: RowActions,
+): Column<Node>[] {
   return [
     {
       id: "name",
@@ -113,46 +193,61 @@ function columns(current: number, now: number): Column<Node>[] {
       id: "actions",
       header: "Actions",
       priority: "main",
-      // The items stay disabled until the dialogs that run them are wired in.
-      cell: (n) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={`Actions for ${n.name}`}
-                className="min-h-11 min-w-11"
-              />
-            }
-          >
-            <Ellipsis aria-hidden />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-auto min-w-40">
-            <DropdownMenuItem disabled>
-              {n.status === "draining" ? (
-                <Play aria-hidden />
-              ) : (
-                <Pause aria-hidden />
-              )}
-              {n.status === "draining" ? "Resume" : "Drain"}
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled>
-              <RotateCw aria-hidden />
-              Rotate token
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" disabled>
-              <Ban aria-hidden />
-              Revoke
-            </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" disabled>
-              <Trash2 aria-hidden />
-              Remove
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
+      cell: (n) => {
+        const allowed = nodeActions(n);
+        const draining = n.status === "draining";
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Actions for ${n.name}`}
+                  className="min-h-11 min-w-11"
+                />
+              }
+            >
+              <Ellipsis aria-hidden />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-auto min-w-40">
+              <DropdownMenuItem
+                disabled={draining ? !allowed.resume : !allowed.drain}
+                onClick={() =>
+                  actions.onConfirm(draining ? "resume" : "drain", n)
+                }
+              >
+                {draining ? <Play aria-hidden /> : <Pause aria-hidden />}
+                {draining ? "Resume" : "Drain"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!allowed.rotate}
+                onClick={() => actions.onRotate(n)}
+              >
+                <RotateCw aria-hidden />
+                Rotate token
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={!allowed.revoke}
+                onClick={() => actions.onConfirm("revoke", n)}
+              >
+                <Ban aria-hidden />
+                Revoke
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={!allowed.remove}
+                onClick={() => actions.onConfirm("remove", n)}
+              >
+                <Trash2 aria-hidden />
+                Remove
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
     },
   ];
 }
@@ -180,10 +275,30 @@ export function NodeList() {
   if (list.data && list.data !== shown) setShown(list.data);
   if (list.failure && shown) setShown(null);
   const loaded = list.data ?? (list.failure ? null : shown);
+  const [adding, setAdding] = useState(false);
+  // Like the confirm dialog, the rotate dialog keeps its node while closing.
+  const [rotating, setRotating] = useState<{
+    open: boolean;
+    node: Node | null;
+  }>({ open: false, node: null });
+  const [confirming, setConfirming] = useState<{
+    open: boolean;
+    action: Confirmed;
+    node: Node | null;
+  }>({ open: false, action: "drain", node: null });
 
-  // Wired to its dialog in the next step.
+  const confirm = async (action: Confirmed, n: Node) => {
+    try {
+      await run(action, n);
+      toast(CONFIRMS[action].done(n.name));
+      list.reload();
+    } catch (error) {
+      showError(error, `${action} of the node failed`);
+    }
+  };
+
   const add = (
-    <Button disabled>
+    <Button onClick={() => setAdding(true)}>
       <Plus aria-hidden />
       Add worker
     </Button>
@@ -244,7 +359,11 @@ export function NodeList() {
         <NodeSummary list={loaded.list} />
         <DataList
           caption="Nodes"
-          columns={columns(loaded.list.snapshot_version, loaded.now)}
+          columns={columns(loaded.list.snapshot_version, loaded.now, {
+            onConfirm: (action, node) =>
+              setConfirming({ open: true, action, node }),
+            onRotate: (node) => setRotating({ open: true, node }),
+          })}
           rows={loaded.list.nodes}
           rowKey={(n) => n.id}
         />
@@ -260,6 +379,31 @@ export function NodeList() {
         actions={loaded ? add : undefined}
       />
       {body}
+      <AddNodeDialog
+        open={adding}
+        onOpenChange={setAdding}
+        onAdded={list.reload}
+      />
+      <RotateNodeDialog
+        node={rotating.node}
+        open={rotating.open}
+        onOpenChange={(open) => setRotating((r) => ({ ...r, open }))}
+        onRotated={list.reload}
+        onError={(error) => showError(error, "rotating the token failed")}
+      />
+      <ConfirmDialog
+        open={confirming.open}
+        onOpenChange={(open) => setConfirming((c) => ({ ...c, open }))}
+        title={CONFIRMS[confirming.action].title(
+          confirming.node?.name ?? "the worker",
+        )}
+        description={CONFIRMS[confirming.action].description}
+        confirmLabel={CONFIRMS[confirming.action].label}
+        destructive={CONFIRMS[confirming.action].destructive}
+        onConfirm={() => {
+          if (confirming.node) void confirm(confirming.action, confirming.node);
+        }}
+      />
     </>
   );
 }
