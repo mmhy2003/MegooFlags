@@ -157,6 +157,28 @@ jobs:
           git diff --exit-code -- api/openapi.json web/lib/api/schema.d.ts \
             || { echo "::error::api/openapi.json or web/lib/api/schema.d.ts is stale. Run the commands in AGENTS.md and commit."; exit 1; }
 
+  # The docs site; the link validator runs inside the build.
+  site:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: site/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build
+
   web-e2e:
     runs-on: ubuntu-24.04
     # Pinned to @playwright/test in web/package.json, so visual baselines match (e2e/docker.sh).
