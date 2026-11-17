@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -112,3 +113,56 @@ def test_release_attaches_cluster_files() -> None:
         "deploy/.env.worker.example",
     ):
         assert name in text, name
+
+
+_DURATION = re.compile(r"^(\d+)(ms|s|m|h)?$")
+_UNIT_SECONDS = {"ms": 0.001, "s": 1, "m": 60, "h": 3600, None: 1}
+
+
+def _seconds(value: str) -> float:
+    match = _DURATION.match(value.strip("\"'"))
+    assert match, value
+    return int(match.group(1)) * _UNIT_SECONDS[match.group(2)]
+
+
+_LB_SAMPLES = {
+    "nginx.conf": (
+        "proxy_buffering off;",
+        r"proxy_read_timeout\s+(\S+);",
+        r"location\s+(/\S+)\s*\{",
+    ),
+    "haproxy.cfg": (
+        "timeout tunnel",
+        r"timeout\s+tunnel\s+(\S+)",
+        r"path_beg\s+(.+)",
+    ),
+    "Caddyfile": (
+        "flush_interval -1",
+        r"read_timeout\s+(\S+)",
+        r"@sdk\s+path\s+(.+)",
+    ),
+    "traefik.yml": (
+        "flushInterval:",
+        r"idleTimeout:\s*(\S+)",
+        r"PathPrefix\(`([^`]+)`\)",
+    ),
+}
+
+
+def test_lb_samples_cover_settings() -> None:
+    examples = ROOT / "docs" / "examples" / "multi-node"
+    assert (examples / "README.md").is_file()
+    for name, (buffering, timeout, route) in _LB_SAMPLES.items():
+        text = (examples / name).read_text(encoding="utf-8")
+        for worker in ("worker-1:80", "worker-2:80", "worker-3:80"):
+            assert worker in text, (name, worker)
+        assert "/readyz" in text, name
+        assert buffering in text, name
+        timeouts = re.findall(timeout, text)
+        assert timeouts, name
+        assert all(_seconds(value) > 60 for value in timeouts), (name, timeouts)
+        routes = " ".join(re.findall(route, text)).replace(",", " ").split()
+        assert sorted({path.rstrip("*") for path in routes}) == ["/ofrep/", "/sdk/"], (
+            name,
+            routes,
+        )
