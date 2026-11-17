@@ -3267,6 +3267,7 @@ export interface components {
             preferences: components["schemas"]["Preferences"] | null;
             /** Require Mfa */
             require_mfa: boolean;
+            role: components["schemas"]["InstanceRole"];
             session_state: components["schemas"]["SessionState"] | null;
         };
         /**

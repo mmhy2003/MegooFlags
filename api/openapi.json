@@ -2619,6 +2619,9 @@
             "title": "Require Mfa",
             "type": "boolean"
           },
+          "role": {
+            "$ref": "#/components/schemas/InstanceRole"
+          },
           "session_state": {
             "anyOf": [
               {
@@ -2640,7 +2643,8 @@
           "session_state",
           "mfa",
           "require_mfa",
-          "preferences"
+          "preferences",
+          "role"
         ],
         "title": "MeOut",
         "type": "object"
