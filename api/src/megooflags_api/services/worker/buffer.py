@@ -123,6 +123,8 @@ class EventBuffer:
         self._counts: dict[CountKey, int] = {}
         self._exposures: dict[uuid.UUID, list[ExposureIn]] = {}
         self._exposure_items = 0
+        # Items `seal` took from memory and has not finished writing.
+        self._sealing_items = 0
         self._io_lock = threading.Lock()
         self._index_lock = threading.Lock()
         self._files: dict[str, _File] = {}
@@ -135,8 +137,12 @@ class EventBuffer:
 
     @property
     def pending_events(self) -> int:
-        """Exposures plus count entries in memory and in files."""
-        return self._exposure_items + len(self._counts) + self._file_items
+        """Exposures plus count entries in memory and in files.
+
+        Items being sealed count until their files are written, so the total never drops to 0
+        while something is unsent; for that moment an item may be counted twice.
+        """
+        return self._exposure_items + len(self._counts) + self._sealing_items + self._file_items
 
     def load(self) -> None:
         """Pick up the batch files of an earlier run; drop files older than 7 days or unreadable.
@@ -210,9 +216,13 @@ class EventBuffer:
             with self._memory_lock:
                 counts, self._counts = self._counts, {}
                 exposures, self._exposures = self._exposures, {}
+                self._sealing_items = self._exposure_items + len(counts)
                 self._exposure_items = 0
-            self._seal_counts(counts)
-            self._seal_exposures(exposures)
+            try:
+                self._seal_counts(counts)
+                self._seal_exposures(exposures)
+            finally:
+                self._sealing_items = 0
             self._enforce_max_bytes()
 
     async def forward(self, send: Callable[[ClusterEventsIn], Awaitable[SendResult]]) -> None:

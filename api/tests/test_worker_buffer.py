@@ -5,8 +5,11 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from megooflags_api.schemas.cluster import ClusterEventsIn
 from megooflags_api.schemas.events import CountIn, EventsIn, ExposureIn
+from megooflags_api.services.worker import buffer as buffer_module
 from megooflags_api.services.worker.buffer import EventBuffer, SendResult
 from megooflags_api.services.worker.sources import BufferEventSink
 
@@ -92,6 +95,25 @@ def test_counts_summed_and_sealed(tmp_path: Path) -> None:
 
     buffer.seal()
     assert len(batches(tmp_path)) == 1
+
+
+def test_items_being_sealed_stay_pending(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    buffer = new_buffer(tmp_path)
+    buffer.add_counts(ENV_A, [("new-checkout", "on")])
+    buffer.add_exposures(ENV_A, [exposure()], persist_context=False)
+    seen: list[int] = []
+    write = buffer_module.write_atomic
+
+    def observing_write(path: Path, data: bytes) -> None:
+        seen.append(buffer.pending_events)
+        write(path, data)
+
+    monkeypatch.setattr(buffer_module, "write_atomic", observing_write)
+    buffer.seal()
+
+    assert len(seen) == 2
+    assert min(seen) >= 2
+    assert buffer.pending_events == 2
 
 
 def test_exposures_spill_at_memory_limit(tmp_path: Path) -> None:
