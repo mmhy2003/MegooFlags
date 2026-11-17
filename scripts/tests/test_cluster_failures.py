@@ -68,3 +68,36 @@ def test_arguments(monkeypatch, capsys):
     with pytest.raises(SystemExit):
         parse_args(REQUIRED)
     assert "--token" in capsys.readouterr().err
+
+
+def test_setup_waits_until_every_worker_serves_the_new_keys(monkeypatch):
+    # The workers are healthy and current at once, but worker-2 knows the keys only later.
+    import cluster_failures
+
+    args = parse_args([*REQUIRED, "--token", "t"])
+    cluster = cluster_failures.Cluster(args)
+    monkeypatch.setattr(
+        cluster, "manage", lambda method, path, body=None: {"key": f"mf_{body.get('kind')}_x"}
+    )
+    healthy = [node(name, "healthy") for name in cluster_failures.NAMES]
+    monkeypatch.setattr(cluster, "nodes", lambda: healthy)
+    monkeypatch.setattr(cluster, "flip", lambda enabled: None)
+    monkeypatch.setattr(cluster_failures.time, "sleep", lambda seconds: None)
+    calls = 0
+    last = {}  # (worker, key) -> the status of its last answer
+
+    def answer(method, url, body=None, key=None, timeout=10.0):
+        nonlocal calls
+        calls += 1
+        worker = url.split("/sdk/")[0].split("/ofrep/")[0]
+        status = 401 if worker == "http://w2" and calls < 10 else 200
+        last[worker, key] = status
+        return status, {}, b""
+
+    monkeypatch.setattr(cluster_failures, "request", answer)
+
+    cluster.setup()
+
+    assert calls >= 10
+    workers = ["http://w1", "http://w2", "http://w3"]
+    assert last == {(w, k): 200 for w in workers for k in ("mf_server_x", "mf_client_x")}

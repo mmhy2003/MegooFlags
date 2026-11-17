@@ -1,10 +1,12 @@
 import asyncio
 import uuid
+from typing import Any
 
 import httpx
 from fastapi import FastAPI
 from helpers import create_project, create_sdk_key
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import Insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from test_sdk import FLAGS, environment, setup_demo
 
@@ -194,3 +196,25 @@ async def test_current_snapshot_version(app: FastAPI, api: httpx.AsyncClient) ->
 
     async with app.state.sessionmaker() as session:
         assert await current_snapshot_version(session) == latest.header.version
+
+
+async def test_environment_deleted_after_row_insert_returns_none(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await setup_demo(api)
+    env = await environment(app, "development")
+
+    async with app.state.sessionmaker() as session:
+        execute = session.execute
+
+        async def deleting(statement: Any, *args: Any, **kwargs: Any) -> Any:
+            result = await execute(statement, *args, **kwargs)
+            if isinstance(statement, Insert):
+                # As if the environment were deleted between the insert and the locking read.
+                await execute(delete(EnvironmentSnapshot))
+            return result
+
+        session.execute = deleting  # type: ignore[method-assign]
+        snap = await build_snapshot(session, env, "demo", app.state.ruleset_cache, SIGNER)
+
+    assert snap is None

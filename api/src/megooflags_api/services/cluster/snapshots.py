@@ -76,7 +76,10 @@ async def build_snapshot(
             .where(EnvironmentSnapshot.environment_id == environment.id)
             .with_for_update()
         )
-    ).one()
+    ).one_or_none()
+    if row is None:  # the environment was deleted since the insert
+        await session.rollback()
+        return None
     entry = await cache.get_entry(session, environment, max_age=0)
     keys = await session.execute(
         select(

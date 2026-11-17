@@ -180,6 +180,76 @@ def test_files_older_than_7_days_dropped_on_load(tmp_path: Path) -> None:
     assert reloaded.dropped_total == 2
 
 
+async def test_files_older_than_7_days_dropped_while_running(tmp_path: Path) -> None:
+    clock = Clock(START)
+    buffer = new_buffer(tmp_path, clock)
+    buffer.add_exposures(ENV_A, [exposure("old")] * 2, persist_context=False)
+    buffer.seal()
+    clock.now += timedelta(days=6)
+    buffer.add_exposures(ENV_A, [exposure("recent")], persist_context=False)
+    buffer.seal()
+    clock.now = START + timedelta(days=7, seconds=1)
+
+    send = Sender([])
+    await buffer.forward(send)
+
+    assert [b.exposures[0].flag_key for b in send.sent] == ["recent"]
+    assert buffer.dropped_total == 2
+
+
+def test_seal_drops_files_older_than_7_days(tmp_path: Path) -> None:
+    clock = Clock(START)
+    buffer = new_buffer(tmp_path, clock)
+    buffer.add_exposures(ENV_A, [exposure("old")] * 2, persist_context=False)
+    buffer.seal()
+    clock.now = START + timedelta(days=7, seconds=1)
+
+    buffer.seal()
+
+    assert batches(tmp_path) == []
+    assert buffer.pending_events == 0
+    assert buffer.dropped_total == 2
+
+
+def test_rewritten_count_file_ages_from_its_last_write(tmp_path: Path) -> None:
+    clock = Clock(START)
+    buffer = new_buffer(tmp_path, clock)
+    buffer.add_counts(ENV_A, [("a", "on")], hour=START)
+    buffer.seal()
+    clock.now += timedelta(days=6)
+    buffer.add_counts(ENV_A, [("a", "on")], hour=START)
+    buffer.seal()
+
+    clock.now = START + timedelta(days=7, seconds=1)
+    reloaded = new_buffer(tmp_path, clock)
+
+    [batch] = batches(tmp_path)
+    assert [c.count for c in batch.counts] == [2]
+    assert reloaded.pending_events == 1
+    assert reloaded.dropped_total == 0
+
+
+def test_count_file_left_behind_by_a_rewrite_is_dropped_on_load(tmp_path: Path) -> None:
+    clock = Clock(START)
+    buffer = new_buffer(tmp_path, clock)
+    buffer.add_counts(ENV_A, [("a", "on")], hour=START)
+    buffer.seal()
+    [old] = files(tmp_path)
+    data = old.read_bytes()
+    clock.now += timedelta(hours=1)
+    buffer.add_counts(ENV_A, [("a", "on")], hour=START)
+    buffer.seal()
+    # As if the worker stopped between writing the new file and deleting the old one.
+    old.write_bytes(data)
+
+    reloaded = new_buffer(tmp_path, clock)
+
+    [batch] = batches(tmp_path)
+    assert [c.count for c in batch.counts] == [2]
+    assert reloaded.pending_events == 1
+    assert reloaded.dropped_total == 0
+
+
 def test_restart_keeps_batches(tmp_path: Path) -> None:
     buffer = new_buffer(tmp_path)
     buffer.add_counts(ENV_A, [("banner", None)])

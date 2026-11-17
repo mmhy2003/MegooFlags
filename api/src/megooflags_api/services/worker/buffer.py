@@ -4,11 +4,13 @@ New items wait in memory and are sealed into batch files under the buffer direct
 `counts-<ns>-<uuid>.json` and `exposures-<ns>-<uuid>.json`, each one `ClusterEventsIn` of at most
 `MAX_BATCH` items, named after its batch id. Once a file has been offered to the control plane its
 content and batch id never change, so a batch sent again after an ambiguous failure is stored once.
-The files survive a restart; files older than 7 days (the control plane's batch retention) are
-dropped when they are loaded.
+The files survive a restart. Files older than 7 days (the control plane's batch retention) are
+dropped when they are loaded, on every seal and before they would be sent.
 
-Count files this process wrote and never offered are rewritten in place as new counts arrive, so
-an outage grows them with the number of flags, variants and hours, not with time. The files are
+Count files this process wrote and never offered are rewritten as new counts arrive, so an outage
+grows them with the number of flags, variants and hours, not with time. A rewrite keeps the batch
+id but takes a new name, so the file's age counts from its last write; should the old file survive
+a crash, the next load keeps only the newest file of the batch. The files are
 bounded by `max_bytes`: past it, the oldest exposure files are deleted. The one being sent is
 skipped, so the next oldest goes instead, which may be the newest. Count files are never dropped
 for size.
@@ -150,7 +152,7 @@ class EventBuffer:
         They may have been offered before the restart, so they are never rewritten.
         """
         self._directory.mkdir(parents=True, exist_ok=True)
-        cutoff = _ns(self._clock() - MAX_AGE)
+        newest_counts: dict[str, str] = {}  # batch id -> the newest count file of the batch
         with self._io_lock:
             for path in self._directory.iterdir():
                 if path.name.endswith(TMP_SUFFIX):
@@ -168,13 +170,20 @@ class EventBuffer:
                 kind: Kind = "counts" if match.group(1) == "counts" else "exposures"
                 ns = int(match.group(2))
                 items = len(batch.exposures) + len(batch.counts)
-                if ns < cutoff:
-                    logger.warning("dropping event batch %s: older than 7 days", path.name)
-                    path.unlink(missing_ok=True)
-                    self._drop(items)
-                    continue
                 self._index(path.name, _File(kind, ns, items, path.stat().st_size))
                 self._last_ns = max(self._last_ns, ns)
+                if kind == "counts":
+                    batch_id = match.group(3)
+                    other = newest_counts.get(batch_id)
+                    if other is not None:
+                        # Left behind by a rewrite: the newer file holds all of its counts.
+                        older, newer = sorted((other, path.name), key=lambda n: self._files[n].ns)
+                        logger.info("deleting %s: replaced by %s", older, newer)
+                        self._delete(older)
+                        newest_counts[batch_id] = newer
+                    else:
+                        newest_counts[batch_id] = path.name
+            self._expire()
             self._enforce_max_bytes()
 
     def add_counts(
@@ -223,6 +232,7 @@ class EventBuffer:
                 self._seal_exposures(exposures)
             finally:
                 self._sealing_items = 0
+            self._expire()
             self._enforce_max_bytes()
 
     async def forward(self, send: Callable[[ClusterEventsIn], Awaitable[SendResult]]) -> None:
@@ -329,21 +339,21 @@ class EventBuffer:
                     self._drop(len(chunk))
 
     def _write(self, kind: Kind, batch: ClusterEventsIn, name: str | None = None) -> str:
-        """Write `batch` to a new file, or replace the file `name`. Returns the file name."""
-        if name is None:
-            ns = max(_ns(self._clock()), self._last_ns + 1)
-            name = f"{kind}-{ns:020d}-{batch.batch_id}.json"
-        else:
-            ns = self._files[name].ns
+        """Write `batch` to a new file, replacing the file `name` if given. Returns the new name."""
+        ns = max(_ns(self._clock()), self._last_ns + 1)
+        new_name = f"{kind}-{ns:020d}-{batch.batch_id}.json"
         data = batch.model_dump_json(exclude_defaults=True).encode()
-        write_atomic(self._directory / name, data)
-        self._last_ns = max(self._last_ns, ns)
-        self._index(name, _File(kind, ns, len(batch.exposures) + len(batch.counts), len(data)))
-        return name
+        write_atomic(self._directory / new_name, data)
+        self._last_ns = ns
+        self._index(new_name, _File(kind, ns, len(batch.exposures) + len(batch.counts), len(data)))
+        if name is not None:
+            self._delete(name)
+        return new_name
 
     def _take_oldest(self, last_ns: int) -> tuple[str, ClusterEventsIn] | None:
         """The oldest file up to `last_ns`, marked as being sent and never to be rewritten."""
         with self._io_lock:
+            self._expire()
             for name in self._oldest_first():
                 if self._files[name].ns > last_ns:
                     return None
@@ -381,6 +391,19 @@ class EventBuffer:
             old = self._files.pop(name, None)
             if old is not None:
                 self._file_items -= old.items
+
+    def _expire(self) -> None:
+        """Drop the files older than 7 days, except the one being sent."""
+        cutoff = _ns(self._clock() - MAX_AGE)
+        for name in self._oldest_first():
+            file = self._files[name]
+            if file.ns >= cutoff:
+                return
+            if name == self._sending:
+                continue
+            logger.warning("dropping event batch %s: older than 7 days", name)
+            self._delete(name)
+            self._drop(file.items)
 
     def _enforce_max_bytes(self) -> None:
         with self._index_lock:

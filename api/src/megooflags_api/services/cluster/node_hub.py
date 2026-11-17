@@ -88,6 +88,10 @@ class NodeStream:
         self.state = state
         self._offer(_STATE, StreamEvent(_STATE, _json({"state": state})))
 
+    @property
+    def revoked(self) -> bool:
+        return self._final
+
     def offer_revoked(self) -> None:
         """Final: drops what is pending, and nothing offered later is sent."""
         if self._final:
@@ -145,6 +149,10 @@ class NodeHub:
         self._streams.add(stream)
         metrics.NODE_STREAMS.inc()
         return stream
+
+    async def check(self, stream: NodeStream) -> None:
+        """Re-read the stream's node and token now, for a change published before it subscribed."""
+        await self._check_streams([stream])
 
     def unsubscribe(self, stream: NodeStream) -> None:
         if stream in self._streams:

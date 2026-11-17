@@ -4,7 +4,8 @@ Under the data directory, `snapshots/<environment_id>.snap` holds `SignedSnapsho
 `cluster.json` what the worker knows about the cluster. Every write goes to `<name>.tmp`, is
 synced, then replaces the file, so a crash never leaves a half-written snapshot. Every file is
 verified against the control plane's public key when it is loaded; a bad one is deleted and the
-store stays invalid until the next full sync.
+store stays invalid until the next full sync. After the control plane's key changes, the files
+not yet signed again are still verified against the keys before it, until the next full sync.
 
 Rulesets are read from worker threads (`asyncio.to_thread`) while the event loop applies and
 removes snapshots, so the in-memory indexes are only touched under one lock.
@@ -16,7 +17,7 @@ import os
 import threading
 import uuid
 from collections import OrderedDict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,8 @@ TMP_SUFFIX = ".tmp"
 @dataclass(slots=True)
 class ClusterMeta:
     public_key: str | None = None
+    # Keys the held snapshots may still be signed with: set by a key change, cleared on sync.
+    previous_public_keys: list[str] = field(default_factory=list)
     synced: bool = False
     revoked: bool = False
     persist_context: bool = False
@@ -62,8 +65,12 @@ class ClusterMeta:
         if not isinstance(parsed, dict):
             raise ValueError("cluster.json is not an object")
         contact = parsed.get("last_contact_at")
+        previous = parsed.get("previous_public_keys", [])
+        if not isinstance(previous, list) or not all(isinstance(key, str) for key in previous):
+            raise ValueError("cluster.json field 'previous_public_keys' is not a list of strings")
         meta = cls(
             public_key=parsed.get("public_key"),
+            previous_public_keys=previous,
             synced=parsed.get("synced", False),
             revoked=parsed.get("revoked", False),
             persist_context=parsed.get("persist_context", False),
@@ -151,6 +158,8 @@ class SnapshotStore:
         write_atomic(self._dir / META_FILE, self.meta.to_json())
 
     def mark_synced(self) -> None:
+        """Every held snapshot now comes from the control plane's current key."""
+        self.meta.previous_public_keys = []
         self.meta.synced = True
         self.valid = True
         self.save_meta()
@@ -252,7 +261,8 @@ class SnapshotStore:
 
     def _read(self, path: Path) -> SignedSnapshot | None:
         """The verified snapshot in `path`, for the environment its name says; else None."""
-        if self.meta.public_key is None:
+        keys = [self.meta.public_key, *self.meta.previous_public_keys]
+        if keys[0] is None:
             return None
         try:
             snap = SignedSnapshot.from_bytes(path.read_bytes())
@@ -260,7 +270,7 @@ class SnapshotStore:
             return None
         if path.name != f"{snap.header.environment_id}{SNAPSHOT_SUFFIX}":
             return None
-        if not snap.verify(self.meta.public_key):
+        if not any(key is not None and snap.verify(key) for key in keys):
             return None
         return snap
 

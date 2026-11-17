@@ -3,8 +3,9 @@
 `run` keeps one `POST /api/cluster/v1/stream` open. It sends the versions the worker holds, so
 the control plane only sends the snapshots that changed, applies every `put` and `remove` to the
 store and tells the SDK stream hub, and marks the store synced on `synced`. When the stream is
-lost it reconnects with backoff, and the worker keeps serving what it has. Only a revoked token
-stops the loop: the worker then answers SDK requests with 503 until it starts with a valid one.
+lost it reconnects with backoff, and the worker keeps serving what it has. Only a revoked token,
+or once synced an unknown one (the node was removed), stops the loop: the worker then answers SDK
+requests with 503 until it starts with a valid one.
 
 The stream is read line by line from bytes, splitting on b"\\n" only, so a snapshot's data
 lines reach `SignedSnapshot.from_bytes` exactly as they were signed.
@@ -21,7 +22,13 @@ from typing import Any, Protocol
 import httpx
 
 from megooflags_api import __version__
-from megooflags_api.schemas.cluster import ClusterEventsIn, HeartbeatIn, HeartbeatOut, StreamIn
+from megooflags_api.schemas.cluster import (
+    MAX_SNAPSHOT_AGE,
+    ClusterEventsIn,
+    HeartbeatIn,
+    HeartbeatOut,
+    StreamIn,
+)
 from megooflags_api.services.cluster.snapshot_format import SignedSnapshot, SnapshotError
 from megooflags_api.services.worker.buffer import EventBuffer, SendResult
 from megooflags_api.services.worker.state import WorkerState
@@ -121,8 +128,11 @@ class ControlPlaneClient:
         self.read_timeout = HELLO_READ_TIMEOUT
         self._delay = self.backoff_min
         self._drain_task: asyncio.Task[None] | None = None
-        # Environments held under the control plane's previous signing key, until re-signed.
-        self._rekeying: set[uuid.UUID] = set()
+        # Environments held under the control plane's previous signing key, until re-signed;
+        # after a restart in mid-change, every one.
+        self._rekeying: set[uuid.UUID] = (
+            set(store.versions()) if store.meta.previous_public_keys else set()
+        )
 
     async def run(self) -> None:
         """Keep the snapshot stream open until the node is revoked."""
@@ -159,7 +169,7 @@ class ControlPlaneClient:
         body = HeartbeatIn(
             version=self.version,
             snapshot_version=self._store.max_version(),
-            snapshot_age_seconds=None if age is None else max(age, 0.0),
+            snapshot_age_seconds=None if age is None else min(max(age, 0.0), MAX_SNAPSHOT_AGE),
             sdk_streams=self._hub.subscriber_count,
             buffered_events=self._buffer.pending_events,
             ready=self._state.unavailable_reason() is None,
@@ -167,6 +177,8 @@ class ControlPlaneClient:
         response = await self._http.post(
             HEARTBEAT_PATH, json=body.model_dump(mode="json"), headers=self._headers()
         )
+        if self._token_gone(response):
+            self._revoke()
         response.raise_for_status()
         out = HeartbeatOut.model_validate_json(response.content)
         self._set_draining(out.state == "draining")
@@ -237,6 +249,9 @@ class ControlPlaneClient:
             logger.error("the control plane revoked this node: %s", message)
             self._revoke()
             return None
+        if self._token_gone(response):
+            self._revoke()
+            return None
         if status == 409 and code == "incompatible_version":
             logger.error("%s", message)
             self._state.incompatible = message
@@ -246,6 +261,19 @@ class ControlPlaneClient:
             return NOT_CONTROL_PLANE_RETRY
         logger.warning("the control plane refused the stream: %d %s", status, message)
         return self._backoff()
+
+    def _token_gone(self, response: httpx.Response) -> bool:
+        """The control plane no longer knows the token of a node it once synced: the node was
+        removed, likely after a revoke the worker missed. A 401 before the first sync is taken
+        as a mistyped token that may still be fixed, and one without the control plane's error
+        code as a proxy's."""
+        if response.status_code != 401 or not self._store.meta.synced:
+            return False
+        code, message = _error(response)
+        if code != "unauthorized":
+            return False
+        logger.error("the control plane no longer knows this node's token: %s", message)
+        return True
 
     def _started(self) -> None:
         self._state.incompatible = None
@@ -309,9 +337,14 @@ class ControlPlaneClient:
         public_key = str(hello["public_key"])
         if meta.public_key is not None and meta.public_key != public_key:
             # The control plane's secret key changed: it sends every snapshot again, re-signed
-            # with the versions the store holds. The old ones keep serving until replaced.
+            # with the versions the store holds. The old ones are still trusted, so they keep
+            # serving (even across a restart) until replaced or until `synced`.
             logger.warning("the control plane's signing key changed; resyncing every snapshot")
+            if meta.public_key not in meta.previous_public_keys:
+                meta.previous_public_keys.append(meta.public_key)
             self._rekeying = set(self._store.versions())
+        if public_key in meta.previous_public_keys:
+            meta.previous_public_keys.remove(public_key)
         meta.public_key = public_key
         meta.persist_context = bool(hello["persist_context"])
         meta.control_plane_version = str(hello["version"])

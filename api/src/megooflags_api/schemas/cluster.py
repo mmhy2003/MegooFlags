@@ -6,6 +6,8 @@ from pydantic import Field
 from megooflags_api.schemas.common import ApiModel
 from megooflags_api.schemas.events import MAX_BATCH, CountIn, ExposureIn
 
+MAX_SNAPSHOT_AGE = 1e9  # about 31 years, so the age always fits a timedelta
+
 
 class StreamIn(ApiModel):
     versions: dict[uuid.UUID, int] = Field(
@@ -22,7 +24,10 @@ class HeartbeatIn(ApiModel):
     version: str = Field(max_length=50)
     snapshot_version: int = Field(ge=0)
     snapshot_age_seconds: float | None = Field(
-        None, ge=0, description="Seconds since the worker last synced; None before its first sync."
+        None,
+        ge=0,
+        le=MAX_SNAPSHOT_AGE,
+        description="Seconds since the worker last synced; None before its first sync.",
     )
     sdk_streams: int = Field(ge=0)
     buffered_events: int = Field(ge=0)

@@ -368,6 +368,59 @@ async def test_new_public_key_keeps_serving_if_resync_is_cut(
     assert json.loads(cp.requests[2].content)["versions"] == {str(ENV_A): 3}
 
 
+async def test_snapshots_not_yet_re_signed_keep_serving_across_a_restart(
+    tmp_path: Path, make: Callable[..., Worker]
+) -> None:
+    cp = ControlPlane(
+        [
+            hello(public_key=OTHER_SIGNER.public_key),
+            StreamEvent.put(snapshot(ENV_A, 3, signer=OTHER_SIGNER)).frame(),
+        ]
+    )
+    worker = make(cp)
+    worker.store.meta.public_key = SIGNER.public_key
+    assert worker.store.apply(snapshot(ENV_A, 3))
+    assert worker.store.apply(snapshot(ENV_B, 4))
+    worker.store.mark_synced()
+    worker.start()
+
+    await until(lambda: worker.hub.notified == [PROJECT_ID])
+    # ENV_B is still signed with the old key, and is read from its file.
+    worker.store._parsed.clear()
+    assert worker.store.entry(ENV_A) is not None
+    assert worker.store.entry(ENV_B) is not None
+    await worker.stop()
+
+    # A restart before `synced` keeps both, and asks for every snapshot again.
+    cp = ControlPlane(
+        [
+            hello(public_key=OTHER_SIGNER.public_key),
+            StreamEvent.put(snapshot(ENV_B, 4, signer=OTHER_SIGNER)).frame(),
+            StreamEvent.put(snapshot(ENV_A, 3, signer=OTHER_SIGNER)).frame(),
+            synced(4),
+        ]
+    )
+    restarted = make(cp)
+    assert restarted.store.valid
+    assert restarted.store.versions() == {ENV_A: 3, ENV_B: 4}
+    assert restarted.store.entry(ENV_A) is not None
+    assert restarted.store.entry(ENV_B) is not None
+    assert restarted.state.unavailable_reason() is None
+    restarted.start()
+
+    await until(lambda: len(restarted.hub.notified) == 2)
+    await until(lambda: not restarted.store.meta.previous_public_keys)
+
+    assert json.loads(cp.requests[0].content)["versions"] == {}
+    reopened = SnapshotStore(tmp_path)
+    reopened.load()
+    assert reopened.valid and reopened.versions() == {ENV_A: 3, ENV_B: 4}
+    assert reopened.meta.public_key == OTHER_SIGNER.public_key
+    assert reopened.meta.previous_public_keys == []
+    # Once re-signed, files under the old key are no longer trusted.
+    assert reopened.apply(snapshot(ENV_A, 5)) is False
+
+
 async def test_environment_deleted_during_cut_rekey_is_removed_on_synced(
     make: Callable[..., Worker],
 ) -> None:
@@ -493,6 +546,60 @@ async def test_403_node_revoked_stops(make: Callable[..., Worker]) -> None:
     assert worker.store.meta.revoked
     assert worker.hub.calls == ["revoke_all"]
     assert len(cp.requests) == 1
+
+
+async def test_401_after_a_sync_is_revoked(make: Callable[..., Worker]) -> None:
+    # The node was removed while the worker was cut off, so its token is unknown.
+    cp = ControlPlane(error(401, "unauthorized"))
+    worker = make(cp)
+    worker.store.mark_synced()
+    worker.start()
+    assert worker.task is not None
+
+    await asyncio.wait_for(worker.task, 2)
+
+    assert worker.store.meta.revoked
+    assert worker.state.unavailable_reason() == "revoked"
+    assert worker.hub.calls == ["revoke_all"]
+    assert json.loads((worker.store._dir / "cluster.json").read_bytes())["revoked"] is True
+
+
+@pytest.mark.parametrize("reply", [error(401, "unauthorized"), httpx.Response(401)])
+async def test_401_before_any_sync_retries(
+    make: Callable[..., Worker], reply: httpx.Response
+) -> None:
+    cp = ControlPlane(reply, [hello(), synced(0)])
+    worker = make(cp)
+    worker.start()
+
+    await until(lambda: worker.store.meta.synced)
+
+    assert not worker.store.meta.revoked
+    assert worker.hub.calls == []
+
+
+async def test_401_from_a_proxy_after_a_sync_retries(make: Callable[..., Worker]) -> None:
+    cp = ControlPlane(httpx.Response(401, text="proxy says no"), [hello(), synced(0)], close=True)
+    worker = make(cp)
+    worker.store.mark_synced()
+    worker.start()
+
+    await until(lambda: len(cp.requests) == 2)
+
+    assert not worker.store.meta.revoked
+
+
+async def test_heartbeat_401_after_a_sync_is_revoked(make: Callable[..., Worker]) -> None:
+    cp = ControlPlane()
+    cp.other = lambda _: error(401, "unauthorized")
+    worker = make(cp)
+    worker.store.mark_synced()
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await worker.client.heartbeat()
+
+    assert worker.store.meta.revoked
+    assert worker.hub.calls == ["revoke_all"]
 
 
 async def test_409_incompatible_retries_after_delay(make: Callable[..., Worker]) -> None:

@@ -31,7 +31,7 @@ from megooflags_api.sdk_auth import bearer_token
 from megooflags_api.services.cluster import nodes
 from megooflags_api.services.cluster.compat import incompatibility
 from megooflags_api.services.cluster.ingest import ingest_batch
-from megooflags_api.services.cluster.node_hub import NodeHub, StreamEvent
+from megooflags_api.services.cluster.node_hub import REVOKED, NodeHub, StreamEvent
 from megooflags_api.services.cluster.signing import SnapshotSigner
 
 router = APIRouter(prefix="/cluster/v1", tags=["cluster"], responses=ERROR_RESPONSES)
@@ -89,6 +89,11 @@ async def _events(
     stream = hub.subscribe(caller.node_id, caller.token_id, state)
     try:
         yield RETRY_FRAME
+        # A revoke or drain committed before the subscription found no stream to tell.
+        await hub.check(stream)
+        if stream.revoked:
+            yield REVOKED.frame()
+            return
         hello = {
             "version": __version__,
             "public_key": signer.public_key,

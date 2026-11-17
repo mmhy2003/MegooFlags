@@ -12,12 +12,13 @@ import pytest
 from conftest import close_app
 from fastapi import FastAPI
 from helpers import SseEvent, bearer, next_events, reset_database, running, seed_service_token
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from test_sdk import FLAGS, setup_demo
 
 from megooflags_api import __version__
 from megooflags_api.main import create_app
-from megooflags_api.models import Environment, Flag, FlagEnvironment
+from megooflags_api.models import Environment, Flag, FlagEnvironment, Node
+from megooflags_api.routers import cluster as cluster_router
 from megooflags_api.services.cluster.node_hub import NodeStream
 from megooflags_api.services.cluster.signing import SnapshotSigner
 from megooflags_api.services.cluster.snapshot_format import (
@@ -253,6 +254,44 @@ async def test_revoke_sends_revoked_and_closes(cp_app: FastAPI) -> None:
 
     assert (revoked.event, revoked.data) == ("revoked", "{}")
     assert rest == []
+
+
+@pytest.mark.parametrize("change", ["revoke", "drain"])
+async def test_change_before_subscribe_is_seen_at_once(
+    migrated: None, monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    app = create_app(
+        Settings(role="control-plane", sse_heartbeat_seconds=1, stream_recheck_seconds=3600)
+    )
+    await reset_database(app)
+    events = cluster_router._events
+
+    async def late(*args: Any) -> AsyncIterator[bytes]:
+        # As if the node changed after the request committed but before the hub subscription,
+        # with the change message lost: only a re-check of the stream can see it.
+        async with app.state.sessionmaker() as session:
+            values = {"revoked_at" if change == "revoke" else "drain_requested_at": func.now()}
+            await session.execute(update(Node).values(**values))
+            await session.commit()
+        async for frame in events(*args):
+            yield frame
+
+    monkeypatch.setattr(cluster_router, "_events", late)
+    try:
+        async with serving(app) as client:
+            node = await add_node(client)
+            async with stream(client, node["token"]) as lines:
+                first = await next_frame(lines, 3)
+                if change == "drain":
+                    assert first.event == "hello"
+                    assert json.loads(first.data)["state"] == "draining"
+                else:
+                    assert (first.event, first.data) == ("revoked", "{}")
+                    async with asyncio.timeout(2):
+                        assert [line async for line in lines] == []
+    finally:
+        await app.state.ruleset_cache.aclose()
+        await close_app(app)
 
 
 async def test_ping_every_heartbeat(cp_app: FastAPI) -> None:

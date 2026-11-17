@@ -201,6 +201,17 @@ async def test_heartbeat_updates_node_and_returns_state(cp_api: httpx.AsyncClien
     assert (await listed(cp_api, node["id"]))["synced_at"] == shown["synced_at"]
 
 
+@pytest.mark.parametrize("age", [1e9 + 1, 1e300])
+async def test_heartbeat_rejects_huge_snapshot_age(cp_api: httpx.AsyncClient, age: float) -> None:
+    node = await create_node(cp_api)
+
+    r = await cp_api.post(
+        HEARTBEAT, json=heartbeat(snapshot_age_seconds=age), headers=headers(node["token"])
+    )
+
+    assert r.status_code == 422, r.text
+
+
 async def test_events_stored_once(app: FastAPI, cp_api: httpx.AsyncClient) -> None:
     node = await create_node(cp_api)
     await create_project(cp_api)

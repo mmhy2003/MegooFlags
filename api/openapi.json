@@ -2042,6 +2042,7 @@
           "snapshot_age_seconds": {
             "anyOf": [
               {
+                "maximum": 1000000000.0,
                 "minimum": 0.0,
                 "type": "number"
               },

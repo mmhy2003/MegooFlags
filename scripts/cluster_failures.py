@@ -134,6 +134,12 @@ class Cluster:
     def ruleset(self, base: str) -> Response:
         return request("GET", f"{base}/sdk/v1/ruleset", key=self.server_key)
 
+    def knows_keys(self, base: str) -> bool:
+        """True when `base` accepts the server key (ruleset) and the client key (evaluate)."""
+        body = {"context": CONTEXT, "flags": [FLAG]}
+        evaluate = request("POST", f"{base}/sdk/v1/evaluate", body, self.client_key)
+        return self.ruleset(base)[0] == 200 and evaluate[0] == 200
+
     def stream(self, base: str) -> "queue.Queue[Update]":
         updates: queue.Queue[Update] = queue.Queue()
         url = f"{base}/sdk/v1/stream"
@@ -208,6 +214,10 @@ class Cluster:
         self.server_key = self.manage("POST", keys, {"name": "cluster", "kind": "server"})["key"]
         self.client_key = self.manage("POST", keys, {"name": "browser", "kind": "client"})["key"]
         self.wait_nodes(NAMES, "healthy", 60)
+        # "Current" compares with the newest published snapshot, which may still predate the
+        # keys: wait until every worker answers with both.
+        for base in self.args.worker:
+            wait_until(lambda b=base: self.knows_keys(b), 60, f"{base} serving the new SDK keys")
         print("PASS setup: three workers healthy and current")
 
     def one_worker_down(self) -> None:
