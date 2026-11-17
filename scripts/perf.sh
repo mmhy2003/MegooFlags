@@ -236,7 +236,7 @@ echo "mfload built"
 # 8 uvicorn workers measured best on the 16-CPU build machine: 4 reached only 1651 rps (p99 12.7 s),
 # 12 added queueing and errors.
 api_workers="${MF_PERF_API_WORKERS:-8}"
-single up -d --wait --wait-timeout 180 caddy
+MF_PERF_API_WORKERS=$api_workers single up -d --wait --wait-timeout 180 caddy
 base="http://localhost:$http_port"
 wait_ready "$base"
 token=$(bootstrap_admin "$base") || fail "the admin bootstrap failed"
@@ -247,13 +247,15 @@ eval_key=$(field "$run/flags_10k.json" eval_key)
 project=$(field "$run/flags_10k.json" project)
 env=$(field "$run/flags_10k.json" env)
 flag=$(field "$run/flags_10k.json" flag)
+# The first full run, with 4 workers, for the notes.
+declare -A tuned_from=([ofrep]="1651 rps at p99 12.7 s" [evaluate]="712 rps at p99 107.5 s")
 for mode in ofrep evaluate; do
   [ "$mode" = ofrep ] && k=$key || k=$eval_key
   load "$mode" evaluate --target http://caddy --key "$k" --mode "$mode" --flag "$flag" --rps "$rps" \
     --duration "$duration" --warmup "$warmup" --out "/out/remote_$mode.json"
   meta "remote_$mode" "$remote_status" "$remote_reduced" \
     "{\"api\": \"unlimited\", \"api_workers\": \"$api_workers\", \"replicas\": \"1\"}" \
-    "tuned from 4 to 8 uvicorn workers (MF_PERF_API_WORKERS): with 4, OFREP reached 1651 rps at p99 12.7 s"
+    "tuned from 4 to 8 uvicorn workers (MF_PERF_API_WORKERS): with 4 it reached ${tuned_from[$mode]}"
 done
 [ "$nflags" -eq 10000 ] && flags_status=full flags_reduced="" || flags_status=reduced flags_reduced="$nflags flags"
 # Every flag of the big environment in one /sdk/v1/evaluate request: reported, not gated.
@@ -268,16 +270,19 @@ meta flags_10k "$flags_status" "$flags_reduced" '{"api": "unlimited"}' \
   "ruleset_download_ms is the SDK start time: one ruleset download"
 echo "remote evaluation done"
 
-# 4. Propagation across three api replicas behind Caddy.
-single up -d --wait --wait-timeout 180 --scale api=3 caddy
+# 4. Propagation across three api replicas behind Caddy. The remote scenario's worker count is per
+# container; three replicas of it would share the host's CPUs (at 3 x 8 workers on 16 CPUs, p95 was
+# 11.9 s against 5.6 s at 3 x 4), so the replicas keep 4 workers each.
+replica_workers="${MF_PERF_REPLICA_API_WORKERS:-4}"
+MF_PERF_API_WORKERS=$replica_workers single up -d --wait --wait-timeout 180 --scale api=3 caddy
 wait_ready "$base"
 load prop-replicas streams --target http://caddy --key "$key" --streams 30 --ramp-seconds 3 \
   --hold "$prop_hold" --flip-every "$prop_flip" --api http://caddy --token "$token" --project "$project" \
   --env "$env" --flag "$flag" --out /out/propagation_replicas.json
 [ "$profile" = full ] && prop_status=full prop_reduced="" || prop_status=reduced prop_reduced="3 flips"
 meta propagation_replicas "$prop_status" "$prop_reduced" \
-  "{\"api\": \"unlimited\", \"api_workers\": \"$api_workers\", \"replicas\": \"3\"}" \
-  "30 streams on the $nflags-flag project"
+  "{\"api\": \"unlimited\", \"api_workers\": \"$replica_workers\", \"replicas\": \"3\"}" \
+  "30 streams on the $nflags-flag project; 4 workers per replica (MF_PERF_REPLICA_API_WORKERS): at 3 x 8 on 16 CPUs p95 was 11.9 s"
 single down -v --remove-orphans
 echo "propagation across replicas done"
 
