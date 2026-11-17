@@ -1,0 +1,28 @@
+{
+	servers {
+		trusted_proxies static {$MEGOOFLAGS_TRUSTED_PROXIES:private_ranges}
+	}
+}
+
+{$MEGOOFLAGS_SITE_ADDRESS::80} {
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+		-Server
+	}
+	# HSTS only over HTTPS: in plain-HTTP mode TLS is terminated (or not) by another proxy.
+	@https protocol https
+	header @https Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	# A worker serves SDK traffic only. Metrics stay inside the compose network (api:8000/metrics).
+	@api path /sdk/* /ofrep/* /healthz /readyz
+	handle @api {
+		reverse_proxy api:8000 {
+			flush_interval -1
+		}
+	}
+	handle {
+		respond 404
+	}
+}

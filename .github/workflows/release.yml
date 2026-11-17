@@ -196,7 +196,9 @@ jobs:
             --title "MegooFlags $GITHUB_REF_NAME" \
             --notes-file release-notes.md \
             "${flags[@]}" \
-            deploy/docker-compose.yml deploy/Caddyfile deploy/.env.example
+            deploy/docker-compose.yml deploy/Caddyfile deploy/.env.example \
+            deploy/docker-compose.control-plane.yml \
+            deploy/docker-compose.worker.yml deploy/Caddyfile.worker deploy/.env.worker.example
 
   sdk-go-release:
     if: startsWith(github.ref_name, 'sdks/go/v')

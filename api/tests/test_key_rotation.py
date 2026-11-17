@@ -91,10 +91,11 @@ async def test_old_key_gets_403_once_expired(app: FastAPI, api: httpx.AsyncClien
 async def test_cached_key_expires_without_forget(api: httpx.AsyncClient) -> None:
     await create_project(api)
     old = await create_sdk_key(api, "server")
-    new = await rotated(api, old["id"], 1)
+    # A few seconds of overlap, so a slow run still caches the key before it expires.
+    new = await rotated(api, old["id"], 3)
     assert await ruleset_status(api, old["key"]) == 200  # now cached with its expires_at
 
-    await asyncio.sleep(1.1)
+    await asyncio.sleep(3.1)
 
     assert_error(await api.get(RULESET, headers=bearer(old["key"])), 403, "forbidden")
     assert await ruleset_status(api, new["key"]) == 200

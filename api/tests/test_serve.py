@@ -94,3 +94,50 @@ def test_one_worker_keeps_plain_metrics(fake_run: FakeUvicorn) -> None:
     [(_, options)] = fake_run.calls
     assert options["workers"] == 1
     assert "PROMETHEUS_MULTIPROC_DIR" not in environ
+
+
+WORKER_ENV = {
+    "MEGOOFLAGS_ROLE": "worker",
+    "MEGOOFLAGS_CONTROL_PLANE_URL": "https://cp.example.com",
+    "MEGOOFLAGS_NODE_TOKEN": "mf_node_" + "a" * 32,
+    "MEGOOFLAGS_SECRET_KEY": "",
+    "MEGOOFLAGS_VALKEY_URL": "redis://127.0.0.1:1/0",
+}
+
+
+def test_worker_starts_one_process_without_secret_or_valkey(fake_run: FakeUvicorn) -> None:
+    environ = dict(WORKER_ENV)
+
+    serve.main(environ)
+
+    [(app, options)] = fake_run.calls
+    assert app == "megooflags_api.main:app"
+    assert options["workers"] == 1
+    assert "PROMETHEUS_MULTIPROC_DIR" not in environ
+
+
+def test_worker_ignores_api_workers_with_log(
+    fake_run: FakeUvicorn, caplog: pytest.LogCaptureFixture
+) -> None:
+    environ = {**WORKER_ENV, "MEGOOFLAGS_API_WORKERS": "4"}
+
+    with caplog.at_level("INFO", logger="megooflags_api.serve"):
+        serve.main(environ)
+
+    [(_, options)] = fake_run.calls
+    assert options["workers"] == 1
+    assert "MEGOOFLAGS_API_WORKERS is ignored" in caplog.text
+
+
+def test_worker_refuses_missing_settings(
+    fake_run: FakeUvicorn, caplog: pytest.LogCaptureFixture
+) -> None:
+    environ = {"MEGOOFLAGS_ROLE": "worker", "MEGOOFLAGS_SECRET_KEY": ""}
+
+    with pytest.raises(SystemExit) as exc:
+        serve.main(environ)
+
+    assert exc.value.code == 1
+    assert fake_run.calls == []
+    assert "MEGOOFLAGS_CONTROL_PLANE_URL is not set" in caplog.text
+    assert "MEGOOFLAGS_NODE_TOKEN is not set" in caplog.text

@@ -242,6 +242,25 @@ def test_malformed_message_ignored() -> None:
     assert seen == []
 
 
+async def test_dispatch_node_message() -> None:
+    client = create_valkey(UNREACHABLE)
+    bus = ChangeBus(client, UNREACHABLE)
+    nodes: list[uuid.UUID] = []
+    others: list[uuid.UUID] = []
+    bus.on_node.append(nodes.append)
+    bus.on_project.append(others.append)
+    bus.on_key_revoked.append(others.append)
+    node = uuid.uuid4()
+    try:
+        bus.dispatch(json.dumps({"kind": "node", "id": str(node)}))
+        await bus.publish_node(node)
+    finally:
+        await client.aclose()
+
+    assert nodes == [node, node]
+    assert others == []
+
+
 async def test_revoke_publishes_key(app: FastAPI, api: httpx.AsyncClient) -> None:
     await create_project(api)
     key = await create_sdk_key(api, "server")

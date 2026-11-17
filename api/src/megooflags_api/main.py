@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
 from typing import Any
 
+import httpx
 from fastapi import Depends, FastAPI
 
 from megooflags_api import __version__, metrics
@@ -21,12 +22,14 @@ from megooflags_api.routers import (
     audit,
     auth,
     change_requests,
+    cluster,
     environments,
     evaluate,
     flag_environments,
     flags,
     health,
     integrations,
+    nodes,
     ofrep,
     projects,
     roles,
@@ -41,6 +44,9 @@ from megooflags_api.routers import (
     users,
 )
 from megooflags_api.services.changes import ChangeBus
+from megooflags_api.services.cluster.node_hub import NodeHub
+from megooflags_api.services.cluster.signing import SnapshotSigner
+from megooflags_api.services.delivery import db_delivery
 from megooflags_api.services.events import (
     EvaluationCounter,
     EventsBodyLimitMiddleware,
@@ -52,11 +58,19 @@ from megooflags_api.services.ruleset_cache import RulesetCache
 from megooflags_api.services.scheduler import Scheduler
 from megooflags_api.services.sdk_keys import KeyResolver
 from megooflags_api.services.streams import StreamHub
+from megooflags_api.services.worker.app import create_worker_app
 from megooflags_api.settings import Settings, get_settings
 from megooflags_api.tracing import configure_tracing
 from megooflags_api.valkey import check_valkey, create_valkey
 
 logger = logging.getLogger(__name__)
+
+
+def _signer(app: FastAPI) -> SnapshotSigner:
+    """The lifespan refuses to start without a secret key, so a serving app has a signer."""
+    signer: SnapshotSigner | None = app.state.snapshot_signer
+    assert signer is not None
+    return signer
 
 
 def background_jobs(app: FastAPI) -> list[Coroutine[Any, Any, None]]:
@@ -66,6 +80,8 @@ def background_jobs(app: FastAPI) -> list[Coroutine[Any, Any, None]]:
         app.state.evaluation_counter.run(app.state.sessionmaker),
         run_retention(app.state.sessionmaker, app.state.settings.exposure_retention_days),
     ]
+    if app.state.settings.role == "control-plane":
+        jobs.append(app.state.node_hub.run_recheck_loop(app.state.settings.stream_recheck_seconds))
     if app.state.settings.scheduler_enabled:
         jobs.append(app.state.scheduler.run())
         jobs.append(app.state.delivery_worker.run())
@@ -104,14 +120,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         metrics.worker_exited()
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, *, cluster_transport: httpx.AsyncBaseTransport | None = None
+) -> FastAPI:
+    """The API for the settings' role; `cluster_transport` is a worker's link (for tests)."""
     settings = settings or get_settings()
     configure_logging(settings)
+    if settings.role == "worker":
+        return create_worker_app(settings, transport=cluster_transport)
     app = FastAPI(title="MegooFlags API", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     # None without a key, so export_openapi works; the lifespan refuses to start without one.
     app.state.secret_box = (
         SecretBox(settings.secret_key.get_secret_value()) if settings.secret_key else None
+    )
+    app.state.snapshot_signer = (
+        SnapshotSigner(settings.secret_key.get_secret_value()) if settings.secret_key else None
     )
     app.state.engine = create_engine(settings)
     app.state.sessionmaker = create_sessionmaker(app.state.engine)
@@ -130,7 +154,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.change_bus.on_project.append(app.state.stream_hub.notify_project)
     app.state.change_bus.on_key_revoked.append(app.state.stream_hub.notify_key_revoked)
     app.state.change_bus.on_resubscribe.append(app.state.stream_hub.recheck_all)
+    app.state.node_hub = NodeHub(
+        app.state.sessionmaker, app.state.ruleset_cache, lambda: _signer(app)
+    )
+    app.state.change_bus.on_project.append(app.state.node_hub.notify_project)
+    app.state.change_bus.on_node.append(app.state.node_hub.notify_node)
+    app.state.change_bus.on_resubscribe.append(app.state.node_hub.recheck_all)
     app.state.evaluation_counter = EvaluationCounter()
+    app.state.delivery = db_delivery(app)
     app.state.scheduler = Scheduler(
         app.state.engine,
         app.state.sessionmaker,
@@ -157,6 +188,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(users.public_router, prefix="/api")
     app.include_router(account.router, prefix="/api")
     app.include_router(sso.flow_router, prefix="/api")
+    app.include_router(cluster.router, prefix="/api")
     for module in (
         projects,
         environments,
@@ -174,6 +206,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         teams,
         api_tokens,
         audit,
+        nodes,
     ):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_principal)])
     app.include_router(sso.admin_router, prefix="/api", dependencies=[Depends(get_principal)])

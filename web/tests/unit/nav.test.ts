@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import type { components } from "@/lib/api/schema";
 import { type MePermissions, navItems } from "@/lib/nav";
+
+type Role = components["schemas"]["InstanceRole"];
 
 type Permission = MePermissions["org"][number];
 
@@ -26,16 +29,20 @@ const ALL: Permission[] = [
   "sdk_key.manage",
 ];
 
-const keys = (project: string | null, perms: MePermissions | null) =>
-  navItems(project, perms).map((item) => item.key);
+const keys = (
+  project: string | null,
+  perms: MePermissions | null,
+  role: Role | null = "standalone",
+) => navItems(project, perms, role).map((item) => item.key);
+
+const admin: MePermissions = {
+  org: ALL,
+  project: ALL,
+  environments: { production: ALL },
+};
 
 describe("navItems", () => {
-  it("lists all eight items in order for an admin, never nodes", () => {
-    const admin: MePermissions = {
-      org: ALL,
-      project: ALL,
-      environments: { production: ALL },
-    };
+  it("lists all items in order for an admin on a standalone instance", () => {
     expect(keys("demo", admin)).toEqual([
       "flags",
       "segments",
@@ -90,12 +97,50 @@ describe("navItems", () => {
     expect(keys(null, perms)).toEqual(["settings"]);
   });
 
-  it("builds project and settings hrefs", () => {
-    const admin: MePermissions = { org: ALL, project: ALL, environments: {} };
-    const items = navItems("demo", admin);
+  it("shows nodes above settings on a control plane with org.manage", () => {
+    expect(keys("demo", admin, "control-plane")).toEqual([
+      "flags",
+      "segments",
+      "environments",
+      "change-requests",
+      "audit",
+      "keys",
+      "integrations",
+      "nodes",
+      "settings",
+    ]);
+    const perms: MePermissions = {
+      org: ["org.manage"],
+      project: null,
+      environments: {},
+    };
+    expect(keys(null, perms, "control-plane")).toEqual(["nodes", "settings"]);
+  });
+
+  it("hides nodes without org.manage", () => {
+    const perms: MePermissions = {
+      org: ALL.filter((p) => p !== "org.manage"),
+      project: ALL,
+      environments: { production: ALL },
+    };
+    const result = keys("demo", perms, "control-plane");
+    expect(result).not.toContain("nodes");
+    expect(result).toContain("settings");
+    expect(keys("demo", null, "control-plane")).not.toContain("nodes");
+  });
+
+  it("hides nodes on standalone and worker", () => {
+    expect(keys("demo", admin, "standalone")).not.toContain("nodes");
+    expect(keys("demo", admin, "worker")).not.toContain("nodes");
+    expect(keys("demo", admin, null)).not.toContain("nodes");
+  });
+
+  it("builds project, nodes and settings hrefs", () => {
+    const items = navItems("demo", admin, "control-plane");
     expect(items.find((item) => item.key === "audit")?.href).toBe(
       "/projects/demo/audit",
     );
+    expect(items.find((item) => item.key === "nodes")?.href).toBe("/nodes");
     expect(items.find((item) => item.key === "settings")?.href).toBe(
       "/settings",
     );

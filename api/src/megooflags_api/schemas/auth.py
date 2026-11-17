@@ -6,7 +6,7 @@ from pydantic import StringConstraints
 
 from megooflags_api.auth.principal import PrincipalKind
 from megooflags_api.auth.rbac import Permission
-from megooflags_api.models.enums import SessionState, UserTheme
+from megooflags_api.models.enums import InstanceRole, SessionState, UserTheme
 from megooflags_api.schemas.common import ApiModel, Email, Name
 
 # Long enough for any policy-compliant password; the cap keeps hashing cheap for junk input.
@@ -62,6 +62,7 @@ class MeOut(ApiModel):
     mfa: MfaStatus | None
     require_mfa: bool
     preferences: Preferences | None
+    role: InstanceRole
 
 
 class MePermissions(ApiModel):

@@ -8,8 +8,10 @@ from megooflags_api.models.enums import (
     EventGroup,
     FlagLifecycle,
     FlagType,
+    InstanceRole,
     IntegrationKind,
     InvitationPurpose,
+    NodeStatus,
     Operator,
     ReviewDecision,
     RolloutStatus,
@@ -68,6 +70,10 @@ def test_metadata_has_all_tables() -> None:
         "integration_environment",
         "integration_outbox",
         "integration_delivery",
+        "node",
+        "node_token",
+        "environment_snapshot",
+        "node_event_batch",
     }
 
 
@@ -122,3 +128,12 @@ def test_enum_values() -> None:
     assert [k.value for k in IntegrationKind] == ["webhook", "slack", "teams"]
     assert [s.value for s in DeliveryStatus] == ["pending", "delivered", "failed"]
     assert [g.value for g in EventGroup] == ["flags", "targeting", "segments", "change_requests"]
+    assert [r.value for r in InstanceRole] == ["standalone", "control-plane", "worker"]
+    assert [s.value for s in NodeStatus] == [
+        "pending",
+        "healthy",
+        "stale",
+        "draining",
+        "incompatible",
+        "revoked",
+    ]

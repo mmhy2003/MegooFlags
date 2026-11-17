@@ -53,6 +53,10 @@ NOT_AUDITED = {
     ("POST", "/api/auth/webauthn/options"),
     # Personal UI settings.
     ("PATCH", "/api/account/preferences"),
+    # Worker traffic (the snapshot stream, heartbeats and forwarded SDK events), not admin actions.
+    ("POST", "/api/cluster/v1/stream"),
+    ("POST", "/api/cluster/v1/heartbeat"),
+    ("POST", "/api/cluster/v1/events"),
 }
 
 Params = dict[str, str]
@@ -274,6 +278,25 @@ async def token(client: httpx.AsyncClient, app: FastAPI) -> Params:
     r = await client.post("/api/tokens", json={"name": "ci"})
     assert r.status_code == 201, r.text
     return {"id": r.json()["token"]["id"]}
+
+
+async def control_plane(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    app.state.settings = app.state.settings.model_copy(update={"role": "control-plane"})
+    return {}
+
+
+async def node(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    await control_plane(client, app)
+    r = await client.post("/api/nodes", json={"name": "worker-1"})
+    assert r.status_code == 201, r.text
+    return {"id": r.json()["id"]}
+
+
+async def revoked_node(client: httpx.AsyncClient, app: FastAPI) -> Params:
+    params = await node(client, app)
+    r = await client.post(f"/api/nodes/{params['id']}/revoke")
+    assert r.status_code == 200, r.text
+    return params
 
 
 SSO_PROVIDER = {
@@ -775,6 +798,13 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
         sample("POST", "/api/tokens", "token.create", nothing, {"name": "ci"}),
         sample("DELETE", "/api/tokens/{id}", "token.revoke", token),
         sample("POST", "/api/tokens/{id}/rotate", "token.rotate", token, {"overlap_seconds": 60}),
+        # Worker nodes
+        sample("POST", "/api/nodes", "node.create", control_plane, {"name": "worker-1"}),
+        sample("POST", "/api/nodes/{id}/rotate", "node.rotate", node, {"overlap_seconds": 60}),
+        sample("POST", "/api/nodes/{id}/revoke", "node.revoke", node),
+        sample("POST", "/api/nodes/{id}/drain", "node.drain", node),
+        sample("POST", "/api/nodes/{id}/resume", "node.resume", node),
+        sample("DELETE", "/api/nodes/{id}", "node.delete", revoked_node),
         # SSO providers and group mappings
         sample("POST", "/api/sso/providers", "sso_provider.create", nothing, SSO_PROVIDER),
         sample(

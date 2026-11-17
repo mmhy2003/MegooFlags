@@ -158,6 +158,17 @@ async def test_unknown_project_is_404(app: FastAPI, demo: None) -> None:
         assert_error(await get(c, "nope"), 404, "not_found")
 
 
+async def test_me_reports_instance_role(app: FastAPI, api: httpx.AsyncClient) -> None:
+    r = await api.get("/api/auth/me")
+    assert r.status_code == 200, r.text
+    assert r.json()["role"] == "standalone"
+
+    app.state.settings = app.state.settings.model_copy(update={"role": "control-plane"})
+    r = await api.get("/api/auth/me")
+    assert r.status_code == 200, r.text
+    assert r.json()["role"] == "control-plane"
+
+
 async def test_no_credentials_is_401(anon: httpx.AsyncClient) -> None:
     assert_error(await get(anon), 401, "unauthorized")
 

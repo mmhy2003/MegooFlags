@@ -12,8 +12,8 @@ from megooflags_api.evaluation import ErrorCode, Resolution, evaluate, evaluate_
 from megooflags_api.models.enums import SdkKeyKind
 from megooflags_api.schemas.ofrep import OfrepBulk, OfrepError, OfrepRequest, OfrepSuccess
 from megooflags_api.sdk_auth import OfrepKeyDep
-from megooflags_api.services.events import EvaluationCounter
-from megooflags_api.services.ruleset_cache import SDK_MAX_AGE, CachedRuleset, RulesetCache
+from megooflags_api.services.delivery import get_delivery
+from megooflags_api.services.ruleset_cache import CachedRuleset
 from megooflags_api.services.sdk_keys import SdkPrincipal
 
 router = APIRouter(prefix="/ofrep/v1", tags=["ofrep"], responses=SDK_ERROR_RESPONSES)
@@ -22,9 +22,7 @@ IfNoneMatch = Annotated[str | None, Header()]
 
 
 async def _entry(request: Request, principal: SdkPrincipal) -> CachedRuleset:
-    cache: RulesetCache = request.app.state.ruleset_cache
-    async with request.app.state.sessionmaker() as session:
-        return await cache.get_entry(session, principal.environment, max_age=SDK_MAX_AGE)
+    return await get_delivery(request).rulesets.get_entry(principal.environment)
 
 
 def ofrep_context(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -36,8 +34,7 @@ def ofrep_context(ctx: dict[str, Any]) -> dict[str, Any]:
 
 
 def _count(request: Request, principal: SdkPrincipal, results: dict[str, Resolution]) -> None:
-    counter: EvaluationCounter = request.app.state.evaluation_counter
-    counter.record(
+    get_delivery(request).events.record_counts(
         principal.environment.id,
         [(k, r.variant) for k, r in results.items() if r.error_code != ErrorCode.FLAG_NOT_FOUND],
     )

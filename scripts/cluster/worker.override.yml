@@ -1,0 +1,13 @@
+# Failure-suite worker (scripts/cluster_test.sh), on top of docker-compose.worker.yml: the local
+# image, plain-HTTP Caddy on host port MF_WORKER_PORT and the control plane's CA. The script
+# attaches Caddy (as MF_WORKER_ALIAS, the load balancer's upstream) and the api to the
+# megooflags-cluster network itself: see `join` in cluster_test.sh.
+services:
+  caddy:
+    ports: !override
+      - "${MF_WORKER_PORT:?}:80"
+  api:
+    image: megooflags-api:ci
+    pull_policy: never
+    volumes:
+      - ${MF_CLUSTER_CERTS:?}:/etc/megooflags/certs:ro

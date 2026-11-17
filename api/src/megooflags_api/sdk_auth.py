@@ -1,7 +1,7 @@
 """SDK key authentication for /sdk and /ofrep routes, and the client-key rate limit.
 
-Each dependency opens its own short session for the key lookup instead of `SessionDep`, so a
-long-lived stream never holds a database connection.
+Keys are looked up through the delivery's key source, which on the database opens its own short
+session instead of `SessionDep`, so a long-lived stream never holds a database connection.
 """
 
 from datetime import UTC, datetime
@@ -9,10 +9,15 @@ from typing import Annotated
 
 from fastapi import Depends, Header, Query, Request
 
-from megooflags_api.errors import forbidden, rate_limited, unauthorized
+from megooflags_api.errors import forbidden, not_ready, rate_limited, unauthorized
 from megooflags_api.models.enums import SdkKeyKind
-from megooflags_api.services.rate_limit import RateLimiter
-from megooflags_api.services.sdk_keys import KeyResolver, SdkPrincipal, key_kind
+from megooflags_api.services.delivery import get_delivery
+from megooflags_api.services.sdk_keys import SdkPrincipal, key_kind
+
+UNAVAILABLE_MESSAGES = {
+    "not_ready": "this worker has no valid snapshot yet",
+    "revoked": "this worker's node token was revoked",
+}
 
 
 def bearer_token(request: Request) -> str | None:
@@ -24,11 +29,13 @@ def bearer_token(request: Request) -> str | None:
 
 
 async def authenticate(request: Request, key: str | None) -> SdkPrincipal:
+    delivery = get_delivery(request)
+    reason = delivery.unavailable()
+    if reason is not None:
+        raise not_ready(reason, UNAVAILABLE_MESSAGES[reason])
     principal = None
     if key is not None:
-        resolver: KeyResolver = request.app.state.key_resolver
-        async with request.app.state.sessionmaker() as session:
-            principal = await resolver.resolve(session, key)
+        principal = await delivery.keys.resolve(key)
     if principal is None:
         raise unauthorized("missing or unknown SDK key")
     if principal.inactive(datetime.now(UTC)):
@@ -39,9 +46,8 @@ async def authenticate(request: Request, key: str | None) -> SdkPrincipal:
 async def limit_client(request: Request, principal: SdkPrincipal) -> None:
     if principal.kind != SdkKeyKind.CLIENT:
         return
-    limiter: RateLimiter = request.app.state.rate_limiter
     client_ip = request.client.host if request.client is not None else "unknown"
-    retry = await limiter.hit(principal.key_id, client_ip or "unknown")
+    retry = await get_delivery(request).limiter.hit(principal.key_id, client_ip or "unknown")
     if retry is not None:
         raise rate_limited(retry)
 

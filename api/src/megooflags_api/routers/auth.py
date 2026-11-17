@@ -29,7 +29,7 @@ from megooflags_api.errors import (
     rate_limited,
 )
 from megooflags_api.models import TotpCredential, User, UserSession, WebauthnCredential
-from megooflags_api.models.enums import ScopeKind, SessionState, UserStatus
+from megooflags_api.models.enums import InstanceRole, ScopeKind, SessionState, UserStatus
 from megooflags_api.schemas.auth import (
     CodeIn,
     MeOut,
@@ -430,6 +430,7 @@ async def me(session: SessionDep, request: Request) -> MeOut:
             if principal.kind == PrincipalKind.USER and user is not None
             else None
         ),
+        role=InstanceRole(request.app.state.settings.role),
     )
 
 

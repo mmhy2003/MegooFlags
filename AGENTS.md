@@ -9,7 +9,7 @@ Humans follow them too. When a rule here and a habit of yours disagree, this fil
 |---|---|
 | `api/` | FastAPI server (`megooflags_api`, Python 3.12, src layout), Alembic migrations, `openapi.json` |
 | `web/` | Next.js 16 App Router UI (TypeScript, Tailwind 4, shadcn/ui, `output: "standalone"`) |
-| `deploy/` | Reference single-node bundle: `docker-compose.yml`, `Caddyfile`, `.env.example`, and the CI override `compose.ci.yml` |
+| `deploy/` | Reference single-node bundle: `docker-compose.yml`, `Caddyfile`, `.env.example`; the multi-node files `docker-compose.control-plane.yml`, `docker-compose.worker.yml`, `Caddyfile.worker` and `.env.worker.example` (see `docs/multi-node.md`); and the CI override `compose.ci.yml` |
 | `scripts/` | Version, release and check scripts shared by CI, the release workflow and developers |
 | `sdks/` | In-repo SDKs, one directory per language (see `sdks/README.md`) |
 | `spec/` | Reserved for the shared evaluation spec and SDK conformance suite (see `spec/README.md`) |
@@ -180,10 +180,12 @@ bash scripts/check_migrations.sh
 # web e2e (Playwright + axe against the real API, Postgres and Valkey from above).
 # The API must accept the browser's Origin, so set its public URL to the web app. The
 # integrations spec sends webhooks to a receiver on 127.0.0.1, which only the private-address
-# setting allows. Global setup creates the users and the demo data; it is safe to run again.
+# setting allows. The Nodes spec and page need a control plane. Global setup creates the users
+# and the demo data; it is safe to run again.
 (cd api && uv run alembic upgrade head)
 (cd api && MEGOOFLAGS_PUBLIC_URL=http://localhost:3000 MEGOOFLAGS_API_WORKERS=1 \
-  MEGOOFLAGS_WEBHOOK_ALLOW_PRIVATE=true uv run python -m megooflags_api.serve) &
+  MEGOOFLAGS_WEBHOOK_ALLOW_PRIVATE=true MEGOOFLAGS_ROLE=control-plane \
+  uv run python -m megooflags_api.serve) &
 (cd web && pnpm exec playwright install chromium)  # once
 (cd web && pnpm build && pnpm e2e)
 # Visual baselines must come from the pinned Playwright image that CI uses, never from your
@@ -198,6 +200,9 @@ git diff --exit-code -- api/openapi.json web/lib/api/schema.d.ts
 # images and smoke
 docker build -t megooflags-api:ci api && docker build -t megooflags-web:ci web && bash scripts/smoke.sh http \
   && bash scripts/smoke.sh https
+# multi-node failure suite (the cluster job): a control plane, three workers and an nginx LB from
+# the same images; prints "cluster OK"
+bash scripts/cluster_test.sh
 ```
 
 If you change a workflow, also run `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest`.
@@ -347,7 +352,7 @@ Images go to `ghcr.io/mmhy2003/megooflags-api` and `ghcr.io/mmhy2003/megooflags-
 | `X` (only from 1.0.0) | `1` | none |
 | `latest` | `latest` | `latest` |
 
-An rc tag never moves `X.Y`, `X` or `latest`. The GitHub release notes come from the matching `CHANGELOG.md` section, and the release attaches `docker-compose.yml`, `Caddyfile` and `.env.example`.
+An rc tag never moves `X.Y`, `X` or `latest`. The GitHub release notes come from the matching `CHANGELOG.md` section, and the release attaches `docker-compose.yml`, `Caddyfile` and `.env.example`, plus the multi-node files `docker-compose.control-plane.yml`, `docker-compose.worker.yml`, `Caddyfile.worker` and `.env.worker.example`.
 
 ## 11. SDKs
 

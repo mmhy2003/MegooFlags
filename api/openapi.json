@@ -707,6 +707,44 @@
         "title": "ClauseOut",
         "type": "object"
       },
+      "ClusterEventsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "description": "Fixed by the worker; a batch seen before is ignored.",
+            "format": "uuid",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "counts": {
+            "items": {
+              "$ref": "#/components/schemas/CountIn"
+            },
+            "maxItems": 1000,
+            "title": "Counts",
+            "type": "array"
+          },
+          "environment_id": {
+            "format": "uuid",
+            "title": "Environment Id",
+            "type": "string"
+          },
+          "exposures": {
+            "items": {
+              "$ref": "#/components/schemas/ExposureIn"
+            },
+            "maxItems": 1000,
+            "title": "Exposures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "batch_id",
+          "environment_id"
+        ],
+        "title": "ClusterEventsIn",
+        "type": "object"
+      },
       "CodeIn": {
         "additionalProperties": false,
         "description": "A TOTP code, or a recovery code (`xxxxx-xxxxx`, any case).",
@@ -1964,6 +2002,9 @@
       },
       "HealthResponse": {
         "properties": {
+          "role": {
+            "$ref": "#/components/schemas/InstanceRole"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -1975,10 +2016,90 @@
         },
         "required": [
           "status",
-          "version"
+          "version",
+          "role"
         ],
         "title": "HealthResponse",
         "type": "object"
+      },
+      "HeartbeatIn": {
+        "additionalProperties": false,
+        "properties": {
+          "buffered_events": {
+            "minimum": 0.0,
+            "title": "Buffered Events",
+            "type": "integer"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "sdk_streams": {
+            "minimum": 0.0,
+            "title": "Sdk Streams",
+            "type": "integer"
+          },
+          "snapshot_age_seconds": {
+            "anyOf": [
+              {
+                "maximum": 1000000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Seconds since the worker last synced; None before its first sync.",
+            "title": "Snapshot Age Seconds"
+          },
+          "snapshot_version": {
+            "minimum": 0.0,
+            "title": "Snapshot Version",
+            "type": "integer"
+          },
+          "version": {
+            "maxLength": 50,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "snapshot_version",
+          "sdk_streams",
+          "buffered_events",
+          "ready"
+        ],
+        "title": "HeartbeatIn",
+        "type": "object"
+      },
+      "HeartbeatOut": {
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "active",
+              "draining"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "HeartbeatOut",
+        "type": "object"
+      },
+      "InstanceRole": {
+        "enum": [
+          "standalone",
+          "control-plane",
+          "worker"
+        ],
+        "title": "InstanceRole",
+        "type": "string"
       },
       "IntegrationCreate": {
         "additionalProperties": false,
@@ -2499,6 +2620,9 @@
             "title": "Require Mfa",
             "type": "boolean"
           },
+          "role": {
+            "$ref": "#/components/schemas/InstanceRole"
+          },
           "session_state": {
             "anyOf": [
               {
@@ -2520,7 +2644,8 @@
           "session_state",
           "mfa",
           "require_mfa",
-          "preferences"
+          "preferences",
+          "role"
         ],
         "title": "MeOut",
         "type": "object"
@@ -2592,6 +2717,337 @@
         ],
         "title": "MfaStatus",
         "type": "object"
+      },
+      "NodeCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "NodeCreate",
+        "type": "object"
+      },
+      "NodeCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "buffered_events": {
+            "title": "Buffered Events",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_heartbeat_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Heartbeat At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "refused_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refused Version"
+          },
+          "sdk_streams": {
+            "title": "Sdk Streams",
+            "type": "integer"
+          },
+          "snapshot_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Version"
+          },
+          "status": {
+            "$ref": "#/components/schemas/NodeStatus"
+          },
+          "synced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synced At"
+          },
+          "syncing": {
+            "description": "Healthy, but not yet on the current snapshot version.",
+            "title": "Syncing",
+            "type": "boolean"
+          },
+          "token": {
+            "description": "The join token. Shown only once.",
+            "title": "Token",
+            "type": "string"
+          },
+          "token_prefix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The prefix of the newest active token.",
+            "title": "Token Prefix"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "syncing",
+          "created_at",
+          "last_heartbeat_at",
+          "synced_at",
+          "version",
+          "snapshot_version",
+          "sdk_streams",
+          "buffered_events",
+          "address",
+          "refused_version",
+          "token_prefix",
+          "token"
+        ],
+        "title": "NodeCreated",
+        "type": "object"
+      },
+      "NodeList": {
+        "additionalProperties": false,
+        "properties": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/NodeOut"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "snapshot_version": {
+            "description": "The newest snapshot version published.",
+            "title": "Snapshot Version",
+            "type": "integer"
+          },
+          "version": {
+            "description": "The control plane's version.",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "snapshot_version",
+          "nodes"
+        ],
+        "title": "NodeList",
+        "type": "object"
+      },
+      "NodeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "buffered_events": {
+            "title": "Buffered Events",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_heartbeat_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Heartbeat At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "refused_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refused Version"
+          },
+          "sdk_streams": {
+            "title": "Sdk Streams",
+            "type": "integer"
+          },
+          "snapshot_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Version"
+          },
+          "status": {
+            "$ref": "#/components/schemas/NodeStatus"
+          },
+          "synced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synced At"
+          },
+          "syncing": {
+            "description": "Healthy, but not yet on the current snapshot version.",
+            "title": "Syncing",
+            "type": "boolean"
+          },
+          "token_prefix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The prefix of the newest active token.",
+            "title": "Token Prefix"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "syncing",
+          "created_at",
+          "last_heartbeat_at",
+          "synced_at",
+          "version",
+          "snapshot_version",
+          "sdk_streams",
+          "buffered_events",
+          "address",
+          "refused_version",
+          "token_prefix"
+        ],
+        "title": "NodeOut",
+        "type": "object"
+      },
+      "NodeStatus": {
+        "description": "A worker's status on the Nodes page. Computed, never stored.",
+        "enum": [
+          "pending",
+          "healthy",
+          "stale",
+          "draining",
+          "incompatible",
+          "revoked"
+        ],
+        "title": "NodeStatus",
+        "type": "string"
       },
       "OfrepBulk": {
         "properties": {
@@ -5969,6 +6425,37 @@
           }
         },
         "title": "SsoProviderUpdate",
+        "type": "object"
+      },
+      "StreamIn": {
+        "additionalProperties": false,
+        "properties": {
+          "public_key": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The key the worker verifies with; when it differs, every snapshot is sent.",
+            "title": "Public Key"
+          },
+          "versions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "The snapshot version the worker holds per environment.",
+            "propertyNames": {
+              "format": "uuid"
+            },
+            "title": "Versions",
+            "type": "object"
+          }
+        },
+        "title": "StreamIn",
         "type": "object"
       },
       "SubjectKind": {
@@ -9694,6 +10181,241 @@
         ]
       }
     },
+    "/api/cluster/v1/events": {
+      "post": {
+        "description": "Store a batch of exposures and counts a worker received from its SDKs, once per\n`batch_id`. The data of a deleted environment is dropped.",
+        "operationId": "send_events_api_cluster_v1_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClusterEventsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "The batch was stored, or was seen before."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Send Events",
+        "tags": [
+          "cluster"
+        ]
+      }
+    },
+    "/api/cluster/v1/heartbeat": {
+      "post": {
+        "description": "Record the worker's state and answer with the state it should be in.",
+        "operationId": "heartbeat_api_cluster_v1_heartbeat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Heartbeat",
+        "tags": [
+          "cluster"
+        ]
+      }
+    },
+    "/api/cluster/v1/stream": {
+      "post": {
+        "description": "Stream the signed environment snapshots to a worker, starting with those it lacks.",
+        "operationId": "stream_snapshots_api_cluster_v1_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "Server-sent events: `hello`, a `put` (the signed snapshot, one line each for the signature, the header and the ruleset) for every environment the worker does not hold, `remove` for those gone, then `synced`. After that `put`, `remove`, `state`, `revoked` before the stream closes, and a `: ping` comment as heartbeat."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Stream Snapshots",
+        "tags": [
+          "cluster"
+        ]
+      }
+    },
     "/api/invitations/{token}": {
       "get": {
         "operationId": "read_invitation_api_invitations__token__get",
@@ -9797,6 +10519,579 @@
         "summary": "Accept Invitation",
         "tags": [
           "invitations"
+        ]
+      }
+    },
+    "/api/nodes": {
+      "get": {
+        "operationId": "list_nodes_api_nodes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Nodes",
+        "tags": [
+          "nodes"
+        ]
+      },
+      "post": {
+        "description": "Register a worker. Its join token is returned only here and on rotate.",
+        "operationId": "create_node_api_nodes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NodeCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Create Node",
+        "tags": [
+          "nodes"
+        ]
+      }
+    },
+    "/api/nodes/{id}": {
+      "delete": {
+        "description": "Remove a revoked node.",
+        "operationId": "delete_node_api_nodes__id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Delete Node",
+        "tags": [
+          "nodes"
+        ]
+      }
+    },
+    "/api/nodes/{id}/drain": {
+      "post": {
+        "description": "Ask the worker to report not ready, so load balancers move traffic away.",
+        "operationId": "drain_node_api_nodes__id__drain_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Drain Node",
+        "tags": [
+          "nodes"
+        ]
+      }
+    },
+    "/api/nodes/{id}/resume": {
+      "post": {
+        "operationId": "resume_node_api_nodes__id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Resume Node",
+        "tags": [
+          "nodes"
+        ]
+      }
+    },
+    "/api/nodes/{id}/revoke": {
+      "post": {
+        "description": "Revoke the node and every token: the worker stops serving.",
+        "operationId": "revoke_node_api_nodes__id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Revoke Node",
+        "tags": [
+          "nodes"
+        ]
+      }
+    },
+    "/api/nodes/{id}/rotate": {
+      "post": {
+        "description": "Give the node a new token. The old one keeps working for `overlap_seconds`; 0 revokes\nit at once.",
+        "operationId": "rotate_node_token_api_nodes__id__rotate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Rotate Node Token",
+        "tags": [
+          "nodes"
         ]
       }
     },
@@ -19627,6 +20922,16 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Evaluate Flags",
@@ -19756,6 +21061,16 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Evaluate Flag",
@@ -19890,6 +21205,16 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Evaluate Flags",
@@ -19965,6 +21290,16 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Send Events",
@@ -20054,6 +21389,16 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Download Ruleset",
@@ -20158,6 +21503,16 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Stream Changes",

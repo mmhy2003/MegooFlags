@@ -20,6 +20,15 @@ For production, edit `.env`: set a strong database password, set `MEGOOFLAGS_SIT
 for automatic HTTPS, and pin `MEGOOFLAGS_VERSION` to an exact release (for example `0.1.0`) so that
 upgrades only happen when you change it.
 
+## Multi-node
+
+For more SDK capacity, or to keep serving flags while the management side is down, run one control
+plane (`docker-compose.control-plane.yml`) and any number of workers (`docker-compose.worker.yml`)
+behind a load balancer, all from the same images. Workers serve `/sdk/*` and `/ofrep/*` from signed
+snapshots kept on disk. See [docs/multi-node.md](docs/multi-node.md), and
+[docs/multi-node-migration.md](docs/multi-node-migration.md) to move a single node over without
+downtime.
+
 ## Development
 
 Prerequisites:
@@ -77,7 +86,7 @@ api/       FastAPI server, Alembic migrations, openapi.json
 web/       Next.js UI and the typed API client
 cli/       megooflags CLI and Go API client
 terraform/ Terraform provider
-deploy/    docker-compose.yml, Caddyfile and .env.example
+deploy/    single-node, control-plane and worker compose files, Caddyfiles and .env examples
 scripts/   version, release, migration and smoke-test scripts
 sdks/      SDKs, one directory per language (reserved)
 spec/      shared evaluation spec and SDK conformance suite (reserved)

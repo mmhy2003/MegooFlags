@@ -4,6 +4,7 @@ import type { components } from "./schema";
 export const healthExample: components["schemas"]["HealthResponse"] = {
   status: "ok",
   version: "0.1.0",
+  role: "standalone",
 };
 export const readyExample: components["schemas"]["ReadyResponse"] = {
   status: "ready",
@@ -23,6 +24,7 @@ export const meExample: components["schemas"]["MeOut"] = {
   mfa: { totp: false, passkeys: 0, recovery_codes_left: 0 },
   require_mfa: false,
   preferences: { theme: "system", sidebar_collapsed: false },
+  role: "standalone",
 };
 export const errorExample: components["schemas"]["ErrorBody"] = {
   code: "not_found",

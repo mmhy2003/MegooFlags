@@ -1,8 +1,11 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+InstanceRoleName = Literal["standalone", "control-plane", "worker"]
 
 
 class Settings(BaseSettings):
@@ -32,8 +35,18 @@ class Settings(BaseSettings):
     webhook_allow_private: bool = False
     webhook_timeout_seconds: float = Field(10, gt=0, le=60)
     webhook_retention_days: int = Field(7, ge=1)
+    # Multi-node deployment: a worker serves SDK traffic from the control plane's snapshots.
+    role: InstanceRoleName = "standalone"
+    control_plane_url: AnyHttpUrl | None = None
+    node_token: SecretStr | None = None
+    # Allows an http:// control plane URL, for a private network.
+    control_plane_insecure: bool = False
+    control_plane_ca_file: str = ""
+    data_dir: Path = Path("/var/lib/megooflags")
+    worker_buffer_max_mb: int = Field(64, ge=1)
+    worker_drain_grace_seconds: float = Field(30, ge=0)
 
-    @field_validator("public_url", "secret_key", mode="before")
+    @field_validator("public_url", "secret_key", "control_plane_url", "node_token", mode="before")
     @classmethod
     def _empty_is_none(cls, value: object) -> object:
         # docker-compose passes an empty string for a variable that is not configured.

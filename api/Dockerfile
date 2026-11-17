@@ -36,6 +36,8 @@ COPY log_config.json ./
 # Uvicorn reads FORWARDED_ALLOW_IPS for --proxy-headers: trust only the private (Docker) networks.
 ENV PATH="/app/.venv/bin:${PATH}" PYTHONUNBUFFERED=1 \
     FORWARDED_ALLOW_IPS="10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1"
+# Data directory (MEGOOFLAGS_DATA_DIR): a worker keeps its snapshot and event buffer here.
+RUN mkdir -p /var/lib/megooflags && chown 10001:10001 /var/lib/megooflags
 USER 10001
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \

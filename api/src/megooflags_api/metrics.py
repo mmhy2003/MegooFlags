@@ -3,6 +3,7 @@ each worker writes its values there, so `/metrics` on any worker reports the who
 
 import os
 import time
+from collections.abc import Callable
 
 from fastapi import APIRouter, Response
 from prometheus_client import (
@@ -53,6 +54,29 @@ INTEGRATION_DELIVERIES = Counter(
     "Integration delivery attempts by kind and outcome.",
     ["kind", "outcome"],
 )
+NODE_STREAMS = Gauge(
+    "megooflags_node_streams",
+    "Open worker streams on this control-plane process.",
+    multiprocess_mode="livesum",
+)
+WORKER_SNAPSHOT_AGE = Gauge(
+    "megooflags_worker_snapshot_age_seconds",
+    "Seconds since the worker last heard from the control plane while in sync.",
+)
+WORKER_SNAPSHOT_VERSION = Gauge(
+    "megooflags_worker_snapshot_version", "Highest snapshot version the worker has applied."
+)
+WORKER_CONTROL_PLANE_CONNECTED = Gauge(
+    "megooflags_worker_control_plane_connected",
+    "1 while the worker's stream to the control plane is open.",
+)
+WORKER_BUFFERED_EVENTS = Gauge(
+    "megooflags_worker_buffered_events", "Exposures and counts waiting to be forwarded."
+)
+WORKER_EVENTS_DROPPED = Counter(
+    "megooflags_worker_events_dropped",
+    "Exposures dropped because the buffer was full or older than 7 days.",
+)
 BUILD_INFO = Gauge(
     "megooflags_build_info", "MegooFlags API build.", ["version"], multiprocess_mode="max"
 )
@@ -62,9 +86,14 @@ MULTIPROC_ENV = "PROMETHEUS_MULTIPROC_DIR"
 
 router = APIRouter()
 
+# Called by render() first, so gauges read from live state are current (the worker's).
+BEFORE_RENDER: list[Callable[[], None]] = []
+
 
 def render() -> bytes:
     """The metrics of this process, or of every worker when several share a metrics directory."""
+    for callback in BEFORE_RENDER:
+        callback()
     if not os.environ.get(MULTIPROC_ENV):
         return generate_latest(REGISTRY)
     registry = CollectorRegistry()

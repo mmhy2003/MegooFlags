@@ -28,6 +28,7 @@ class ChangeBus:
         self._url = url
         self.on_project: list[Callable[[uuid.UUID], None]] = []
         self.on_key_revoked: list[Callable[[uuid.UUID], None]] = []
+        self.on_node: list[Callable[[uuid.UUID], None]] = []
         self.on_resubscribe: list[Callable[[], Awaitable[None]]] = []
 
     async def publish(self, project_id: uuid.UUID) -> None:
@@ -38,6 +39,12 @@ class ChangeBus:
 
     async def publish_key_revoked(self, key_id: uuid.UUID) -> None:
         message = {"kind": "key", "id": str(key_id)}
+        self.dispatch(json.dumps(message))
+        await self._send(message)
+
+    async def publish_node(self, node_id: uuid.UUID) -> None:
+        """A worker node was drained, resumed, rotated, revoked or removed."""
+        message = {"kind": "node", "id": str(node_id)}
         self.dispatch(json.dumps(message))
         await self._send(message)
 
@@ -62,6 +69,8 @@ class ChangeBus:
             callbacks = self.on_project
         elif kind == "key":
             callbacks = self.on_key_revoked
+        elif kind == "node":
+            callbacks = self.on_node
         else:
             logger.warning("ignoring change message of unknown kind %r", kind)
             return

@@ -149,3 +149,20 @@ class EventGroup(StrEnum):
     TARGETING = "targeting"  # shown as "Targeting and state"
     SEGMENTS = "segments"
     CHANGE_REQUESTS = "change_requests"
+
+
+class InstanceRole(StrEnum):
+    STANDALONE = "standalone"
+    CONTROL_PLANE = "control-plane"
+    WORKER = "worker"
+
+
+class NodeStatus(StrEnum):
+    """A worker's status on the Nodes page. Computed, never stored."""
+
+    PENDING = "pending"
+    HEALTHY = "healthy"
+    STALE = "stale"
+    DRAINING = "draining"
+    INCOMPATIBLE = "incompatible"
+    REVOKED = "revoked"
