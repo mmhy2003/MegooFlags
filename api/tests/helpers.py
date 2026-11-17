@@ -31,6 +31,7 @@ RESET_SQL = [
     "integration_outbox, node CASCADE",
     "DELETE FROM role WHERE NOT builtin",
     "UPDATE org_settings SET require_mfa = false",
+    "UPDATE update_status SET latest_version = NULL, checked_at = NULL, attempted_at = NULL",
 ]
 
 

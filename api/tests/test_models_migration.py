@@ -74,6 +74,7 @@ def test_metadata_has_all_tables() -> None:
         "node_token",
         "environment_snapshot",
         "node_event_batch",
+        "update_status",
     }
 
 
