@@ -1,24 +1,37 @@
-# MegooFlags
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="site/src/assets/logo-dark.svg">
+  <img src="site/src/assets/logo-light.svg" alt="MegooFlags" height="48">
+</picture>
+
+[![CI](https://img.shields.io/github/actions/workflow/status/mmhy2003/MegooFlags/ci.yml?branch=main&label=CI&labelColor=1a1033)](https://github.com/mmhy2003/MegooFlags/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/mmhy2003/MegooFlags?include_prereleases&labelColor=1a1033&color=c8006a)](https://github.com/mmhy2003/MegooFlags/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-007a87?labelColor=1a1033)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-mmhy2003.github.io%2FMegooFlags-7a1fd6?labelColor=1a1033)](https://mmhy2003.github.io/MegooFlags/)
+[![OpenFeature](https://img.shields.io/badge/OpenFeature-providers-c8006a?labelColor=1a1033)](https://openfeature.dev)
+
 A free, open-source alternative to hosted feature flag services: runtime toggles, user targeting, and percentage rollouts.
+
+Documentation: https://mmhy2003.github.io/MegooFlags/
 
 ## Quick start
 
-You need Docker with the Compose plugin.
+You need Docker with the Compose plugin. Download the release bundle, set a secret key and start the stack:
 
-1. Download `docker-compose.yml`, `Caddyfile` and `.env.example` from the
-   [latest release](https://github.com/mmhy2003/MegooFlags/releases/latest) into one directory.
-2. Create your configuration and start the stack:
+```bash
+for f in docker-compose.yml Caddyfile .env.example; do curl -fsSLO "https://github.com/mmhy2003/MegooFlags/releases/latest/download/$f"; done
+cp .env.example .env
+sed -i "s/^MEGOOFLAGS_SECRET_KEY=.*/MEGOOFLAGS_SECRET_KEY=$(openssl rand -hex 32)/" .env
+docker compose up -d --wait
+```
 
-   ```bash
-   cp .env.example .env
-   docker compose up -d
-   ```
-
-3. Open http://localhost.
+Then open http://localhost/setup and create the admin.
 
 For production, edit `.env`: set a strong database password, set `MEGOOFLAGS_SITE_ADDRESS` to your domain
 for automatic HTTPS, and pin `MEGOOFLAGS_VERSION` to an exact release (for example `0.1.0`) so that
 upgrades only happen when you change it.
+
+Full quick start, from a new flag to an evaluation with curl and the SDKs:
+https://mmhy2003.github.io/MegooFlags/start/quick-start/
 
 ## Multi-node
 
@@ -90,7 +103,18 @@ deploy/    single-node, control-plane and worker compose files, Caddyfiles and .
 scripts/   version, release, migration and smoke-test scripts
 sdks/      SDKs, one directory per language (reserved)
 spec/      shared evaluation spec and SDK conformance suite (reserved)
+site/      docs site (Astro Starlight), published to GitHub Pages
+perf/      load test suite (mfload) and the performance report
+rfcs/      requests for comments on major changes
 ```
+
+## Community
+
+- [Contributing](CONTRIBUTING.md): how to set up, which checks to run and how pull requests work
+- [Code of conduct](CODE_OF_CONDUCT.md)
+- [Security policy](SECURITY.md): report vulnerabilities privately
+- [Roadmap](ROADMAP.md)
+- [RFC process](rfcs/README.md): how to propose a major change
 
 ## License
 
