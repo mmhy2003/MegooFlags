@@ -1,4 +1,7 @@
-# Release workflows
+---
+title: Release workflows
+description: Approvals for protected environments, scheduled changes, progressive rollouts and the flag lifecycle.
+---
 
 MegooFlags can hold changes to protected environments for approval, run flag changes at a set time,
 step a rollout up automatically and track each flag's lifecycle. Everything here works through the
@@ -49,12 +52,12 @@ approval.
 A change request (CR) carries one change to one flag in one environment. Its `payload` is the body
 of the direct endpoint it stands in for:
 
-| `kind` | `payload` | Permission to create |
-|---|---|---|
-| `config` | the config `PUT` body (`version`, `enabled`, `targets`, `rules`, `fallthrough`, `prerequisites`) | `flag.config.write` |
-| `toggle` | `{"enabled": true}` | `flag.toggle` |
-| `schedule` | a scheduled change, see below | `flag.toggle` for enable and disable, `flag.config.write` for `set_rollout` |
-| `rollout` | a progressive rollout, see below | `flag.config.write` |
+| `kind`     | `payload`                                                                                        | Permission to create                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| `config`   | the config `PUT` body (`version`, `enabled`, `targets`, `rules`, `fallthrough`, `prerequisites`) | `flag.config.write`                                                         |
+| `toggle`   | `{"enabled": true}`                                                                              | `flag.toggle`                                                               |
+| `schedule` | a scheduled change, see below                                                                    | `flag.toggle` for enable and disable, `flag.config.write` for `set_rollout` |
+| `rollout`  | a progressive rollout, see below                                                                 | `flag.config.write`                                                         |
 
 The payload is checked by a dry run when the CR is created, so an invalid change is refused at once
 (422, with `details.path` starting with `payload`). A `config` payload's `version` must match the
@@ -225,10 +228,10 @@ Changes the scheduler makes reach SDKs like manual ones and are audited with the
 
 Settings (in `deploy/.env.example`):
 
-| Setting | Default | Meaning |
-|---|---|---|
-| `MEGOOFLAGS_SCHEDULER_ENABLED` | `true` | Set to `false` to stop this process from running the scheduler. If no process runs it, nothing scheduled happens. |
-| `MEGOOFLAGS_SCHEDULER_INTERVAL_SECONDS` | `5` | Seconds between the leader's checks for due work. |
+| Setting                                 | Default | Meaning                                                                                                           |
+| --------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
+| `MEGOOFLAGS_SCHEDULER_ENABLED`          | `true`  | Set to `false` to stop this process from running the scheduler. If no process runs it, nothing scheduled happens. |
+| `MEGOOFLAGS_SCHEDULER_INTERVAL_SECONDS` | `5`     | Seconds between the leader's checks for due work.                                                                 |
 
 Metrics on `:8000/metrics`:
 

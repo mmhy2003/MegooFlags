@@ -1,8 +1,11 @@
-# Migrating from a single node to multi-node
+---
+title: Migrating from a single node to multi-node
+description: Turn a running single node into a control plane with workers, without downtime.
+---
 
 This guide turns a running single node (`docker-compose.yml`, `MEGOOFLAGS_ROLE=standalone`) into
 a control plane with workers, without downtime for your applications. The database, the volumes
-and the URL of the web UI stay as they are. [multi-node.md](multi-node.md) explains the roles,
+and the URL of the web UI stay as they are. [Multi-node deployment](/MegooFlags/deploy/multi-node/) explains the roles,
 settings and failure behaviour.
 
 The examples use `flags.example.com` for the existing node, which becomes the control plane, and
@@ -59,7 +62,7 @@ For each worker (for example `worker-1` to `worker-3`):
 
 3. Wait until the worker shows **Healthy** on the Nodes page.
 
-Then set up the load balancer from [`docs/examples/multi-node/`](examples/multi-node/) with your
+Then set up the load balancer from [`docs/examples/multi-node/`](https://github.com/mmhy2003/MegooFlags/tree/main/docs/examples/multi-node) with your
 workers' addresses, and check it before any application uses it:
 
 ```bash
@@ -97,6 +100,7 @@ Rolling back is the same steps in reverse, also without downtime:
 
    Then revoke and remove each worker on the Nodes page. Events a worker still had buffered are
    lost with `-v`; leave it out and start the worker again later if you need them forwarded.
+
 3. Make the control plane a single node again (only `api` is recreated):
 
    ```bash

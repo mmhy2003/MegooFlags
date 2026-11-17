@@ -1,4 +1,7 @@
-# Multi-node deployment
+---
+title: Multi-node deployment
+description: Run one control plane and any number of workers that serve flags from signed snapshots.
+---
 
 A single node (`docker-compose.yml`) runs everything on one host. When you need more SDK capacity,
 or want flags to keep being served while the management side is down, run one **control plane**
@@ -6,15 +9,15 @@ plus any number of **workers**. Every node uses the same images; `MEGOOFLAGS_ROL
 node does.
 
 To turn an existing single node into a control plane without downtime, follow
-[multi-node-migration.md](multi-node-migration.md).
+[Migrating from a single node](/MegooFlags/deploy/multi-node-migration/).
 
 ## Roles
 
-| Role | Compose file | Runs | Serves |
-|---|---|---|---|
-| `standalone` (default) | `docker-compose.yml` | Caddy, web, api, migrate, Postgres, Valkey | Everything; no Nodes page |
-| `control-plane` | `docker-compose.control-plane.yml` | The same services as `standalone` | Everything, including SDK traffic, plus the Nodes page and the worker endpoints (`/api/cluster/v1/*`) |
-| `worker` | `docker-compose.worker.yml` | Caddy and api only | `/sdk/*`, `/ofrep/*`, `/healthz` and `/readyz` |
+| Role                   | Compose file                       | Runs                                       | Serves                                                                                                |
+| ---------------------- | ---------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `standalone` (default) | `docker-compose.yml`               | Caddy, web, api, migrate, Postgres, Valkey | Everything; no Nodes page                                                                             |
+| `control-plane`        | `docker-compose.control-plane.yml` | The same services as `standalone`          | Everything, including SDK traffic, plus the Nodes page and the worker endpoints (`/api/cluster/v1/*`) |
+| `worker`               | `docker-compose.worker.yml`        | Caddy and api only                         | `/sdk/*`, `/ofrep/*`, `/healthz` and `/readyz`                                                        |
 
 - The **control plane** owns the database, the web UI and the management API. For every
   environment it publishes a versioned snapshot of the ruleset and the SDK keys, signed with
@@ -34,16 +37,16 @@ plane is down, workers keep serving, but nobody can change flags.
 
 The multi-node settings, in `.env` next to the compose file:
 
-| Setting | Role | Default | Meaning |
-|---|---|---|---|
-| `MEGOOFLAGS_ROLE` | all | `standalone` | `standalone`, `control-plane` or `worker`. Each compose file sets its own default. |
-| `MEGOOFLAGS_CONTROL_PLANE_URL` | worker | required | The control plane's external URL, e.g. `https://flags.example.com`. |
-| `MEGOOFLAGS_NODE_TOKEN` | worker | required | The node token from the Nodes page; it starts with `mf_node_`. |
-| `MEGOOFLAGS_CONTROL_PLANE_INSECURE` | worker | `false` | Allows an `http://` control-plane URL (a private network, tests). |
-| `MEGOOFLAGS_CONTROL_PLANE_CA_FILE` | worker | empty | A PEM file with a private CA to trust for the control plane's certificate. |
-| `MEGOOFLAGS_DATA_DIR` | worker | `/var/lib/megooflags` | Where snapshots and the event buffer are kept; the `worker_data` volume is mounted here. |
-| `MEGOOFLAGS_WORKER_BUFFER_MAX_MB` | worker | `64` | Disk space for events buffered while the control plane is unreachable. |
-| `MEGOOFLAGS_WORKER_DRAIN_GRACE_SECONDS` | worker | `30` | How long a draining worker keeps its SDK streams open before it closes them. |
+| Setting                                 | Role   | Default               | Meaning                                                                                  |
+| --------------------------------------- | ------ | --------------------- | ---------------------------------------------------------------------------------------- |
+| `MEGOOFLAGS_ROLE`                       | all    | `standalone`          | `standalone`, `control-plane` or `worker`. Each compose file sets its own default.       |
+| `MEGOOFLAGS_CONTROL_PLANE_URL`          | worker | required              | The control plane's external URL, e.g. `https://flags.example.com`.                      |
+| `MEGOOFLAGS_NODE_TOKEN`                 | worker | required              | The node token from the Nodes page; it starts with `mf_node_`.                           |
+| `MEGOOFLAGS_CONTROL_PLANE_INSECURE`     | worker | `false`               | Allows an `http://` control-plane URL (a private network, tests).                        |
+| `MEGOOFLAGS_CONTROL_PLANE_CA_FILE`      | worker | empty                 | A PEM file with a private CA to trust for the control plane's certificate.               |
+| `MEGOOFLAGS_DATA_DIR`                   | worker | `/var/lib/megooflags` | Where snapshots and the event buffer are kept; the `worker_data` volume is mounted here. |
+| `MEGOOFLAGS_WORKER_BUFFER_MAX_MB`       | worker | `64`                  | Disk space for events buffered while the control plane is unreachable.                   |
+| `MEGOOFLAGS_WORKER_DRAIN_GRACE_SECONDS` | worker | `30`                  | How long a draining worker keeps its SDK streams open before it closes them.             |
 
 A worker also reads `MEGOOFLAGS_CLIENT_RATE_LIMIT_PER_MINUTE`, `MEGOOFLAGS_SSE_HEARTBEAT_SECONDS`,
 `MEGOOFLAGS_LOG_LEVEL`, the `OTEL_*` settings, and Caddy's `MEGOOFLAGS_SITE_ADDRESS`,
@@ -115,7 +118,7 @@ snapshot version. Repeat for `worker-2` and `worker-3`.
 
 ### 4. Put a load balancer in front
 
-[`docs/examples/multi-node/`](examples/multi-node/) has samples for nginx, HAProxy, Caddy and
+[`docs/examples/multi-node/`](https://github.com/mmhy2003/MegooFlags/tree/main/docs/examples/multi-node) has samples for nginx, HAProxy, Caddy and
 Traefik, with notes for AWS, Google Cloud and Azure load balancers. Each one sends `/sdk/` and
 `/ofrep/` to the three workers, health-checks `/readyz`, turns response buffering off for SDK
 streams and keeps idle connections open longer than 60 s. Replace `worker-1`, `worker-2` and
@@ -150,14 +153,14 @@ like the control plane.
 
 ## Managing workers
 
-| Status | Meaning |
-|---|---|
-| Pending | The worker has never connected. |
-| Healthy | Heartbeat in the last 30 s and its snapshot version is current. With a fresh heartbeat and an older snapshot it shows "syncing". |
-| Stale | No heartbeat for more than 30 s. The page shows the age of its last synced snapshot. |
-| Draining | A drain was requested. |
-| Incompatible | Its last connection was refused by the version rule (see [Rolling upgrades](#rolling-upgrades)). |
-| Revoked | Every token of the node is revoked. |
+| Status       | Meaning                                                                                                                          |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| Pending      | The worker has never connected.                                                                                                  |
+| Healthy      | Heartbeat in the last 30 s and its snapshot version is current. With a fresh heartbeat and an older snapshot it shows "syncing". |
+| Stale        | No heartbeat for more than 30 s. The page shows the age of its last synced snapshot.                                             |
+| Draining     | A drain was requested.                                                                                                           |
+| Incompatible | Its last connection was refused by the version rule (see [Rolling upgrades](#rolling-upgrades)).                                 |
+| Revoked      | Every token of the node is revoked.                                                                                              |
 
 Each worker sends a heartbeat every 10 s. The page refreshes every 10 s while it is open.
 
@@ -181,12 +184,12 @@ through `/api/nodes` with the `org.manage` permission.
 
 ## Failure behaviour
 
-| Failure | Effect on apps | Effect on admins |
-|---|---|---|
-| One worker down | None: the load balancer sends traffic to the other workers; SDKs reconnect their streams. | The worker shows as Stale on the Nodes page. |
+| Failure                            | Effect on apps                                                                                   | Effect on admins                                                                                                            |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| One worker down                    | None: the load balancer sends traffic to the other workers; SDKs reconnect their streams.        | The worker shows as Stale on the Nodes page.                                                                                |
 | All workers lose the control plane | None: flags are served from the last snapshot. New flag changes wait until the link is restored. | The UI and management API are unavailable if the control plane itself is down; workers show as Stale with the snapshot age. |
-| Control plane restored | Workers resync to the latest snapshot automatically and push it to SDKs within 5 s. | Buffered events are ingested, each batch once. |
-| Database down | None for flag serving. | The control plane is unavailable (its `/readyz` answers 503) until the database is back; then changes propagate again. |
+| Control plane restored             | Workers resync to the latest snapshot automatically and push it to SDKs within 5 s.              | Buffered events are ingested, each batch once.                                                                              |
+| Database down                      | None for flag serving.                                                                           | The control plane is unavailable (its `/readyz` answers 503) until the database is back; then changes propagate again.      |
 
 The `scripts/cluster_test.sh` suite checks each row against a real control plane, three workers and
 an nginx load balancer.
@@ -244,6 +247,7 @@ Upgrade the **control plane first**, then **each worker in turn**:
    ```
 
    While the API restarts, workers keep serving and reconnect on their own.
+
 2. For each worker: **Drain** it on the Nodes page and wait for the grace time
    (`MEGOOFLAGS_WORKER_DRAIN_GRACE_SECONDS`) so its SDKs move to the other workers. Then, on the
    worker, set `MEGOOFLAGS_VERSION` to the same release and run:
@@ -266,14 +270,14 @@ Each api container serves Prometheus metrics on `:8000/metrics` inside its compo
 answers 404). On a worker, attach Prometheus to the `megooflags-worker_default` network and scrape
 `api:8000`.
 
-| Metric | Node | Meaning |
-|---|---|---|
-| `megooflags_worker_snapshot_age_seconds` | worker | Seconds since the worker last heard from the control plane while in sync. Under 15 s while connected. |
-| `megooflags_worker_snapshot_version` | worker | The highest snapshot version the worker has applied. |
-| `megooflags_worker_control_plane_connected` | worker | 1 while the worker's stream to the control plane is open. |
-| `megooflags_worker_buffered_events` | worker | Exposures and counts waiting to be forwarded. |
-| `megooflags_worker_events_dropped_total` | worker | Exposures dropped because the buffer was full or older than 7 days. |
-| `megooflags_node_streams` | control plane | Open worker streams on this control plane. |
+| Metric                                      | Node          | Meaning                                                                                               |
+| ------------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------- |
+| `megooflags_worker_snapshot_age_seconds`    | worker        | Seconds since the worker last heard from the control plane while in sync. Under 15 s while connected. |
+| `megooflags_worker_snapshot_version`        | worker        | The highest snapshot version the worker has applied.                                                  |
+| `megooflags_worker_control_plane_connected` | worker        | 1 while the worker's stream to the control plane is open.                                             |
+| `megooflags_worker_buffered_events`         | worker        | Exposures and counts waiting to be forwarded.                                                         |
+| `megooflags_worker_events_dropped_total`    | worker        | Exposures dropped because the buffer was full or older than 7 days.                                   |
+| `megooflags_node_streams`                   | control plane | Open worker streams on this control plane.                                                            |
 
 An alert for a worker that has not heard from the control plane for five minutes:
 

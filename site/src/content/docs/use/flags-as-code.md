@@ -1,6 +1,9 @@
-# Flags as code
+---
+title: Flags as code
+description: Keep a project in Git as YAML files with export, diff and apply, and sync it both ways.
+---
 
-A MegooFlags project can live in Git as a directory of YAML files. The [CLI](cli.md) writes the
+A MegooFlags project can live in Git as a directory of YAML files. The [CLI](/MegooFlags/use/cli/) writes the
 directory from the server (`export`), compares it with the server (`diff`) and makes the server match it
 (`apply`). The web UI keeps working: changes made there come back to Git as a pull request (see
 [Git sync](#git-sync)).
@@ -17,10 +20,20 @@ flags/
 ```yaml
 # megooflags.yaml
 apiVersion: megooflags/v1
-project: {key: shop, name: Shop, description: ""}
+project: { key: shop, name: Shop, description: "" }
 environments:
-  - {key: development, name: Development, description: "", approvals_required: 0}
-  - {key: production, name: Production, description: "", approvals_required: 1}
+  - {
+      key: development,
+      name: Development,
+      description: "",
+      approvals_required: 0,
+    }
+  - {
+      key: production,
+      name: Production,
+      description: "",
+      approvals_required: 1,
+    }
 ```
 
 ```yaml
@@ -32,7 +45,12 @@ excluded: []
 rules:
   - description: ""
     clauses:
-      - {attribute: email, operator: ends_with, values: ["@example.com"], negate: false}
+      - {
+          attribute: email,
+          operator: ends_with,
+          values: ["@example.com"],
+          negate: false,
+        }
 ```
 
 ```yaml
@@ -41,28 +59,48 @@ name: New checkout
 description: ""
 type: boolean
 tags: [checkout]
-owner: mona@example.com            # left out when the flag has no owner
+owner: mona@example.com # left out when the flag has no owner
 variations:
-  - {key: "true", name: "", description: "", value: true}
-  - {key: "false", name: "", description: "", value: false}
+  - { key: "true", name: "", description: "", value: true }
+  - { key: "false", name: "", description: "", value: false }
 off_variation: "false"
 permanent: false
 archived: false
 environments:
   production:
     enabled: true
-    targets: [{variation: "true", values: [u1]}]
+    targets: [{ variation: "true", values: [u1] }]
     rules:
       - description: Beta testers
-        clauses: [{attribute: key, operator: in_segment, values: [beta], negate: false}]
+        clauses:
+          [
+            {
+              attribute: key,
+              operator: in_segment,
+              values: [beta],
+              negate: false,
+            },
+          ]
         variation: "true"
       - description: Staff
-        clauses: [{attribute: email, operator: ends_with, values: ["@example.com"], negate: false}]
+        clauses:
+          [
+            {
+              attribute: email,
+              operator: ends_with,
+              values: ["@example.com"],
+              negate: false,
+            },
+          ]
         rollout:
           bucket_by: key
-          weights: [{variation: "true", weight: 40000}, {variation: "false", weight: 60000}]
-    fallthrough: {variation: "false"}
-    prerequisites: [{flag: other, variation: "true"}]
+          weights:
+            [
+              { variation: "true", weight: 40000 },
+              { variation: "false", weight: 60000 },
+            ]
+    fallthrough: { variation: "false" }
+    prerequisites: [{ flag: other, variation: "true" }]
 ```
 
 The files use the API's field names and units. Rollout weights are in thousandths of a percent: 40000 is
@@ -108,6 +146,7 @@ megooflags apply --dir flags
   ```
 
   `+` creates or restores, `~` updates, `-` archives or deletes.
+
 - **`apply`** makes those changes. It creates the project when it does not exist, so the same directory
   can seed a new project.
 
@@ -176,13 +215,13 @@ pull requests:
 - a change made in Git is reviewed in a pull request (where `diff` shows its plan) and applied on merge;
 - a change made in the UI comes back as a pull request opened by the export job.
 
-[`docs/examples/git-sync/`](examples/git-sync/) holds three GitHub Actions workflows to copy into
+[`docs/examples/git-sync/`](https://github.com/mmhy2003/MegooFlags/tree/main/docs/examples/git-sync) holds three GitHub Actions workflows to copy into
 `.github/workflows/` of the repository that holds `flags/`:
 
-| Workflow | Runs on | Does |
-|---|---|---|
-| `megooflags-diff.yml` | pull requests that change `flags/**` | `megooflags diff --dir flags`. The plan goes to the log and the job summary; differences (exit 3) fail the check, as a reminder of what merging will change |
-| `megooflags-apply.yml` | pushes to `main` that change `flags/**` | `megooflags apply --dir flags --change-requests`, one run at a time. Changes for environments that require approvals become change requests, listed in the job summary |
+| Workflow                | Runs on                                             | Does                                                                                                                                                                                       |
+| ----------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `megooflags-diff.yml`   | pull requests that change `flags/**`                | `megooflags diff --dir flags`. The plan goes to the log and the job summary; differences (exit 3) fail the check, as a reminder of what merging will change                                |
+| `megooflags-apply.yml`  | pushes to `main` that change `flags/**`             | `megooflags apply --dir flags --change-requests`, one run at a time. Changes for environments that require approvals become change requests, listed in the job summary                     |
 | `megooflags-export.yml` | every 30 minutes, and by hand (`workflow_dispatch`) | `megooflags export --dir flags` on `main`. When `flags/` changed, it force-pushes one commit to the branch `megooflags/export` and opens its pull request, or updates the one already open |
 
 Each workflow downloads the CLI release archive, checks it against `SHA256SUMS`, and uses the repository
@@ -203,7 +242,7 @@ environment permissions for apply.
 It would be nicer to export right after each UI change, but a MegooFlags webhook cannot start a GitHub
 workflow by itself. GitHub's `repository_dispatch` and `workflow_dispatch` endpoints need an
 `Authorization: Bearer <GitHub token>` header, and a MegooFlags webhook sends only its own signed JSON
-body ([integrations.md](integrations.md)).
+body ([Integrations](/MegooFlags/use/integrations/)).
 
 To export within seconds, run a small relay of your own, for example a serverless function:
 

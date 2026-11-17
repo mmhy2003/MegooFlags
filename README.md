@@ -38,8 +38,8 @@ https://mmhy2003.github.io/MegooFlags/start/quick-start/
 For more SDK capacity, or to keep serving flags while the management side is down, run one control
 plane (`docker-compose.control-plane.yml`) and any number of workers (`docker-compose.worker.yml`)
 behind a load balancer, all from the same images. Workers serve `/sdk/*` and `/ofrep/*` from signed
-snapshots kept on disk. See [docs/multi-node.md](docs/multi-node.md), and
-[docs/multi-node-migration.md](docs/multi-node-migration.md) to move a single node over without
+snapshots kept on disk. See [Multi-node deployment](https://mmhy2003.github.io/MegooFlags/deploy/multi-node/), and
+[Migrating from a single node](https://mmhy2003.github.io/MegooFlags/deploy/multi-node-migration/) to move a single node over without
 downtime.
 
 ## Development
@@ -72,10 +72,10 @@ pnpm lint && pnpm format:check && pnpm typecheck && pnpm build
 pnpm gen:api                                       # regenerate the typed API client
 ```
 
-To manage MegooFlags from a terminal or CI, use the `megooflags` CLI ([docs/cli.md](docs/cli.md)), with
-flags as code ([docs/flags-as-code.md](docs/flags-as-code.md)) and imports from other tools
-([docs/importers.md](docs/importers.md)). Webhooks, Slack and Teams notifications are described in
-[docs/integrations.md](docs/integrations.md), and the Terraform provider in
+To manage MegooFlags from a terminal or CI, use the `megooflags` CLI ([guide](https://mmhy2003.github.io/MegooFlags/use/cli/)), with
+flags as code ([guide](https://mmhy2003.github.io/MegooFlags/use/flags-as-code/)) and imports from other tools
+([guide](https://mmhy2003.github.io/MegooFlags/migrate/overview/)). Webhooks, Slack and Teams notifications are described in
+[Integrations](https://mmhy2003.github.io/MegooFlags/use/integrations/), and the Terraform provider in
 [terraform/README.md](terraform/README.md).
 
 The full list of checks that CI runs, including the Postgres setup, migrations, images and the smoke

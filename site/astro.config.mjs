@@ -32,7 +32,24 @@ export default defineConfig({
       ],
       plugins: [starlightLinksValidator()],
       sidebar: [
-        { label: "Use", items: ["use/terraform"] },
+        {
+          label: "Deploy",
+          items: [
+            "deploy/multi-node",
+            "deploy/multi-node-migration",
+            "deploy/security",
+          ],
+        },
+        {
+          label: "Use",
+          items: [
+            "use/release-workflows",
+            "use/flags-as-code",
+            "use/integrations",
+            "use/cli",
+            "use/terraform",
+          ],
+        },
         {
           label: "SDKs",
           items: [
@@ -55,6 +72,7 @@ export default defineConfig({
           label: "Reference",
           items: ["reference/evaluation", "reference/delivery"],
         },
+        { label: "Migrate", items: ["migrate/overview"] },
         {
           label: "Project",
           items: [

@@ -1,8 +1,11 @@
-# The `megooflags` CLI
+---
+title: The megooflags CLI
+description: "Install and configure the megooflags CLI: every command, output formats and exit codes."
+---
 
 `megooflags` manages MegooFlags from a terminal or from CI: projects, environments, segments and flags,
 promotion between environments, local development with an SDK bootstrap file, flags as code
-([flags-as-code.md](flags-as-code.md)) and imports from other tools ([importers.md](importers.md)).
+([Flags as code](/MegooFlags/use/flags-as-code/)) and imports from other tools ([Importers](/MegooFlags/migrate/overview/)).
 It uses only the management REST API and an API token.
 
 The CLI has its own version (0.1.0), independent of the server.
@@ -13,11 +16,11 @@ Each release is tagged `cli/vX.Y.Z` on the [GitHub releases page](https://github
 It is a pre-release, so the page's "latest release" stays the server. A release has one archive per
 system and a `SHA256SUMS` file:
 
-| System | Archive |
-|---|---|
-| Linux | `megooflags_X.Y.Z_linux_amd64.tar.gz`, `megooflags_X.Y.Z_linux_arm64.tar.gz` |
-| macOS | `megooflags_X.Y.Z_darwin_amd64.tar.gz`, `megooflags_X.Y.Z_darwin_arm64.tar.gz` |
-| Windows | `megooflags_X.Y.Z_windows_amd64.zip`, `megooflags_X.Y.Z_windows_arm64.zip` |
+| System  | Archive                                                                        |
+| ------- | ------------------------------------------------------------------------------ |
+| Linux   | `megooflags_X.Y.Z_linux_amd64.tar.gz`, `megooflags_X.Y.Z_linux_arm64.tar.gz`   |
+| macOS   | `megooflags_X.Y.Z_darwin_amd64.tar.gz`, `megooflags_X.Y.Z_darwin_arm64.tar.gz` |
+| Windows | `megooflags_X.Y.Z_windows_amd64.zip`, `megooflags_X.Y.Z_windows_arm64.zip`     |
 
 Download the archive and `SHA256SUMS`, check the archive, and put the binary on your `PATH`:
 
@@ -65,12 +68,12 @@ Each setting is taken from the first of these that has it:
 3. the config file, `~/.config/megooflags/config.yaml` (or `$XDG_CONFIG_HOME/megooflags/config.yaml`, or
    the file given with `--config`).
 
-| Setting | Flag | Environment variable | Config file key |
-|---|---|---|---|
-| API URL | `--url` | `MEGOOFLAGS_URL` | `url` |
-| API token | none | `MEGOOFLAGS_API_TOKEN` | `token` |
-| Project | `-p`, `--project` | `MEGOOFLAGS_PROJECT` | `project` |
-| Output format | `-o`, `--output` | `MEGOOFLAGS_OUTPUT` | `output` |
+| Setting       | Flag              | Environment variable   | Config file key |
+| ------------- | ----------------- | ---------------------- | --------------- |
+| API URL       | `--url`           | `MEGOOFLAGS_URL`       | `url`           |
+| API token     | none              | `MEGOOFLAGS_API_TOKEN` | `token`         |
+| Project       | `-p`, `--project` | `MEGOOFLAGS_PROJECT`   | `project`       |
+| Output format | `-o`, `--output`  | `MEGOOFLAGS_OUTPUT`    | `output`        |
 
 ```yaml
 # ~/.config/megooflags/config.yaml
@@ -95,13 +98,13 @@ megooflags flag list -p shop -o json | jq -r '.[].key'
 
 ## Exit codes
 
-| Code | Meaning |
-|---|---|
-| 0 | Done |
-| 1 | Error: the API refused the request, a file is invalid, or something failed. The message is `error: <code>: <message>` |
-| 2 | Usage: an unknown command, a bad flag or argument, a missing `--project`, or a delete without `--yes` |
-| 3 | `diff` found differences between the files and the server |
-| 4 | A change needs approval: the environment requires a change request (`apply`, `promote`, `flag on`, `flag config set` and other writes there) |
+| Code | Meaning                                                                                                                                      |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Done                                                                                                                                         |
+| 1    | Error: the API refused the request, a file is invalid, or something failed. The message is `error: <code>: <message>`                        |
+| 2    | Usage: an unknown command, a bad flag or argument, a missing `--project`, or a delete without `--yes`                                        |
+| 3    | `diff` found differences between the files and the server                                                                                    |
+| 4    | A change needs approval: the environment requires a change request (`apply`, `promote`, `flag on`, `flag config set` and other writes there) |
 
 API errors print the error `code` and message. A `forbidden` error names the missing permission.
 
@@ -112,12 +115,12 @@ Every command accepts `--help`. Commands that work inside a project need `-p`, `
 
 ### Session
 
-| Command | Example |
-|---|---|
-| `login --url URL` | `megooflags login --url https://flags.example.com` |
-| `logout` | `megooflags logout` |
-| `whoami` | `megooflags whoami -o json` |
-| `version` | `megooflags version` |
+| Command                                  | Example                                                          |
+| ---------------------------------------- | ---------------------------------------------------------------- |
+| `login --url URL`                        | `megooflags login --url https://flags.example.com`               |
+| `logout`                                 | `megooflags logout`                                              |
+| `whoami`                                 | `megooflags whoami -o json`                                      |
+| `version`                                | `megooflags version`                                             |
 | `completion bash\|zsh\|fish\|powershell` | `megooflags completion bash > /etc/bash_completion.d/megooflags` |
 
 ### Projects
@@ -159,7 +162,12 @@ excluded: []
 rules:
   - description: Staff
     clauses:
-      - {attribute: email, operator: ends_with, values: ["@example.com"], negate: false}
+      - {
+          attribute: email,
+          operator: ends_with,
+          values: ["@example.com"],
+          negate: false,
+        }
 ```
 
 ### Flags
@@ -200,19 +208,24 @@ megooflags flag kill new-checkout -p shop --env production
 ```
 
 The file of `config set` has the same shape as one environment in a flags-as-code flag file
-([flags-as-code.md](flags-as-code.md#the-files)), as YAML or JSON:
+([Flags as code](/MegooFlags/use/flags-as-code/#the-files)), as YAML or JSON:
 
 ```yaml
 enabled: true
-targets: [{variation: "true", values: [alice, bob]}]
+targets: [{ variation: "true", values: [alice, bob] }]
 rules:
   - description: Beta testers
-    clauses: [{attribute: key, operator: in_segment, values: [beta], negate: false}]
+    clauses:
+      [{ attribute: key, operator: in_segment, values: [beta], negate: false }]
     variation: "true"
 fallthrough:
   rollout:
     bucket_by: key
-    weights: [{variation: "true", weight: 25000}, {variation: "false", weight: 75000}]
+    weights:
+      [
+        { variation: "true", weight: 25000 },
+        { variation: "false", weight: 75000 },
+      ]
 prerequisites: []
 ```
 
@@ -269,14 +282,14 @@ Here `-o` is the file to write, and it replaces the global output format flag.
 
 ### Flags as code and imports
 
-| Command | Example |
-|---|---|
-| `export --dir DIR [--env e …]` | `megooflags export -p shop --dir flags` |
-| `diff --dir DIR [--env e …] [--prune]` | `megooflags diff -p shop --dir flags` |
+| Command                                                                 | Example                                                  |
+| ----------------------------------------------------------------------- | -------------------------------------------------------- |
+| `export --dir DIR [--env e …]`                                          | `megooflags export -p shop --dir flags`                  |
+| `diff --dir DIR [--env e …] [--prune]`                                  | `megooflags diff -p shop --dir flags`                    |
 | `apply --dir DIR [--env e …] [--prune] [--dry-run] [--change-requests]` | `megooflags apply -p shop --dir flags --change-requests` |
-| `import unleash\|flagsmith\|launchdarkly …` | `megooflags import launchdarkly -p shop --out flags` |
+| `import unleash\|flagsmith\|launchdarkly …`                             | `megooflags import launchdarkly -p shop --out flags`     |
 
-See [flags-as-code.md](flags-as-code.md) and [importers.md](importers.md).
+See [Flags as code](/MegooFlags/use/flags-as-code/) and [Importers](/MegooFlags/migrate/overview/).
 
 ## Local development
 

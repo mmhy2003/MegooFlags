@@ -1,4 +1,7 @@
-# Webhooks, Slack and Microsoft Teams
+---
+title: Webhooks, Slack and Microsoft Teams
+description: Notify other systems when flags, targeting, segments and change requests change.
+---
 
 MegooFlags can tell other systems when flags, targeting, segments and change requests change. Each
 project has its own integrations: webhooks (a signed JSON request to your URL), Slack and Microsoft Teams
@@ -9,10 +12,10 @@ project has its own integrations: webhooks (a signed JSON request to your URL), 
 Open the project's **Integrations** page and choose **Add integration**. You need the `project.manage`
 permission, which the built-in Admin role has.
 
-| Type | URL |
-|---|---|
-| Webhook | Any `https` URL that accepts a `POST` with a JSON body |
-| Slack | An [incoming webhook](https://api.slack.com/messaging/webhooks) URL, on `hooks.slack.com` |
+| Type            | URL                                                                                                                                                       |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Webhook         | Any `https` URL that accepts a `POST` with a JSON body                                                                                                    |
+| Slack           | An [incoming webhook](https://api.slack.com/messaging/webhooks) URL, on `hooks.slack.com`                                                                 |
 | Microsoft Teams | The URL of a Teams workflow started by "When a Teams webhook request is received" (Workflows app, "Post to a channel when a webhook request is received") |
 
 Then pick the event groups, and either all environments or the ones you want.
@@ -39,12 +42,12 @@ integration is in the audit log; the URL and the secret never are.
 
 The event `type` is the audit log action. Each integration listens to one or more groups:
 
-| Group | Event types |
-|---|---|
-| Flags | `flag.create`, `flag.update`, `flag.archive`, `flag.restore`, `flag.delete`, `flag.variation.*` (create, update, delete), `flag.lifecycle.update` |
+| Group               | Event types                                                                                                                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Flags               | `flag.create`, `flag.update`, `flag.archive`, `flag.restore`, `flag.delete`, `flag.variation.*` (create, update, delete), `flag.lifecycle.update`                                          |
 | Targeting and state | `flag.config.update`, `flag.toggle`, `flag.kill`, `flag.copy`, `flag.schedule.*` (create, run, cancel, fail), `flag.rollout.*` (start, step, pause, resume, complete, abort, fail, cancel) |
-| Segments | `segment.create`, `segment.update`, `segment.config.update`, `segment.delete` |
-| Change requests | `change_request.create`, `change_request.approve`, `change_request.reject`, `change_request.apply`, `change_request.fail`, `change_request.cancel` |
+| Segments            | `segment.create`, `segment.update`, `segment.config.update`, `segment.delete`                                                                                                              |
+| Change requests     | `change_request.create`, `change_request.approve`, `change_request.reject`, `change_request.apply`, `change_request.fail`, `change_request.cancel`                                         |
 
 Comments on change requests and changes to integrations, SDK keys, members and settings send nothing.
 
@@ -64,33 +67,33 @@ MegooFlags sends `POST <your URL>` with this JSON body:
   "occurred_at": "2026-11-15T14:02:10Z",
   "project": "shop",
   "environment": "production",
-  "resource": {"type": "flag", "key": "new-checkout"},
-  "actor": {"kind": "user", "label": "mona@example.com"},
-  "before": {"enabled": false},
-  "after": {"enabled": true},
+  "resource": { "type": "flag", "key": "new-checkout" },
+  "actor": { "kind": "user", "label": "mona@example.com" },
+  "before": { "enabled": false },
+  "after": { "enabled": true },
   "url": "https://flags.example.com/projects/shop/flags/new-checkout?env=production"
 }
 ```
 
-| Field | Notes |
-|---|---|
-| `id` | Unique per event; the same in every delivery and redelivery of it. Test events use `evt_ping_<hex>` |
-| `type` | The audit action (see [Events](#events)), or `ping` for a test |
-| `occurred_at` | When the change happened, ISO 8601 in UTC |
-| `project`, `environment` | Keys; `environment` is null for events without one |
-| `resource` | `type` (`flag`, `segment`, `change_request`, or `integration` for a ping) and `key` |
-| `actor` | Who made the change: `kind` (`user`, `token`, `system`…) and `label` |
-| `before`, `after` | The audit log snapshots, with secrets already removed; null where there is none |
-| `url` | A link to the flag (with `?env=`), the flag list after a delete, the segments page or the change requests page. Null when `MEGOOFLAGS_PUBLIC_URL` is not set |
+| Field                    | Notes                                                                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                     | Unique per event; the same in every delivery and redelivery of it. Test events use `evt_ping_<hex>`                                                          |
+| `type`                   | The audit action (see [Events](#events)), or `ping` for a test                                                                                               |
+| `occurred_at`            | When the change happened, ISO 8601 in UTC                                                                                                                    |
+| `project`, `environment` | Keys; `environment` is null for events without one                                                                                                           |
+| `resource`               | `type` (`flag`, `segment`, `change_request`, or `integration` for a ping) and `key`                                                                          |
+| `actor`                  | Who made the change: `kind` (`user`, `token`, `system`…) and `label`                                                                                         |
+| `before`, `after`        | The audit log snapshots, with secrets already removed; null where there is none                                                                              |
+| `url`                    | A link to the flag (with `?env=`), the flag list after a delete, the segments page or the change requests page. Null when `MEGOOFLAGS_PUBLIC_URL` is not set |
 
 Headers:
 
-| Header | Value |
-|---|---|
-| `Content-Type` | `application/json` |
-| `User-Agent` | `MegooFlags-Webhook/<server version>` |
-| `X-MegooFlags-Event` | The event `type` |
-| `X-MegooFlags-Delivery` | The delivery id (a new one for each redelivery) |
+| Header                   | Value                                               |
+| ------------------------ | --------------------------------------------------- |
+| `Content-Type`           | `application/json`                                  |
+| `User-Agent`             | `MegooFlags-Webhook/<server version>`               |
+| `X-MegooFlags-Event`     | The event `type`                                    |
+| `X-MegooFlags-Delivery`  | The delivery id (a new one for each redelivery)     |
 | `X-MegooFlags-Signature` | `t=<unix time>,v1=<hex HMAC-SHA256>`, webhooks only |
 
 Slack and Teams receive the same event as a message instead: Slack gets `{text, blocks}`, Teams an
@@ -139,10 +142,16 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 const TOLERANCE = 300; // seconds
 
 export function verify(secret, header, body /* Buffer */) {
-  const parts = Object.fromEntries(header.split(",").map((p) => p.split("=", 2)));
+  const parts = Object.fromEntries(
+    header.split(",").map((p) => p.split("=", 2)),
+  );
   const t = Number(parts.t);
-  if (!Number.isInteger(t) || Math.abs(Date.now() / 1000 - t) > TOLERANCE) return false;
-  const expected = createHmac("sha256", secret).update(`${parts.t}.`).update(body).digest();
+  if (!Number.isInteger(t) || Math.abs(Date.now() / 1000 - t) > TOLERANCE)
+    return false;
+  const expected = createHmac("sha256", secret)
+    .update(`${parts.t}.`)
+    .update(body)
+    .digest();
   const given = Buffer.from(parts.v1 ?? "", "hex");
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
@@ -212,14 +221,14 @@ body is kept (its first 2 KB) for the delivery log and otherwise ignored.
 Network errors, timeouts, and the statuses 408, 429 and 5xx are retried. Every other status, redirects
 included, fails the delivery at once. A delivery gets 6 attempts in all:
 
-| Attempt | When |
-|---|---|
-| 1 | Right away |
-| 2 | 30 seconds after attempt 1 |
-| 3 | 2 minutes after attempt 2 |
-| 4 | 10 minutes after attempt 3 |
-| 5 | 1 hour after attempt 4 |
-| 6 | 6 hours after attempt 5 |
+| Attempt | When                       |
+| ------- | -------------------------- |
+| 1       | Right away                 |
+| 2       | 30 seconds after attempt 1 |
+| 3       | 2 minutes after attempt 2  |
+| 4       | 10 minutes after attempt 3 |
+| 5       | 1 hour after attempt 4     |
+| 6       | 6 hours after attempt 5    |
 
 After the sixth failure the delivery is **Failed**; **Send again** in the delivery log queues it once more.
 Failing integrations are never paused automatically.
@@ -256,15 +265,15 @@ manage a project may reach your internal network through it.
 
 Set these on the `api` service (see `deploy/.env.example`):
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `MEGOOFLAGS_WEBHOOK_ALLOW_PRIVATE` | `false` | Allow `http` and private, loopback and link-local addresses |
-| `MEGOOFLAGS_WEBHOOK_TIMEOUT_SECONDS` | `10` | The deadline for a whole request, from connecting to reading the answer, at most 60 |
-| `MEGOOFLAGS_WEBHOOK_RETENTION_DAYS` | `7` | Days to keep the delivery log; older delivered and failed deliveries are deleted every hour |
-| `MEGOOFLAGS_PUBLIC_URL` | empty | The external URL, used for the `url` field and the links in Slack and Teams |
+| Variable                             | Default | Meaning                                                                                     |
+| ------------------------------------ | ------- | ------------------------------------------------------------------------------------------- |
+| `MEGOOFLAGS_WEBHOOK_ALLOW_PRIVATE`   | `false` | Allow `http` and private, loopback and link-local addresses                                 |
+| `MEGOOFLAGS_WEBHOOK_TIMEOUT_SECONDS` | `10`    | The deadline for a whole request, from connecting to reading the answer, at most 60         |
+| `MEGOOFLAGS_WEBHOOK_RETENTION_DAYS`  | `7`     | Days to keep the delivery log; older delivered and failed deliveries are deleted every hour |
+| `MEGOOFLAGS_PUBLIC_URL`              | empty   | The external URL, used for the `url` field and the links in Slack and Teams                 |
 
 Deliveries are sent by the API process that runs the scheduler (`MEGOOFLAGS_SCHEDULER_ENABLED`, see
-[release-workflows.md](release-workflows.md)), at most 10 at a time.
+[Release workflows](/MegooFlags/use/release-workflows/)), at most 10 at a time.
 
 ## Metrics
 
