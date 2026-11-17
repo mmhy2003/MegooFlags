@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from perf_report import MergeError, main, merge
+from perf_report import GATES, MergeError, main, merge, render
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 
@@ -152,3 +152,168 @@ def test_main_reports_a_merge_error(
 @pytest.mark.parametrize("script", ["perf.sh", "perf/local_eval.sh"])
 def test_script_syntax(script: str) -> None:
     subprocess.run(["bash", "-n", str(SCRIPTS / script)], check=True)
+
+
+def _full(metrics: dict[str, Any], **extra: Any) -> dict[str, Any]:
+    return {
+        "status": "full",
+        "reduced_to": None,
+        "limits": {},
+        "metrics": metrics,
+        "notes": "",
+        **extra,
+    }
+
+
+REMOTE = {"rps": 2000.4, "count": 120000, "errors": 0, "p50_ms": 3.1, "p95_ms": 9.0, "p99_ms": 14.2}
+PROP = {"streams_opened": 30, "streams_dropped": 0, "flips": 20, "prop_p95_ms": 900.0}
+PASSING = {
+    "version": "1.0.0",
+    "profile": "full",
+    "started_at": "2026-11-20T10:00:00Z",
+    "host": {k: v for k, v in HOST.items() if k != "started_at"},
+    "scenarios": {
+        **{
+            f"local_eval_{sdk}": _full({"passed": 1, "p99_ms": 0.02, "errors": 0})
+            for sdk in ("go", "node", "python", "java", "dotnet", "ruby", "php")
+        },
+        "remote_ofrep": _full(REMOTE, limits={"api": "unlimited", "api_workers": "4"}),
+        "remote_evaluate": _full(REMOTE),
+        "propagation_replicas": _full(PROP),
+        "propagation_cluster": _full(PROP),
+        "flags_10k": _full(
+            {
+                "flags": 10000,
+                "ruleset_bytes": 4_800_000,
+                "ruleset_download_ms": 310.0,
+                "flag_list_ms": 42.0,
+            }
+        ),
+        "streams_100k": _full(
+            {
+                **PROP,
+                "streams_opened": 100000,
+                "workers": 4,
+                "capacity_per_worker": 40000,
+                "mem_max_mib": 430.5,
+                "restarts": 0,
+                "oom_killed": 0,
+            }
+        ),
+        "footprint_single": _full(
+            {**PROP, **REMOTE, "rps": 50.0, "restarts": 0, "oom_killed": 0, "mem_max_mib": 1500.0}
+        ),
+    },
+}
+
+
+def _with(name: str, **changes: Any) -> dict[str, Any]:
+    doc = json.loads(json.dumps(PASSING))
+    for key, value in changes.items():
+        if key == "metrics":
+            doc["scenarios"][name]["metrics"].update(value)
+        else:
+            doc["scenarios"][name][key] = value
+    return doc
+
+
+def _rows(report: str) -> dict[str, str]:
+    """The NFR table: the first cell of each row mapped to its last cell (the verdict)."""
+    table = report.split("## NFR verdicts", 1)[1].split("\n## ", 1)[0]
+    rows = [line for line in table.splitlines() if line.startswith("| ")][2:]
+    cells = [[c.strip() for c in row.strip("|").split("|")] for row in rows]
+    return {c[0]: c[-1] for c in cells}
+
+
+def test_render_starts_with_the_heading() -> None:
+    assert render(PASSING).startswith("# Performance and sizing\n")
+
+
+def test_render_all_gates_pass() -> None:
+    rows = _rows(render(PASSING))
+    assert len(rows) == len(GATES)
+    assert set(rows.values()) == {"pass"}
+
+
+def test_render_sections_in_order() -> None:
+    report = render(PASSING)
+    headings = [line for line in report.splitlines() if line.startswith("## ")]
+    assert headings == [
+        "## NFR verdicts",
+        "## Reported values",
+        "## Host and limits",
+        "## Sizing guidance",
+        "## How to reproduce",
+    ]
+    assert "bash scripts/perf.sh full" in report
+    assert "Placeholder" not in report
+
+
+@pytest.mark.parametrize(
+    ("name", "metrics", "row"),
+    [
+        ("remote_ofrep", {"p99_ms": 50.0}, "Remote evaluation, OFREP"),
+        ("remote_ofrep", {"errors": 3}, "Remote evaluation, OFREP"),
+        ("remote_ofrep", {"rps": 1500.0}, "Remote evaluation, OFREP"),
+        ("remote_evaluate", {"p99_ms": 75.3}, "Remote evaluation, /sdk/v1/evaluate"),
+        ("propagation_cluster", {"prop_p95_ms": 5000.0}, "Propagation to worker nodes"),
+        ("streams_100k", {"streams_dropped": 1}, "100k streams per cluster"),
+        ("streams_100k", {"mem_max_mib": 512.5}, "100k streams per cluster"),
+        ("footprint_single", {"oom_killed": 1}, "Single-node footprint"),
+        ("footprint_single", {"p99_ms": 695.5}, "Single-node footprint"),
+        ("local_eval_java", {"passed": 0}, "Local evaluation, Java"),
+    ],
+)
+def test_render_failing_gate(name: str, metrics: dict[str, Any], row: str) -> None:
+    rows = _rows(render(_with(name, metrics=metrics)))
+    assert rows[row] == "fail"
+    assert [v for v in rows.values() if v != "pass"] == ["fail"]
+
+
+def test_render_missing_metric_fails() -> None:
+    doc = _with("remote_ofrep")
+    del doc["scenarios"]["remote_ofrep"]["metrics"]["p99_ms"]
+    assert _rows(render(doc))["Remote evaluation, OFREP"] == "fail"
+
+
+def test_render_reduced_is_never_pass() -> None:
+    doc = _with(
+        "streams_100k",
+        status="reduced",
+        reduced_to="40000 streams, 3 workers",
+        metrics={"streams_opened": 40000, "workers": 3},
+    )
+    report = render(doc)
+    assert _rows(report)["100k streams per cluster"] == "reduced (40000 streams, 3 workers)"
+
+
+def test_render_missing_and_skipped_scenarios_are_not_run() -> None:
+    doc = json.loads(json.dumps(PASSING))
+    del doc["scenarios"]["propagation_replicas"]
+    doc["scenarios"]["local_eval_go"] = {**doc["scenarios"]["local_eval_go"], "status": "skipped"}
+    rows = _rows(render(doc))
+    assert rows["Propagation across API replicas"] == "not run"
+    assert rows["Local evaluation, Go"] == "not run"
+
+
+def test_render_tiny_profile_is_a_placeholder() -> None:
+    report = render({**PASSING, "profile": "tiny"})
+    assert report.startswith("# Performance and sizing\n")
+    assert "Placeholder until the full run in this release" in report
+
+
+def test_render_sizing_guidance_uses_the_measured_capacity() -> None:
+    report = render(PASSING)
+    sizing = report.split("## Sizing guidance", 1)[1]
+    assert "40000 streams" in sizing
+    # 100k streams at 80 % of a worker's capacity: ceil(100000 / 32000) workers.
+    assert "| 100000 | 4 |" in sizing
+    assert "4 Uvicorn workers" in sizing
+
+
+def test_main_renders_the_report(tmp_path: Path) -> None:
+    results = tmp_path / "1.0.0.json"
+    results.write_text(json.dumps(PASSING), encoding="utf-8")
+    out = tmp_path / "perf" / "REPORT.md"
+    assert main(["render", "--results", str(results), "--out", str(out)]) == 0
+    assert out.read_text(encoding="utf-8") == render(PASSING)

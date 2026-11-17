@@ -126,6 +126,12 @@
     "description": "Supported versions and how to report a vulnerability privately."
   },
   {
+    "source": "perf/REPORT.md",
+    "dest": "deploy/performance.md",
+    "title": "Performance and sizing",
+    "description": "Load test results against the performance targets, and how to size a deployment."
+  },
+  {
     "source": "CHANGELOG.md",
     "dest": "project/release-notes.md",
     "title": "Release notes",

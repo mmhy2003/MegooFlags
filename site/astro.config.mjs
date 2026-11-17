@@ -58,6 +58,7 @@ export default defineConfig({
             "deploy/configuration",
             "deploy/observability",
             "deploy/security",
+            "deploy/performance",
           ],
         },
         {
