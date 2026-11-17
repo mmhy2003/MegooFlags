@@ -49,8 +49,13 @@ export default defineConfig({
         {
           label: "Deploy",
           items: [
+            "deploy/single-node",
+            "deploy/tls",
             "deploy/multi-node",
             "deploy/multi-node-migration",
+            "deploy/upgrades",
+            "deploy/configuration",
+            "deploy/observability",
             "deploy/security",
           ],
         },
