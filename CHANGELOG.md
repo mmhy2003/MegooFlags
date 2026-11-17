@@ -76,6 +76,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - Progressive rollouts: move the fallthrough from one variation to another in timed steps, with pause, resume and abort (`…/environments/{env}/rollout`). The kill switch pauses a running rollout, and editing the fallthrough by hand stops it.
 - Flag lifecycle (`new`, `active`, `permanent`, `stale`, `archived`) and stale detection from SDK evaluation counts: a flag no environment has evaluated for the project's `stale_after_days` (default 30) becomes `stale`. Flags gain `lifecycle` and `last_evaluated_at`, the flag list a `lifecycle` filter, and `PUT …/flags/{flag}/lifecycle` marks a flag permanent.
 - A background scheduler that runs this timed work on one API process at a time, chosen with a Postgres advisory lock, with the settings `MEGOOFLAGS_SCHEDULER_ENABLED` and `MEGOOFLAGS_SCHEDULER_INTERVAL_SECONDS` and the metrics `megooflags_scheduler_leader` and `megooflags_scheduler_jobs_total`. See `docs/release-workflows.md`.
+- Update notices: about once a day the API asks the public GitHub Releases API for the newest MegooFlags release. Nothing about the instance is sent. Set `MEGOOFLAGS_UPDATE_CHECK=false` to turn it off.
 
 ## [0.1.0]
 

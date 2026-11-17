@@ -6,11 +6,19 @@ response. `releases/latest` returns only full releases; a 404 means there is non
 """
 
 import json
+import logging
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from megooflags_api import __version__
+from megooflags_api.models import UpdateStatus
+from megooflags_api.services.scheduler import JobResult
+
+logger = logging.getLogger(__name__)
 
 RELEASES_URL = "https://api.github.com/repos/mmhy2003/MegooFlags/releases/latest"
 RELEASE_URL = "https://github.com/mmhy2003/MegooFlags/releases/tag/v{version}"
@@ -89,3 +97,46 @@ async def fetch_latest(client: httpx.AsyncClient, *, running: str) -> str | None
     if version is None:
         raise UpdateCheckError("the response has no vX.Y.Z tag_name")
     return version
+
+
+def check_due(status: UpdateStatus, now: datetime) -> bool:
+    """Once a day after a success; an hour after a failure, which never touches `checked_at`."""
+    if status.attempted_at is None:
+        return True
+    failed = status.checked_at is None or status.attempted_at > status.checked_at
+    return now - status.attempted_at >= (RETRY_AFTER if failed else CHECK_EVERY)
+
+
+async def run_update_check(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    now: datetime,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+    running: str = __version__,
+) -> JobResult:
+    """The scheduler job: ask GitHub when a check is due and remember the answer."""
+    async with sessionmaker() as session:
+        status = await session.get(UpdateStatus, 1)
+        if status is None or not check_due(status, now):
+            return JobResult()
+        status.attempted_at = now
+        try:
+            async with httpx.AsyncClient(transport=transport, timeout=TIMEOUT_SECONDS) as client:
+                version = await fetch_latest(client, running=running)
+        except UpdateCheckError as error:
+            logger.warning("the update check failed: %s", error)
+            await session.commit()
+            return JobResult(failed=1)
+        status.checked_at = now
+        if version is not None:
+            status.latest_version = version
+        await session.commit()
+        return JobResult(ok=1)
+
+
+async def available_update(session: AsyncSession, running: str) -> str | None:
+    """The stored latest release if it is newer than the running version."""
+    status = await session.get(UpdateStatus, 1)
+    if status is None or status.latest_version is None:
+        return None
+    return status.latest_version if is_newer(status.latest_version, running) else None

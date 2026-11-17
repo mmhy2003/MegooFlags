@@ -54,6 +54,7 @@ def default_jobs(settings: Settings | None = None) -> list[Job]:
     from megooflags_api.services.lifecycle import run_lifecycle_sweep
     from megooflags_api.services.rollouts import run_due_rollouts
     from megooflags_api.services.schedules import run_due_schedules
+    from megooflags_api.services.updates import run_update_check
 
     public_url = (
         None
@@ -65,7 +66,7 @@ def default_jobs(settings: Settings | None = None) -> list[Job]:
         if settings is None
         else settings.webhook_retention_days
     )
-    return [
+    jobs = [
         Job("schedules", run_due_schedules),
         Job("rollouts", run_due_rollouts),
         Job("lifecycle", run_lifecycle_sweep, every=timedelta(minutes=15)),
@@ -78,6 +79,10 @@ def default_jobs(settings: Settings | None = None) -> list[Job]:
         ),
         Job("node_event_batches", delete_old_batches, every=timedelta(hours=1)),
     ]
+    if settings is not None and settings.update_check:
+        # Every five minutes; the job itself asks GitHub only when a check is due.
+        jobs.append(Job("update_check", partial(run_update_check), every=timedelta(minutes=5)))
+    return jobs
 
 
 class Scheduler:

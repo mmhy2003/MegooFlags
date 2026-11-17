@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     webhook_allow_private: bool = False
     webhook_timeout_seconds: float = Field(10, gt=0, le=60)
     webhook_retention_days: int = Field(7, ge=1)
+    # Asks the public GitHub Releases API once a day for the newest release; sends no instance data.
+    update_check: bool = True
     # Multi-node deployment: a worker serves SDK traffic from the control plane's snapshots.
     role: InstanceRoleName = "standalone"
     control_plane_url: AnyHttpUrl | None = None

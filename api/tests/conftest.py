@@ -12,6 +12,8 @@ from helpers import ORIGIN, bearer, reset_database, seed_service_token
 
 # Before the app is imported: megooflags_api.main builds an app from the environment.
 os.environ.setdefault("MEGOOFLAGS_SECRET_KEY", "test-secret-key-0123456789abcdef0123456789")
+# Apps built by the tests never ask GitHub for the latest release.
+os.environ.setdefault("MEGOOFLAGS_UPDATE_CHECK", "false")
 
 from megooflags_api.main import create_app
 from megooflags_api.settings import Settings
