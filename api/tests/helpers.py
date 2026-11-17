@@ -272,13 +272,18 @@ async def create_sdk_key(
 
 
 @asynccontextmanager
-async def running(app: FastAPI) -> AsyncIterator[str]:
-    """Serve `app` with uvicorn on a free port (lifespan on). Yields the base URL.
+async def running(app: FastAPI, port: int = 0) -> AsyncIterator[str]:
+    """Serve `app` with uvicorn on `port`, a free one by default (lifespan on). Yields the base URL.
 
     httpx's ASGITransport buffers whole responses, so streaming tests need a real server.
     """
     config = uvicorn.Config(
-        app, host="127.0.0.1", port=0, lifespan="on", log_config=None, timeout_graceful_shutdown=1
+        app,
+        host="127.0.0.1",
+        port=port,
+        lifespan="on",
+        log_config=None,
+        timeout_graceful_shutdown=1,
     )
     server = uvicorn.Server(config)
     task = asyncio.create_task(server.serve())

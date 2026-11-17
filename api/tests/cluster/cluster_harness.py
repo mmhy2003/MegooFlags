@@ -97,6 +97,17 @@ async def eventually[T](check: Callable[[], Awaitable[T | None]], within: float,
         await asyncio.sleep(0.05)
 
 
+def worker_settings(cp_url: str, token: str, data_dir: Path) -> Settings:
+    return Settings(
+        role="worker",
+        control_plane_url=cp_url,
+        node_token=SecretStr(token),
+        control_plane_insecure=True,
+        data_dir=data_dir,
+        worker_drain_grace_seconds=0.5,
+    )
+
+
 @dataclass
 class Worker:
     name: str
@@ -137,13 +148,37 @@ class Worker:
         await self.start()
 
 
+def control_plane_settings(**overrides: Any) -> Settings:
+    return Settings(
+        role="control-plane", sse_heartbeat_seconds=1, stream_recheck_seconds=1
+    ).model_copy(update=overrides)
+
+
 class Cluster:
-    def __init__(self, cp_app: FastAPI, cp_url: str, admin: httpx.AsyncClient, tmp: Path) -> None:
+    def __init__(self, cp_app: FastAPI, tmp: Path) -> None:
         self.cp_app = cp_app
-        self.cp_url = cp_url
-        self.admin = admin  # org admin service token, base_url=cp_url
+        self.cp_url = ""
+        self.admin: httpx.AsyncClient  # org admin service token, base_url=cp_url
         self._tmp = tmp
+        self._cp_stack = AsyncExitStack()
         self.workers: list[Worker] = []
+
+    async def serve_control_plane(self, port: int = 0) -> None:
+        self.cp_url = await self._cp_stack.enter_async_context(running(self.cp_app, port))
+
+    async def stop_control_plane(self) -> None:
+        stack, self._cp_stack = self._cp_stack, AsyncExitStack()
+        await stack.aclose()
+        await self.cp_app.state.ruleset_cache.aclose()
+        await close_app(self.cp_app)
+
+    async def restart_control_plane(self, settings: Settings) -> None:
+        """Serve a new control-plane app with `settings` on the same port and database."""
+        port = httpx.URL(self.cp_url).port
+        assert port is not None
+        await self.stop_control_plane()
+        self.cp_app = create_app(settings)
+        await self.serve_control_plane(port)
 
     async def add_worker(
         self, name: str, *, token: str | None = None, version: str | None = None
@@ -154,16 +189,15 @@ class Cluster:
             r = await self.admin.post("/api/nodes", json={"name": name})
             assert r.status_code == 201, r.text
             node_id, token = r.json()["id"], r.json()["token"]
-        data_dir = self._tmp / name
-        settings = Settings(
-            role="worker",
-            control_plane_url=self.cp_url,
-            node_token=SecretStr(token),
-            control_plane_insecure=True,
-            data_dir=data_dir,
-            worker_drain_grace_seconds=0.5,
+        worker = Worker(
+            name,
+            node_id,
+            token,
+            self._tmp / name,
+            CuttableTransport(),
+            worker_settings(self.cp_url, token, self._tmp / name),
+            version,
         )
-        worker = Worker(name, node_id, token, data_dir, CuttableTransport(), settings, version)
         await worker.start()
         self.workers.append(worker)
         return worker
@@ -195,22 +229,17 @@ class Cluster:
 @asynccontextmanager
 async def start_cluster(tmp: Path) -> AsyncIterator[Cluster]:
     """A served control plane with the demo data; workers are added by the test."""
-    cp_app = create_app(
-        Settings(role="control-plane", sse_heartbeat_seconds=1, stream_recheck_seconds=1)
-    )
-    await reset_database(cp_app)
+    cluster = Cluster(create_app(control_plane_settings()), tmp)
+    await reset_database(cluster.cp_app)
     try:
-        headers = bearer(await seed_service_token(cp_app))
-        async with (
-            running(cp_app) as cp_url,
-            httpx.AsyncClient(base_url=cp_url, timeout=10, headers=headers) as admin,
-        ):
+        headers = bearer(await seed_service_token(cluster.cp_app))
+        await cluster.serve_control_plane()
+        async with httpx.AsyncClient(base_url=cluster.cp_url, timeout=10, headers=headers) as admin:
+            cluster.admin = admin
             await setup_demo(admin)
-            cluster = Cluster(cp_app, cp_url, admin, tmp)
             try:
                 yield cluster
             finally:
                 await cluster.aclose()
     finally:
-        await cp_app.state.ruleset_cache.aclose()
-        await close_app(cp_app)
+        await cluster.stop_control_plane()
