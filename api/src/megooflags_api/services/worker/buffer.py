@@ -29,6 +29,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
+from megooflags_api import metrics
 from megooflags_api.schemas.cluster import ClusterEventsIn
 from megooflags_api.schemas.events import MAX_BATCH, CountIn, ExposureIn
 from megooflags_api.services.events import CountKey, truncate_hour
@@ -164,7 +165,7 @@ class EventBuffer:
                 if ns < cutoff:
                     logger.warning("dropping event batch %s: older than 7 days", path.name)
                     path.unlink(missing_ok=True)
-                    self.dropped_total += items
+                    self._drop(items)
                     continue
                 self._index(path.name, _File(kind, ns, items, path.stat().st_size))
                 self._last_ns = max(self._last_ns, ns)
@@ -250,6 +251,10 @@ class EventBuffer:
             except Exception:
                 logger.exception("forwarding buffered events failed; retrying later")
 
+    def _drop(self, items: int) -> None:
+        self.dropped_total += items
+        metrics.WORKER_EVENTS_DROPPED.inc(items)
+
     def _merge_counts(self, counts: Mapping[CountKey, int]) -> None:
         with self._memory_lock:
             for key, n in counts.items():
@@ -311,7 +316,7 @@ class EventBuffer:
                     self._write("exposures", batch)
                 except Exception:
                     logger.exception("writing %d buffered exposures failed; dropping", len(chunk))
-                    self.dropped_total += len(chunk)
+                    self._drop(len(chunk))
 
     def _write(self, kind: Kind, batch: ClusterEventsIn, name: str | None = None) -> str:
         """Write `batch` to a new file, or replace the file `name`. Returns the file name."""
@@ -378,5 +383,5 @@ class EventBuffer:
                 continue
             logger.warning("event buffer full: dropping %d exposures in %s", file.items, name)
             self._delete(name)
-            self.dropped_total += file.items
+            self._drop(file.items)
             total -= file.size

@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from megooflags_api import __version__
+from megooflags_api.models.enums import InstanceRole
 from megooflags_api.services.users import has_users
 from megooflags_api.settings import Settings
 from megooflags_api.valkey import valkey_ready
@@ -20,6 +21,7 @@ router = APIRouter(tags=["health"])
 class HealthResponse(BaseModel):
     status: str
     version: str
+    role: InstanceRole
 
 
 class ReadyResponse(BaseModel):
@@ -27,12 +29,19 @@ class ReadyResponse(BaseModel):
 
 
 @router.get("/healthz", response_model=HealthResponse)
-async def healthz() -> HealthResponse:
-    return HealthResponse(status="ok", version=__version__)
+async def healthz(request: Request) -> HealthResponse:
+    role = InstanceRole(request.app.state.settings.role)
+    return HealthResponse(status="ok", version=__version__, role=role)
 
 
 @router.get("/readyz", response_model=ReadyResponse, responses={503: {"model": ReadyResponse}})
 async def readyz(request: Request) -> ReadyResponse | JSONResponse:
+    if request.app.state.settings.role == "worker":
+        # A worker has no database or Valkey: it is ready when it holds a valid snapshot.
+        reason: str | None = request.app.state.worker_state.readiness()
+        if reason is not None:
+            return JSONResponse(status_code=503, content={"status": reason})
+        return ReadyResponse(status="ready")
     db_ok, valkey_ok = await asyncio.gather(
         _db_ready(request.app.state.engine, request.app.state.settings),
         valkey_ready(request.app.state.valkey),

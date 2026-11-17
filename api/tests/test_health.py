@@ -10,4 +10,4 @@ async def test_healthz_reports_ok_and_version(client_for: ClientFactory) -> None
         response = await client.get("/healthz")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": VERSION}
+    assert response.json() == {"status": "ok", "version": VERSION, "role": "standalone"}

@@ -2002,6 +2002,9 @@
       },
       "HealthResponse": {
         "properties": {
+          "role": {
+            "$ref": "#/components/schemas/InstanceRole"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -2013,7 +2016,8 @@
         },
         "required": [
           "status",
-          "version"
+          "version",
+          "role"
         ],
         "title": "HealthResponse",
         "type": "object"
@@ -2086,6 +2090,15 @@
         ],
         "title": "HeartbeatOut",
         "type": "object"
+      },
+      "InstanceRole": {
+        "enum": [
+          "standalone",
+          "control-plane",
+          "worker"
+        ],
+        "title": "InstanceRole",
+        "type": "string"
       },
       "IntegrationCreate": {
         "additionalProperties": false,
@@ -20904,6 +20917,16 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Evaluate Flags",
@@ -21033,6 +21056,16 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Evaluate Flag",
@@ -21167,6 +21200,16 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Evaluate Flags",
@@ -21242,6 +21285,16 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Send Events",
@@ -21331,6 +21384,16 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Download Ruleset",
@@ -21435,6 +21498,16 @@
               }
             },
             "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Stream Changes",

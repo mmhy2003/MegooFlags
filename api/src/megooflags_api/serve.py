@@ -8,6 +8,9 @@ stay in sync through Valkey, exactly like API replicas.
 The secret key and Valkey are checked here, before any worker starts, so the API still refuses to
 start without them instead of uvicorn restarting failing workers forever. With several workers,
 Prometheus metrics go to a shared directory so `/metrics` reports the whole container.
+
+A worker node (`MEGOOFLAGS_ROLE=worker`) needs neither the secret key nor Valkey, only its
+control-plane settings, and runs one process: to use more CPU, add workers.
 """
 
 import asyncio
@@ -21,6 +24,7 @@ from pathlib import Path
 import uvicorn
 
 from megooflags_api.crypto import require_secret_key
+from megooflags_api.services.cluster.config import worker_config_errors
 from megooflags_api.settings import Settings
 from megooflags_api.valkey import check_valkey, create_valkey
 
@@ -52,14 +56,20 @@ async def _check_valkey(url: str) -> None:
         await client.aclose()
 
 
-def main(environ: MutableMapping[str, str] = os.environ) -> None:
-    settings = Settings.model_validate(
-        {
-            k.removeprefix(ENV_PREFIX).lower(): v
-            for k, v in environ.items()
-            if k.startswith(ENV_PREFIX)
-        }
-    )
+def _worker_node_checks(settings: Settings, environ: MutableMapping[str, str]) -> int:
+    """Exit when the worker cannot start; a worker node always runs one process."""
+    errors = worker_config_errors(settings)
+    if errors:
+        for error in errors:
+            logger.error("%s", error)
+        sys.exit(1)
+    if environ.get(ENV_PREFIX + "API_WORKERS"):
+        logger.info("MEGOOFLAGS_API_WORKERS is ignored on a worker node: it runs one process")
+    return 1
+
+
+def _api_checks(settings: Settings) -> int:
+    """Exit without the secret key or Valkey; the number of processes to run."""
     try:
         require_secret_key(settings)
     except RuntimeError as exc:
@@ -69,7 +79,21 @@ def main(environ: MutableMapping[str, str] = os.environ) -> None:
         asyncio.run(_check_valkey(settings.valkey_url))
     except RuntimeError:
         sys.exit(1)  # check_valkey logged why
-    workers = worker_count(settings.api_workers, available_cpus())
+    return worker_count(settings.api_workers, available_cpus())
+
+
+def main(environ: MutableMapping[str, str] = os.environ) -> None:
+    settings = Settings.model_validate(
+        {
+            k.removeprefix(ENV_PREFIX).lower(): v
+            for k, v in environ.items()
+            if k.startswith(ENV_PREFIX)
+        }
+    )
+    if settings.role == "worker":
+        workers = _worker_node_checks(settings, environ)
+    else:
+        workers = _api_checks(settings)
     if workers > 1 and not environ.get("PROMETHEUS_MULTIPROC_DIR"):
         environ["PROMETHEUS_MULTIPROC_DIR"] = tempfile.mkdtemp(prefix="megooflags-metrics-")
     uvicorn.run(

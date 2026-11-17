@@ -249,6 +249,7 @@ SDK_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     413: {"model": ErrorBody},
     422: {"model": ErrorBody},
     429: {"model": ErrorBody},
+    503: {"model": ErrorBody},
 }
 
 

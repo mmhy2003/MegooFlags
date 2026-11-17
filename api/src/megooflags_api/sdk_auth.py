@@ -9,10 +9,15 @@ from typing import Annotated
 
 from fastapi import Depends, Header, Query, Request
 
-from megooflags_api.errors import forbidden, rate_limited, unauthorized
+from megooflags_api.errors import forbidden, not_ready, rate_limited, unauthorized
 from megooflags_api.models.enums import SdkKeyKind
 from megooflags_api.services.delivery import get_delivery
 from megooflags_api.services.sdk_keys import SdkPrincipal, key_kind
+
+UNAVAILABLE_MESSAGES = {
+    "not_ready": "this worker has no valid snapshot yet",
+    "revoked": "this worker's node token was revoked",
+}
 
 
 def bearer_token(request: Request) -> str | None:
@@ -24,9 +29,13 @@ def bearer_token(request: Request) -> str | None:
 
 
 async def authenticate(request: Request, key: str | None) -> SdkPrincipal:
+    delivery = get_delivery(request)
+    reason = delivery.unavailable()
+    if reason is not None:
+        raise not_ready(reason, UNAVAILABLE_MESSAGES[reason])
     principal = None
     if key is not None:
-        principal = await get_delivery(request).keys.resolve(key)
+        principal = await delivery.keys.resolve(key)
     if principal is None:
         raise unauthorized("missing or unknown SDK key")
     if principal.inactive(datetime.now(UTC)):

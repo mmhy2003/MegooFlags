@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
 from typing import Any
 
+import httpx
 from fastapi import Depends, FastAPI
 
 from megooflags_api import __version__, metrics
@@ -57,6 +58,7 @@ from megooflags_api.services.ruleset_cache import RulesetCache
 from megooflags_api.services.scheduler import Scheduler
 from megooflags_api.services.sdk_keys import KeyResolver
 from megooflags_api.services.streams import StreamHub
+from megooflags_api.services.worker.app import create_worker_app
 from megooflags_api.settings import Settings, get_settings
 from megooflags_api.tracing import configure_tracing
 from megooflags_api.valkey import check_valkey, create_valkey
@@ -118,9 +120,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         metrics.worker_exited()
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, *, cluster_transport: httpx.AsyncBaseTransport | None = None
+) -> FastAPI:
+    """The API for the settings' role; `cluster_transport` is a worker's link (for tests)."""
     settings = settings or get_settings()
     configure_logging(settings)
+    if settings.role == "worker":
+        return create_worker_app(settings, transport=cluster_transport)
     app = FastAPI(title="MegooFlags API", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     # None without a key, so export_openapi works; the lifespan refuses to start without one.
