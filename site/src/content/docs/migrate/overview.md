@@ -7,6 +7,10 @@ description: Import projects from Unleash, Flagsmith and LaunchDarkly as flags-a
 [flags-as-code](/MegooFlags/use/flags-as-code/) directory plus a report, `import-report.md`, of everything that could
 not be translated as it was. It never writes to MegooFlags: you review the files, then `apply` them.
 
+Each tool has a step-by-step guide with a concept map and how to switch your SDKs through OpenFeature:
+[from Unleash](/MegooFlags/migrate/unleash/), [from Flagsmith](/MegooFlags/migrate/flagsmith/) and
+[from LaunchDarkly](/MegooFlags/migrate/launchdarkly/).
+
 ## Commands
 
 ```bash

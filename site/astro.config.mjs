@@ -73,6 +73,7 @@ export default defineConfig({
         {
           label: "SDKs",
           items: [
+            "sdks/overview",
             "sdks/go",
             "sdks/node",
             "sdks/python",
@@ -96,7 +97,15 @@ export default defineConfig({
             "reference/delivery",
           ],
         },
-        { label: "Migrate", items: ["migrate/overview"] },
+        {
+          label: "Migrate",
+          items: [
+            "migrate/overview",
+            "migrate/unleash",
+            "migrate/flagsmith",
+            "migrate/launchdarkly",
+          ],
+        },
         {
           label: "Project",
           items: [
