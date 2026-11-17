@@ -579,14 +579,17 @@ async def test_401_before_any_sync_retries(
 
 
 async def test_401_from_a_proxy_after_a_sync_retries(make: Callable[..., Worker]) -> None:
-    cp = ControlPlane(httpx.Response(401, text="proxy says no"), [hello(), synced(0)], close=True)
+    cp = ControlPlane(httpx.Response(401, text="proxy says no"), [hello(), synced(0)])
     worker = make(cp)
     worker.store.mark_synced()
     worker.start()
 
-    await until(lambda: len(cp.requests) == 2)
+    # The second stream stays open, so `connected` holds once its `hello` is read.
+    await until(lambda: worker.state.connected)
 
+    assert len(cp.requests) == 2
     assert not worker.store.meta.revoked
+    assert worker.hub.calls == []
 
 
 async def test_heartbeat_401_after_a_sync_is_revoked(make: Callable[..., Worker]) -> None:
