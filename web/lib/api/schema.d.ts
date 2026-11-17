@@ -1860,6 +1860,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * System Version
+         * @description The running version, and a newer release for org admins when the update check is on.
+         */
+        get: operations["system_version_api_system_version_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/teams": {
         parameters: {
             query?: never;
@@ -4584,6 +4604,12 @@ export interface components {
          * @enum {string}
          */
         SubjectKind: "user" | "team" | "service_token";
+        /** SystemVersionOut */
+        SystemVersionOut: {
+            update: components["schemas"]["UpdateOut"] | null;
+            /** Version */
+            version: string;
+        };
         /**
          * TargetIn
          * @description Context keys served `variation`; a key appears in one list only.
@@ -4713,6 +4739,13 @@ export interface components {
             otpauth_url: string;
             /** Secret */
             secret: string;
+        };
+        /** UpdateOut */
+        UpdateOut: {
+            /** Url */
+            url: string;
+            /** Version */
+            version: string;
         };
         /** UserCreate */
         UserCreate: {
@@ -13374,6 +13407,71 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    system_version_api_system_version_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemVersionOut"];
+                };
             };
             /** @description Unauthorized */
             401: {

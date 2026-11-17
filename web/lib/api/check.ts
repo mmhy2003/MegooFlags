@@ -26,6 +26,13 @@ export const meExample: components["schemas"]["MeOut"] = {
   preferences: { theme: "system", sidebar_collapsed: false },
   role: "standalone",
 };
+export const systemVersionExample: components["schemas"]["SystemVersionOut"] = {
+  version: "1.0.0",
+  update: {
+    version: "1.1.0",
+    url: "https://github.com/mmhy2003/MegooFlags/releases/tag/v1.1.0",
+  },
+};
 export const errorExample: components["schemas"]["ErrorBody"] = {
   code: "not_found",
   message: "flag 'x' not found",
