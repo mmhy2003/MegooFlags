@@ -101,3 +101,27 @@ test.describe("unfolded", () => {
     );
   });
 });
+
+test.describe("running version", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  // The e2e API leaves the update check on but has stored no release, so no pill shows.
+  for (const [who, storageState] of [
+    ["the admin", undefined],
+    ["a viewer", VIEWER.storageState],
+  ] as const) {
+    test.describe(who, () => {
+      if (storageState) test.use({ storageState });
+
+      test(`${who} sees the running version`, async ({ page }) => {
+        await page.goto("/projects/demo/flags");
+        await expect(page.getByTestId("app-version")).toHaveText(
+          /^v\d+\.\d+\.\d+/,
+        );
+        await expect(page.getByRole("link", { name: /Update:/ })).toHaveCount(
+          0,
+        );
+      });
+    });
+  }
+});

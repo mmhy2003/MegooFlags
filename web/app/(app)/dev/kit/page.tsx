@@ -17,6 +17,7 @@ import {
   DialogSample,
   RolloutSample,
   ToggleSample,
+  UpdatePillSample,
 } from "./kit-samples";
 
 const STATUSES: Status[] = ["on", "off", "stale", "killed", "pending", "error"];
@@ -105,6 +106,9 @@ async function Kit() {
             after={DIFF_AFTER}
             label="Sample flag change"
           />
+        </Section>
+        <Section id="kit-update-pill" title="Update pill">
+          <UpdatePillSample />
         </Section>
         <Section id="kit-empty" title="Empty state">
           <EmptyState

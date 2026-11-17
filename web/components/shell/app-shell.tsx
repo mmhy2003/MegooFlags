@@ -11,6 +11,7 @@ import { Nav } from "@/components/shell/nav";
 import { ProjectSwitcher } from "@/components/shell/project-switcher";
 import { SiteHeader } from "@/components/shell/site-header";
 import { ThemeSync } from "@/components/shell/theme-sync";
+import { VersionFooter } from "@/components/shell/version-footer";
 import { useProjectPermissions } from "@/components/shell/use-project-permissions";
 import {
   Sidebar,
@@ -104,6 +105,7 @@ export function AppShell({
           <Nav items={items} />
         </SidebarContent>
         <SidebarFooter>
+          <VersionFooter version={shell.version} />
           <CollapseButton />
         </SidebarFooter>
       </Sidebar>

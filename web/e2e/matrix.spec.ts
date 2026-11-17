@@ -78,7 +78,9 @@ for (const theme of THEMES) {
           expect(await smallTargets(page)).toEqual([]);
           await expect(page).toHaveScreenshot(`${name}-${theme}-${width}.png`, {
             fullPage: true,
+            // The running version changes with every release.
             mask: [
+              page.getByTestId("app-version"),
               ...(mask ? [page.locator("time")] : []),
               ...maskText.map((text) => page.getByText(text)),
             ],

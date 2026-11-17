@@ -8,6 +8,7 @@ import { ResponsiveDialog } from "@/components/patterns/responsive-dialog";
 import { RolloutSlider } from "@/components/patterns/rollout-slider";
 import { StatusPill, type Status } from "@/components/patterns/status-pill";
 import { Toggle } from "@/components/patterns/toggle";
+import { UpdatePill } from "@/components/shell/version-footer";
 import { Button } from "@/components/ui/button";
 import { DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -152,6 +153,20 @@ export function ConfirmSample() {
         onConfirm={() => setConfirmed(true)}
       />
       {confirmed && <span>Confirmed</span>}
+    </div>
+  );
+}
+
+const SAMPLE_UPDATE = {
+  version: "1.1.0",
+  url: "https://github.com/mmhy2003/MegooFlags/releases/tag/v1.1.0",
+};
+
+export function UpdatePillSample() {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <UpdatePill update={SAMPLE_UPDATE} collapsed={false} />
+      <UpdatePill update={SAMPLE_UPDATE} collapsed />
     </div>
   );
 }

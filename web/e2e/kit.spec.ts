@@ -58,6 +58,24 @@ test.describe("desktop", () => {
     await expect(label).toContainText(after === "true" ? "On" : "Off");
   });
 
+  test("the update pill has a label, an icon and a new-tab link", async ({
+    page,
+  }) => {
+    await page.goto("/dev/kit");
+    const section = page.getByRole("region", { name: "Update pill" });
+    for (const name of [
+      "Update: 1.1.0 (opens in a new tab)",
+      "Update available: 1.1.0 (opens in a new tab)",
+    ]) {
+      const pill = section.getByRole("link", { name, exact: true });
+      await expect(pill).toHaveAttribute("target", "_blank");
+      await expect(pill).toHaveAttribute("rel", "noopener noreferrer");
+      await expect(pill.locator("svg")).toHaveCount(1);
+      const box = await pill.boundingBox();
+      expect(box?.height).toBeGreaterThanOrEqual(44);
+    }
+  });
+
   test("the rollout input and slider stay in step", async ({ page }) => {
     await page.goto("/dev/kit");
     const input = page.getByRole("spinbutton", { name: "Rollout percentage" });
