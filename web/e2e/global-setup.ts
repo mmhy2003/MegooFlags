@@ -170,6 +170,37 @@ async function ensureMatrixWebhook(admin: APIRequestContext): Promise<void> {
   );
 }
 
+/**
+ * Leaves exactly one node, matrix-worker, for the visual matrix. It never connects, so it stays
+ * Pending and its row never changes. Needs the e2e API on MEGOOFLAGS_ROLE=control-plane.
+ */
+async function seedNodes(admin: APIRequestContext): Promise<void> {
+  const list = await ok(
+    await admin.get("/api/nodes"),
+    "list nodes (run the API with MEGOOFLAGS_ROLE=control-plane)",
+  );
+  const { nodes } = (await list.json()) as {
+    nodes: { id: string; name: string; status: string }[];
+  };
+  for (const node of nodes) {
+    if (node.name === "matrix-worker") continue;
+    if (node.status !== "revoked")
+      await ok(
+        await admin.post(`/api/nodes/${node.id}/revoke`),
+        `revoke ${node.name}`,
+      );
+    await ok(
+      await admin.delete(`/api/nodes/${node.id}`),
+      `delete ${node.name}`,
+    );
+  }
+  if (!nodes.some((n) => n.name === "matrix-worker"))
+    await ok(
+      await admin.post("/api/nodes", { data: { name: "matrix-worker" } }),
+      "create matrix-worker",
+    );
+}
+
 /** Recreates the shop project the flag specs use, so every run starts from the same data. */
 async function seedShop(admin: APIRequestContext): Promise<void> {
   const project = `/api/projects/${SHOP}`;
@@ -385,6 +416,7 @@ export default async function globalSetup(): Promise<void> {
     }
     await seed(admin);
     await seedShop(admin);
+    await seedNodes(admin);
     await ensureUser(admin, VIEWER);
     await ensureUser(admin, PREFS);
   } finally {
