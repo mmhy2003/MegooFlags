@@ -43,6 +43,10 @@ export default defineConfig({
       ],
       sidebar: [
         {
+          label: "Start here",
+          items: ["start/introduction", "start/quick-start", "start/concepts"],
+        },
+        {
           label: "Deploy",
           items: [
             "deploy/multi-node",
@@ -95,6 +99,7 @@ export default defineConfig({
             "project/rfcs",
             "project/code-of-conduct",
             "project/security-policy",
+            "project/privacy",
             "project/release-notes",
           ],
         },
