@@ -1,4 +1,6 @@
 import json
+import math
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -189,6 +191,9 @@ PASSING = {
                 "flag_list_ms": 42.0,
             }
         ),
+        "whole_env_10k": _full(
+            {**REMOTE, "rps": 5.0, "count": 150, "p50_ms": 180.0, "p95_ms": 240.0, "p99_ms": 310.5}
+        ),
         "streams_100k": _full(
             {
                 **PROP,
@@ -262,6 +267,13 @@ def test_render_sections_in_order() -> None:
         ("footprint_single", {"oom_killed": 1}, "Single-node footprint"),
         ("footprint_single", {"p99_ms": 695.5}, "Single-node footprint"),
         ("local_eval_java", {"passed": 0}, "Local evaluation, Java"),
+        ("local_eval_php", {"errors": 1}, "Local evaluation, PHP"),
+        ("propagation_replicas", {"prop_p95_ms": 6000.0}, "Propagation across API replicas"),
+        ("streams_100k", {"streams_opened": 99999}, "100k streams per cluster"),
+        ("streams_100k", {"prop_p95_ms": 5000.0}, "100k streams per cluster"),
+        ("footprint_single", {"restarts": 1}, "Single-node footprint"),
+        ("footprint_single", {"prop_p95_ms": 5000.0}, "Single-node footprint"),
+        ("footprint_single", {"errors": 2}, "Single-node footprint"),
     ],
 )
 def test_render_failing_gate(name: str, metrics: dict[str, Any], row: str) -> None:
@@ -300,6 +312,47 @@ def test_render_tiny_profile_is_a_placeholder() -> None:
     report = render({**PASSING, "profile": "tiny"})
     assert report.startswith("# Performance and sizing\n")
     assert "Placeholder until the full run in this release" in report
+
+
+def _reported_row(report: str, label: str) -> list[str]:
+    table = report.split("## Reported values", 1)[1].split("\n## ", 1)[0]
+    row = next(line for line in table.splitlines() if line.startswith(f"| {label}"))
+    return [c.strip() for c in row.strip("|").split("|")]
+
+
+def test_render_reports_the_whole_environment_evaluation() -> None:
+    row = _reported_row(render(PASSING), "Whole-environment evaluation")
+    assert row[1] == "p50 180 ms, p95 240 ms, p99 310.5 ms, 0 errors at 5 rps"
+    assert row[2] == "full"
+
+
+def test_render_whole_environment_evaluation_not_run() -> None:
+    doc = json.loads(json.dumps(PASSING))
+    del doc["scenarios"]["whole_env_10k"]
+    row = _reported_row(render(doc), "Whole-environment evaluation")
+    assert row[1:] == ["-", "not run"]
+
+
+def test_render_sizing_formula_matches_the_table() -> None:
+    # 80 % of 31254 is 25003.2: the formula and the table use the same whole number.
+    doc = _with("streams_100k", metrics={"capacity_per_worker": 31254})
+    sizing = render(doc).split("## Sizing guidance", 1)[1]
+    per_worker = int(re.search(r"ceil\(N / (\d+)\)", sizing).group(1))  # type: ignore[union-attr]
+    assert per_worker == 25003
+    rows = re.findall(r"^\| (\d+) \| (\d+) \|$", sizing, re.MULTILINE)
+    assert rows
+    for streams, workers in rows:
+        assert int(workers) == math.ceil(int(streams) / per_worker)
+
+
+def test_perf_sh_evaluates_the_whole_10k_environment() -> None:
+    script = (SCRIPTS / "perf.sh").read_text(encoding="utf-8").replace("\\\n", " ")
+    run = re.search(r"^load whole-env evaluate .*$", script, re.MULTILINE)
+    assert run is not None
+    assert '--key "$key"' in run.group(0)
+    assert "--mode evaluate" in run.group(0)
+    assert "/out/whole_env_10k.json" in run.group(0)
+    assert re.search(r"^meta whole_env_10k ", script, re.MULTILINE)
 
 
 def test_render_sizing_guidance_uses_the_measured_capacity() -> None:

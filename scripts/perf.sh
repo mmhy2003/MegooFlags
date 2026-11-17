@@ -37,11 +37,13 @@ chmod 755 "$state" "$state/certs"
 
 if [ "$profile" = full ]; then
   nflags=10000 rps=2000 duration=60 warmup=15
+  whole_duration=30 whole_warmup=5
   prop_flip=5 prop_hold=100      # 20 flips
   big_streams=100000 big_ramp=300 big_hold=600 big_flip=30
   foot_hold=600
 else
   nflags=100 rps=50 duration=10 warmup=2
+  whole_duration=5 whole_warmup=1
   prop_flip=2 prop_hold=6        # 3 flips
   big_streams=200 big_ramp=5 big_hold=10 big_flip=5
   foot_hold=30
@@ -251,6 +253,14 @@ for mode in ofrep evaluate; do
     "{\"api\": \"unlimited\", \"api_workers\": \"$api_workers\", \"replicas\": \"1\"}"
 done
 [ "$nflags" -eq 10000 ] && flags_status=full flags_reduced="" || flags_status=reduced flags_reduced="$nflags flags"
+# Every flag of the big environment in one /sdk/v1/evaluate request: reported, not gated.
+load whole-env evaluate --target http://caddy --key "$key" --mode evaluate --rps 5 \
+  --duration "$whole_duration" --warmup "$whole_warmup" --out /out/whole_env_10k.json
+whole_reduced=$flags_reduced
+[ "$profile" = full ] || whole_reduced="tiny: $nflags flags for $whole_duration s"
+meta whole_env_10k "$flags_status" "$whole_reduced" \
+  "{\"api\": \"unlimited\", \"api_workers\": \"$api_workers\", \"replicas\": \"1\"}" \
+  "every flag of the $nflags-flag environment in one request, 5 rps for $whole_duration s"
 meta flags_10k "$flags_status" "$flags_reduced" '{"api": "unlimited"}' \
   "ruleset_download_ms is the SDK start time: one ruleset download"
 echo "remote evaluation done"

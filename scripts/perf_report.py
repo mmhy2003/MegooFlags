@@ -31,6 +31,7 @@ SCENARIOS = (
     "propagation_replicas",
     "propagation_cluster",
     "flags_10k",
+    "whole_env_10k",
     "streams_100k",
     "footprint_single",
 )
@@ -252,7 +253,7 @@ def _size(nbytes: Any) -> str:
 
 def _reported(scenarios: dict[str, Any]) -> list[str]:
     flags = scenarios.get("flags_10k")
-    evaluate = scenarios.get("remote_evaluate")
+    whole_env = scenarios.get("whole_env_10k")
     lines = ["| Value | Measured | Run |", "| --- | --- | --- |"]
     if _ran(flags):
         assert flags is not None
@@ -267,13 +268,15 @@ def _reported(scenarios: dict[str, Any]) -> list[str]:
         ]
     else:
         lines.append("| Ruleset size, SDK start time, flag list latency | - | not run |")
-    whole = "| Whole-environment evaluation (`/sdk/v1/evaluate`, 100 flags) |"
-    if _ran(evaluate):
-        assert evaluate is not None
-        m = evaluate.get("metrics") or {}
+    whole = "| Whole-environment evaluation (every flag in one `/sdk/v1/evaluate` request) |"
+    if _ran(whole_env):
+        assert whole_env is not None
+        m = whole_env.get("metrics") or {}
         lines.append(
-            f"{whole} p50 {_n(m.get('p50_ms'))} ms, p95 {_n(m.get('p95_ms'))} ms "
-            f"| {_cell(_run_label(evaluate))} |"
+            f"{whole} p50 {_n(m.get('p50_ms'))} ms, p95 {_n(m.get('p95_ms'))} ms, "
+            f"p99 {_n(m.get('p99_ms'))} ms, {_n(m.get('errors'))} errors "
+            f"at {_n(m.get('rps'), 0)} rps "
+            f"| {_cell(_run_label(whole_env))} |"
         )
     else:
         lines.append(f"{whole} - | not run |")
@@ -326,16 +329,17 @@ def _sizing(scenarios: dict[str, Any]) -> list[str]:
     m = (scenarios.get("streams_100k") or {}).get("metrics") or {}
     capacity = _num(m, "capacity_per_worker")
     if capacity:
+        per_worker = max(1, int(0.8 * capacity))
         lines += [
             f"- **One worker node, 1 vCPU / 512 MB,** held {_n(capacity)} streams before its "
             "memory reached 90 % of the limit.",
             "- **Workers for N streams:** plan each worker at 80 % of that capacity, "
-            f"`workers = ceil(N / {_n(0.8 * capacity, 0)})`.",
+            f"`workers = ceil(N / {per_worker})`.",
             "",
             "| Streams | Workers |",
             "| --- | --- |",
             *(
-                f"| {streams} | {math.ceil(streams / (0.8 * capacity))} |"
+                f"| {streams} | {math.ceil(streams / per_worker)} |"
                 for streams in (10000, 50000, 100000, 250000)
             ),
             "",
