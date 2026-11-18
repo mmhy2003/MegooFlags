@@ -13,75 +13,8 @@ network=megooflags-cluster
 workers=3
 fresh=4
 
-cp_compose() {
-  docker compose -p mf-cp --env-file "$MF_CLUSTER_STATE/cp.env" \
-    -f "$root/deploy/docker-compose.control-plane.yml" -f "$root/deploy/compose.ci.yml" \
-    -f "$root/scripts/cluster/cp.override.yml" "$@"
-}
-
-worker_compose() {
-  local n=$1
-  shift
-  docker compose -p "mf-w$n" --env-file "$MF_CLUSTER_STATE/w$n.env" \
-    -f "$root/deploy/docker-compose.worker.yml" -f "$root/scripts/cluster/worker.override.yml" "$@"
-}
-
-lb_compose() {
-  docker compose --env-file "$MF_CLUSTER_STATE/lb.env" -f "$root/scripts/cluster/lb.yml" "$@"
-}
-
-# Attach a service's container to the cluster network, known there by `alias` only (or by its
-# container name when the alias is empty). A compose network would also register the service name:
-# the control plane's Caddy resolves `api` on every network it is on, so it would proxy to the
-# workers' api containers, and each worker's Caddy to the other workers'.
-join() {
-  local alias=$1 service=$2 id
-  shift 2
-  id=$("$@" ps -q "$service")
-  local flags=()
-  [ -z "$alias" ] || flags=(--alias "$alias")
-  docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}' "$id" \
-    | grep -qw "$network" || docker network connect "${flags[@]}" "$network" "$id"
-}
-
-cp_up() {
-  cp_compose up -d --wait --wait-timeout 180 caddy
-  join cp.megooflags.internal caddy cp_compose
-}
-
-worker_up() {
-  local n=$1
-  worker_compose "$n" up -d --wait --wait-timeout 120
-  join "worker-$n" caddy worker_compose "$n"
-  join "" api worker_compose "$n"
-}
-
-# Wait until each worker's snapshot stream is open again. Heartbeats resume as soon as the control
-# plane answers, so the nodes show healthy, while the stream reconnects after its backoff (up to
-# 30 s): a change made in between reaches the worker only once the stream is back.
-wait_streams() {
-  local n
-  for n in $(seq "$workers"); do
-    for _ in $(seq 60); do
-      worker_compose "$n" exec -T api python -c "import urllib.request; \
-print(urllib.request.urlopen('http://127.0.0.1:8000/metrics', timeout=5).read().decode())" \
-        2>/dev/null | grep -q '^megooflags_worker_control_plane_connected 1' && continue 2
-      sleep 1
-    done
-    echo "worker-$n did not reopen its stream to the control plane" >&2
-    return 1
-  done
-}
-
-# The memory of a compose project's containers, in MiB.
-mem_mib() {
-  # shellcheck disable=SC2046  # one argument per container id
-  docker stats --no-stream --format '{{.MemUsage}}' $("$@" ps -q) | awk '
-    { v = $1; u = v; gsub(/[0-9.]/, "", u); sub(/[A-Za-z]+$/, "", v)
-      if (u == "GiB") v *= 1024; else if (u == "KiB") v /= 1024; else if (u == "B") v /= 1048576
-      total += v }
-    END { printf "%.1f\n", total }'
-}
+# shellcheck source=cluster/lib.sh
+. "$root/scripts/cluster/lib.sh"
 
 ctl() {
   local action=$1 n=${2:-}
@@ -188,17 +121,8 @@ curl -fsS "${tls[@]}" --retry 10 --retry-delay 2 --retry-all-errors -o /dev/null
   || fail "the control plane is not ready"
 echo "control plane OK"
 
-# First-run setup makes the first admin and signs them in; their session mints an org admin
-# service token for the management API.
-jar="$state/cookies"
-password="cluster-$(openssl rand -hex 16)"
-curl -fsS "${tls[@]}" -c "$jar" -o /dev/null -H "Origin: ${base}" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"admin@example.com\",\"name\":\"Cluster Admin\",\"password\":\"${password}\"}" \
-  "${base}/api/setup" || fail "POST /api/setup failed"
-created=$(curl -fsS "${tls[@]}" -b "$jar" -H "Origin: ${base}" -H 'Content-Type: application/json' \
-  -d '{"name":"cluster","bindings":[{"role":"admin","scope":"org"}]}' "${base}/api/tokens") \
-  || fail "POST /api/tokens failed"
-MEGOOFLAGS_API_TOKEN=$(python3 -c 'import json, sys; print(json.load(sys.stdin)["secret"])' <<<"$created")
+# First-run setup makes the first admin, whose session mints an org admin token.
+MEGOOFLAGS_API_TOKEN=$(bootstrap_admin "$base" "${tls[@]}") || fail "the admin bootstrap failed"
 export MEGOOFLAGS_API_TOKEN
 
 # Nodes worker-1..3 and the fresh worker; each join token is shown only once.

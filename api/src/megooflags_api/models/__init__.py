@@ -34,6 +34,7 @@ from megooflags_api.models.release import (
 from megooflags_api.models.sdk import EvaluationCount, ExposureEvent, SdkKey
 from megooflags_api.models.segment import Segment, SegmentRule, SegmentTarget
 from megooflags_api.models.sso import SsoGroupMapping, SsoProvider, UserIdentity
+from megooflags_api.models.system import UpdateStatus
 from megooflags_api.models.targeting import (
     Clause,
     ClauseSegment,
@@ -87,6 +88,7 @@ __all__ = [
     "TeamMember",
     "TotpCredential",
     "User",
+    "UpdateStatus",
     "UserIdentity",
     "UserSession",
     "Variation",

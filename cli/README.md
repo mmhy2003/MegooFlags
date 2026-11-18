@@ -19,11 +19,11 @@ Install it from the `cli/vX.Y.Z` release archives (check them against `SHA256SUM
 
 Documentation:
 
-- [docs/cli.md](https://github.com/mmhy2003/MegooFlags/blob/main/docs/cli.md): install, configuration,
+- [The megooflags CLI](https://mmhy2003.github.io/MegooFlags/use/cli/): install, configuration,
   every command, output formats, exit codes and local development;
-- [docs/flags-as-code.md](https://github.com/mmhy2003/MegooFlags/blob/main/docs/flags-as-code.md): the
+- [Flags as code](https://mmhy2003.github.io/MegooFlags/use/flags-as-code/): the
   YAML files and Git sync;
-- [docs/importers.md](https://github.com/mmhy2003/MegooFlags/blob/main/docs/importers.md): imports from
+- [Migrate: overview and importers](https://mmhy2003.github.io/MegooFlags/migrate/overview/): imports from
   other tools.
 
 The `client` package is a typed Go client for the management API, also used by the Terraform provider.

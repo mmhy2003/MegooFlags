@@ -1,0 +1,140 @@
+[
+  {
+    "source": "sdks/go/README.md",
+    "dest": "sdks/go.md",
+    "title": "Go",
+    "description": "Server SDK for Go: install, configure and evaluate flags."
+  },
+  {
+    "source": "sdks/node/README.md",
+    "dest": "sdks/node.md",
+    "title": "Node.js",
+    "description": "Server SDK for Node.js: install, configure and evaluate flags."
+  },
+  {
+    "source": "sdks/python/README.md",
+    "dest": "sdks/python.md",
+    "title": "Python",
+    "description": "Server SDK for Python: install, configure and evaluate flags."
+  },
+  {
+    "source": "sdks/java/README.md",
+    "dest": "sdks/java.md",
+    "title": "Java",
+    "description": "Server SDK for Java: install, configure and evaluate flags."
+  },
+  {
+    "source": "sdks/dotnet/README.md",
+    "dest": "sdks/dotnet.md",
+    "title": ".NET",
+    "description": "Server SDK for .NET: install, configure and evaluate flags."
+  },
+  {
+    "source": "sdks/ruby/README.md",
+    "dest": "sdks/ruby.md",
+    "title": "Ruby",
+    "description": "Server SDK for Ruby: install, configure and evaluate flags."
+  },
+  {
+    "source": "sdks/php/README.md",
+    "dest": "sdks/php.md",
+    "title": "PHP",
+    "description": "Server SDK for PHP: install, configure and evaluate flags."
+  },
+  {
+    "source": "sdks/js/README.md",
+    "dest": "sdks/js.md",
+    "title": "JavaScript (browser)",
+    "description": "Client SDK for the browser: install, configure and evaluate flags."
+  },
+  {
+    "source": "sdks/react/README.md",
+    "dest": "sdks/react.md",
+    "title": "React",
+    "description": "Client SDK for React: install, configure and evaluate flags."
+  },
+  {
+    "source": "sdks/react-native/README.md",
+    "dest": "sdks/react-native.md",
+    "title": "React Native",
+    "description": "Client SDK for React Native: install, configure and evaluate flags."
+  },
+  {
+    "source": "sdks/ios/README.md",
+    "dest": "sdks/ios.md",
+    "title": "iOS (Swift)",
+    "description": "Client SDK for iOS and macOS in Swift: install, configure and evaluate flags."
+  },
+  {
+    "source": "sdks/android/README.md",
+    "dest": "sdks/android.md",
+    "title": "Android (Kotlin)",
+    "description": "Client SDK for Android in Kotlin: install, configure and evaluate flags."
+  },
+  {
+    "source": "sdks/flutter/README.md",
+    "dest": "sdks/flutter.md",
+    "title": "Flutter",
+    "description": "Client SDK for Flutter: install, configure and evaluate flags."
+  },
+  {
+    "source": "spec/evaluation.md",
+    "dest": "reference/evaluation.md",
+    "title": "Evaluation spec",
+    "description": "How every MegooFlags SDK evaluates a flag, step by step."
+  },
+  {
+    "source": "spec/delivery.md",
+    "dest": "reference/delivery.md",
+    "title": "Delivery protocol",
+    "description": "How SDKs fetch and stream flag configuration from the server."
+  },
+  {
+    "source": "terraform/README.md",
+    "dest": "use/terraform.md",
+    "title": "Terraform",
+    "description": "Manage projects, flags, segments and SDK keys with the Terraform provider."
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "project/roadmap.md",
+    "title": "Roadmap",
+    "description": "What is planned for MegooFlags, and how to influence it."
+  },
+  {
+    "source": "CONTRIBUTING.md",
+    "dest": "project/contributing.md",
+    "title": "Contributing",
+    "description": "How to set up the repository, run the checks and open a pull request."
+  },
+  {
+    "source": "rfcs/README.md",
+    "dest": "project/rfcs.md",
+    "title": "RFCs",
+    "description": "How to propose a substantial change to MegooFlags."
+  },
+  {
+    "source": "CODE_OF_CONDUCT.md",
+    "dest": "project/code-of-conduct.md",
+    "title": "Code of conduct",
+    "description": "The Contributor Covenant, and how to report a problem."
+  },
+  {
+    "source": "SECURITY.md",
+    "dest": "project/security-policy.md",
+    "title": "Security policy",
+    "description": "Supported versions and how to report a vulnerability privately."
+  },
+  {
+    "source": "perf/REPORT.md",
+    "dest": "deploy/performance.md",
+    "title": "Performance and sizing",
+    "description": "Load test results against the performance targets, and how to size a deployment."
+  },
+  {
+    "source": "CHANGELOG.md",
+    "dest": "project/release-notes.md",
+    "title": "Release notes",
+    "description": "Every user-visible change, release by release."
+  }
+]

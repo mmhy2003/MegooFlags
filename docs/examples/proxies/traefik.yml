@@ -1,0 +1,17 @@
+# MegooFlags behind Traefik: the static configuration. TLS ends at the websecure entry point; the
+# routes are in traefik-dynamic.yml. Install as /etc/traefik/traefik.yml, next to
+# /etc/traefik/dynamic.yml, and run with MF_DOMAIN=flags.example.com.
+entryPoints:
+  websecure:
+    address: ":443"
+    transport:
+      # SDK streams (server-sent events) stay open for hours; keep idle connections far longer than
+      # the 15 s heartbeat. Traefik flushes text/event-stream responses at once.
+      respondingTimeouts:
+        readTimeout: 3600s
+        writeTimeout: 0s
+        idleTimeout: 3600s
+
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yml

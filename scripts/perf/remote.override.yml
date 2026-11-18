@@ -1,0 +1,8 @@
+# Remote evaluation (scripts/perf.sh), on top of docker-compose.yml and compose.ci.yml: one api
+# container without limits, as the NFR is per container, with MF_PERF_API_WORKERS uvicorn workers.
+services:
+  api:
+    environment:
+      MEGOOFLAGS_API_WORKERS: ${MF_PERF_API_WORKERS:-8}
+    deploy:
+      replicas: 1

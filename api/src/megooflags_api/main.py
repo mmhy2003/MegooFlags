@@ -40,6 +40,7 @@ from megooflags_api.routers import (
     segments,
     setup,
     sso,
+    system,
     teams,
     users,
 )
@@ -207,6 +208,7 @@ def create_app(
         api_tokens,
         audit,
         nodes,
+        system,
     ):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_principal)])
     app.include_router(sso.admin_router, prefix="/api", dependencies=[Depends(get_principal)])

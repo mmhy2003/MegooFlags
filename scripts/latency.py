@@ -1,4 +1,4 @@
-"""Latency statistics shared by the propagation test and the benchmark."""
+"""Latency statistics shared by the propagation and cluster tests."""
 
 import math
 from collections.abc import Sequence

@@ -6467,6 +6467,31 @@
         "title": "SubjectKind",
         "type": "string"
       },
+      "SystemVersionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "update": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "update"
+        ],
+        "title": "SystemVersionOut",
+        "type": "object"
+      },
       "TargetIn": {
         "additionalProperties": false,
         "description": "Context keys served `variation`; a key appears in one list only.",
@@ -6831,6 +6856,25 @@
           "otpauth_url"
         ],
         "title": "TotpEnrolment",
+        "type": "object"
+      },
+      "UpdateOut": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "url"
+        ],
+        "title": "UpdateOut",
         "type": "object"
       },
       "UserCreate": {
@@ -18942,6 +18986,78 @@
         "summary": "Delete Mapping",
         "tags": [
           "sso"
+        ]
+      }
+    },
+    "/api/system/version": {
+      "get": {
+        "description": "The running version, and a newer release for org admins when the update check is on.",
+        "operationId": "system_version_api_system_version_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemVersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "System Version",
+        "tags": [
+          "system"
         ]
       }
     },

@@ -1,0 +1,270 @@
+---
+title: Quick start
+description: Run MegooFlags with Docker Compose and evaluate your first flag in under five minutes.
+---
+
+import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
+
+This guide runs the single-node bundle on your machine, creates a flag, and evaluates it with curl
+and with an SDK. It takes under five minutes once the images are downloaded.
+
+You need Docker with the Compose plugin, `curl`, `openssl` and [`jq`](https://jqlang.org), and port
+80 free on your machine.
+
+<Steps>
+
+1. Download the release bundle into a new directory:
+
+   ```bash
+   mkdir megooflags && cd megooflags
+   curl -fsSLO https://github.com/mmhy2003/MegooFlags/releases/latest/download/docker-compose.yml
+   curl -fsSLO https://github.com/mmhy2003/MegooFlags/releases/latest/download/Caddyfile
+   curl -fsSLO https://github.com/mmhy2003/MegooFlags/releases/latest/download/.env.example
+   ```
+
+2. Create `.env` and set the secret key, which encrypts the secrets stored in the database:
+
+   ```bash
+   cp .env.example .env
+   sed -i "s/^MEGOOFLAGS_SECRET_KEY=.*/MEGOOFLAGS_SECRET_KEY=$(openssl rand -hex 32)/" .env
+   ```
+
+   <Aside>On macOS, write `sed -i ''` instead of `sed -i`.</Aside>
+
+3. Start the stack and wait until every service is healthy:
+
+   ```bash
+   docker compose up -d --wait
+   ```
+
+4. Open `http://localhost/setup` and create the admin account with your
+   email, name and a password of at least 12 characters.
+
+5. Sign in from the terminal and create an API token for the next steps. The password prompt does
+   not echo what you type:
+
+   ```bash
+   MF_EMAIL=you@example.com   # the email you just used
+   printf 'Password: '; stty -echo; read -r MF_PASSWORD; stty echo; echo
+   jq -n --arg email "$MF_EMAIL" --arg password "$MF_PASSWORD" '{$email, $password}' \
+     | curl -fsS -c mf-cookies -H 'Origin: http://localhost' -H 'Content-Type: application/json' \
+       -d @- http://localhost/api/auth/sign-in
+   export MF_TOKEN=$(curl -fsS -b mf-cookies -H 'Origin: http://localhost' -H 'Content-Type: application/json' \
+     -d '{"name":"quick-start","bindings":[{"role":"admin","scope":"org"}]}' \
+     http://localhost/api/tokens | jq -r .secret)
+   rm mf-cookies; unset MF_PASSWORD
+   ```
+
+   The token has the admin role. Delete it, or give it a narrower role, once you are done exploring.
+
+6. Create the project `shop`. It gets the environments Development, Staging and Production:
+
+   ```bash
+   curl -fsS -o /dev/null -H "Authorization: Bearer $MF_TOKEN" -H 'Content-Type: application/json' \
+     -d '{"key":"shop","name":"Shop"}' http://localhost/api/projects
+   ```
+
+7. Create the boolean flag `new-checkout` and turn it on in Production:
+
+   ```bash
+   curl -fsS -o /dev/null -H "Authorization: Bearer $MF_TOKEN" -H 'Content-Type: application/json' \
+     -d '{"key":"new-checkout","name":"New checkout","type":"boolean"}' \
+     http://localhost/api/projects/shop/flags
+   curl -fsS -o /dev/null -H "Authorization: Bearer $MF_TOKEN" -H 'Content-Type: application/json' \
+     -d '{"enabled":true}' \
+     http://localhost/api/projects/shop/flags/new-checkout/environments/production/toggle
+   ```
+
+   To do it in the web UI instead, reload `http://localhost`: it opens the Shop
+   project. Choose **New flag**, enter the name `New checkout` and the key `new-checkout`, keep the
+   type **Boolean** and choose **Create flag**. Then turn on the flag's **Production** switch.
+
+8. Create a server SDK key for Production:
+
+   ```bash
+   export MF_SDK_KEY=$(curl -fsS -H "Authorization: Bearer $MF_TOKEN" -H 'Content-Type: application/json' \
+     -d '{"name":"quick-start","kind":"server"}' \
+     http://localhost/api/projects/shop/environments/production/sdk-keys | jq -r .key)
+   ```
+
+   The key starts with `mf_server_`. It is shown only once; the API stores only its hash.
+
+9. Evaluate the flag through [OFREP](https://openfeature.dev/specification/appendix-c), the
+   OpenFeature Remote Evaluation Protocol:
+
+   ```bash
+   curl -s -X POST http://localhost/ofrep/v1/evaluate/flags/new-checkout -H "Authorization: Bearer $MF_SDK_KEY" -H 'Content-Type: application/json' -d '{"context":{"targetingKey":"user-1"}}'
+   ```
+
+   ```json
+   {
+     "key": "new-checkout",
+     "value": true,
+     "reason": "STATIC",
+     "variant": "true",
+     "metadata": {}
+   }
+   ```
+
+   `STATIC` means the flag is on and has no targeting, so everyone gets its default variation. Turn
+   it off in the UI and run the command again: the value is `false` and the reason `DISABLED`.
+
+</Steps>
+
+## Evaluate from your code
+
+The server SDKs download the Production ruleset once, follow changes over a stream and evaluate
+in-process. Give them the key from step 8:
+
+```bash
+export MEGOOFLAGS_SDK_KEY="$MF_SDK_KEY"
+```
+
+<Tabs>
+  <TabItem label="Node.js">
+
+```sh
+pnpm add @megooflags/node @openfeature/server-sdk
+```
+
+```js
+import { OpenFeature } from "@openfeature/server-sdk";
+import { MegooFlagsProvider } from "@megooflags/node";
+
+await OpenFeature.setProviderAndWait(
+  new MegooFlagsProvider({
+    sdkKey: process.env.MEGOOFLAGS_SDK_KEY, // a server key, mf_server_…
+    baseUrl: "http://localhost",
+  }),
+);
+
+const client = OpenFeature.getClient();
+const enabled = await client.getBooleanValue("new-checkout", false, {
+  targetingKey: "user-1",
+});
+console.log("new-checkout:", enabled);
+
+await OpenFeature.close(); // closes the stream and flushes the buffered events
+```
+
+  </TabItem>
+  <TabItem label="Python">
+
+```sh
+pip install megooflags
+```
+
+```python
+import os
+
+from openfeature import api
+from openfeature.evaluation_context import EvaluationContext
+
+from megooflags import MegooFlagsProvider
+
+api.set_provider_and_wait(
+    MegooFlagsProvider(
+        sdk_key=os.environ["MEGOOFLAGS_SDK_KEY"],  # a server key, mf_server_…
+        base_url="http://localhost",
+    )
+)
+
+client = api.get_client()
+enabled = client.get_boolean_value("new-checkout", False, EvaluationContext("user-1"))
+print("new-checkout:", enabled)
+
+api.shutdown()  # closes the stream and flushes the buffered events
+```
+
+  </TabItem>
+  <TabItem label="Go">
+
+```sh
+go get github.com/mmhy2003/MegooFlags/sdks/go
+```
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+	"os"
+
+	"github.com/open-feature/go-sdk/openfeature"
+
+	megooflags "github.com/mmhy2003/MegooFlags/sdks/go"
+)
+
+func main() {
+	err := openfeature.SetProviderAndWait(megooflags.NewProvider(megooflags.Config{
+		SDKKey:  os.Getenv("MEGOOFLAGS_SDK_KEY"), // a server key, mf_server_…
+		BaseURL: "http://localhost",
+	}))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer openfeature.Shutdown() // flushes the buffered events
+
+	client := openfeature.NewDefaultClient()
+	evalCtx := openfeature.NewEvaluationContext("user-1", nil)
+	enabled, err := client.BooleanValue(context.Background(), "new-checkout", false, evalCtx)
+	if err != nil {
+		log.Print(err) // enabled is the default value
+	}
+	log.Println("new-checkout:", enabled)
+}
+```
+
+  </TabItem>
+  <TabItem label="Java">
+
+```kotlin
+implementation("io.github.mmhy2003:megooflags:0.1.0")
+```
+
+```java
+import dev.openfeature.sdk.Client;
+import dev.openfeature.sdk.ImmutableContext;
+import dev.openfeature.sdk.OpenFeatureAPI;
+import io.github.mmhy2003.megooflags.MegooFlagsConfig;
+import io.github.mmhy2003.megooflags.MegooFlagsProvider;
+
+public class Main {
+    public static void main(String[] args) {
+        OpenFeatureAPI api = OpenFeatureAPI.getInstance();
+        api.setProviderAndWait(new MegooFlagsProvider(MegooFlagsConfig.builder()
+                .sdkKey(System.getenv("MEGOOFLAGS_SDK_KEY")) // a server key, mf_server_…
+                .baseUrl("http://localhost")
+                .build()));
+
+        Client client = api.getClient();
+        boolean enabled = client.getBooleanValue("new-checkout", false, new ImmutableContext("user-1"));
+        System.out.println("new-checkout: " + enabled);
+
+        api.shutdown(); // closes the stream and flushes the buffered events
+    }
+}
+```
+
+  </TabItem>
+</Tabs>
+
+Each prints `new-checkout: true`. The [Go](/MegooFlags/sdks/go/),
+[Node.js](/MegooFlags/sdks/node/), [Python](/MegooFlags/sdks/python/) and
+[Java](/MegooFlags/sdks/java/) pages list every option.
+
+To stop the stack, run `docker compose down`; add `-v` to also delete the data.
+
+## Next
+
+- [Concepts](/MegooFlags/start/concepts/): what projects, environments, rules, segments and keys are.
+- [Release workflows](/MegooFlags/use/release-workflows/): rollouts, schedules and change requests.
+- [Security](/MegooFlags/deploy/security/): before you expose MegooFlags to a network, set a strong
+  database password, a domain for automatic HTTPS, and an exact `MEGOOFLAGS_VERSION`.
+- [Multi-node](/MegooFlags/deploy/multi-node/): add worker nodes for more SDK capacity.
+- The other SDKs: [.NET](/MegooFlags/sdks/dotnet/), [Ruby](/MegooFlags/sdks/ruby/),
+  [PHP](/MegooFlags/sdks/php/), and the client SDKs for [JavaScript](/MegooFlags/sdks/js/),
+  [React](/MegooFlags/sdks/react/), [React Native](/MegooFlags/sdks/react-native/),
+  [iOS](/MegooFlags/sdks/ios/), [Android](/MegooFlags/sdks/android/) and
+  [Flutter](/MegooFlags/sdks/flutter/).

@@ -193,3 +193,11 @@ async def test_batch_retention_deletes_after_7_days(app: FastAPI) -> None:
     job = {job.name: job for job in default_jobs()}["node_event_batches"]
     assert job.run is delete_old_batches
     assert job.every == timedelta(hours=1)
+
+
+def test_update_check_job_follows_setting() -> None:
+    jobs = default_jobs(Settings(update_check=True))
+    assert jobs[-1].name == "update_check"
+    assert jobs[-1].every == timedelta(minutes=5)
+    assert "update_check" not in {job.name for job in default_jobs(Settings(update_check=False))}
+    assert "update_check" not in {job.name for job in default_jobs()}

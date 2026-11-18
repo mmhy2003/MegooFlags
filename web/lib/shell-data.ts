@@ -5,6 +5,7 @@ import { serverApi } from "@/lib/api/server";
 import type { components } from "@/lib/api/schema";
 import type { MePermissions } from "@/lib/nav";
 import { PROJECT_COOKIE, SIDEBAR_COOKIE, sidebarOpen } from "@/lib/theme";
+import type { SystemVersion } from "@/lib/version";
 
 export type MeOut = components["schemas"]["MeOut"];
 export type ProjectSummary = components["schemas"]["ProjectSummary"];
@@ -18,6 +19,8 @@ export type ShellData = {
   /** The project `permissions` were loaded for. */
   permissionsProject: string | null;
   sidebarOpen: boolean;
+  /** Null when signed out or when it failed to load; the footer then shows no version. */
+  version: SystemVersion | null;
 };
 
 /** The data of an API call, or null after an error, which is logged. */
@@ -53,6 +56,7 @@ export async function loadShell(): Promise<ShellData> {
       permissions: null,
       permissionsProject: null,
       sidebarOpen: open,
+      version: null,
     };
   }
 
@@ -64,17 +68,21 @@ export async function loadShell(): Promise<ShellData> {
   const keys = projects?.map((p) => p.key) ?? [];
   const last = c.get(PROJECT_COOKIE)?.value;
   const project = last && keys.includes(last) ? last : (keys[0] ?? null);
-  const permissions = await orNull(
-    "permissions",
-    api.GET("/api/auth/me/permissions", {
-      params: { query: project ? { project } : {} },
-    }),
-  );
+  const [permissions, version] = await Promise.all([
+    orNull(
+      "permissions",
+      api.GET("/api/auth/me/permissions", {
+        params: { query: project ? { project } : {} },
+      }),
+    ),
+    orNull("version", api.GET("/api/system/version")),
+  ]);
   return {
     me,
     projects,
     permissions,
     permissionsProject: project,
     sidebarOpen: open,
+    version,
   };
 }

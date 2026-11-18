@@ -1,0 +1,116 @@
+---
+title: Behind a reverse proxy
+description: Put nginx, Caddy, Traefik, HAProxy or a load balancer in front of MegooFlags without breaking the SDK streams.
+---
+
+import { Aside, Code } from "@astrojs/starlight/components";
+import caddyfile from "../../../../../docs/examples/proxies/Caddyfile?raw";
+import haproxy from "../../../../../docs/examples/proxies/haproxy.cfg?raw";
+import nginx from "../../../../../docs/examples/proxies/nginx.conf?raw";
+import traefikDynamic from "../../../../../docs/examples/proxies/traefik-dynamic.yml?raw";
+import traefik from "../../../../../docs/examples/proxies/traefik.yml?raw";
+
+Use this setup when something in front of MegooFlags already terminates TLS: a proxy on the same
+host that serves other sites too, a cloud load balancer, Cloudflare or a platform such as Coolify.
+The bundled Caddy then runs in plain-HTTP mode and your proxy forwards to it.
+
+In `.env`, leave the site address empty, move the bundle off port 80 if the proxy needs it, and set
+the address users reach:
+
+```bash
+MEGOOFLAGS_SITE_ADDRESS=
+MEGOOFLAGS_HTTP_PORT=8080
+MEGOOFLAGS_PUBLIC_URL=https://flags.example.com
+```
+
+See [TLS modes](/MegooFlags/deploy/tls/#plain-http-behind-your-proxy) for what changes in this
+mode.
+
+## The rules for SDK streams
+
+Server SDKs keep a server-sent events stream open on `/sdk/v1/stream` and receive every flag change
+on it within seconds. A proxy that is fine for web pages can break these streams. Whatever you put in
+front of MegooFlags:
+
+- **Does not buffer** responses, so each event is passed on as soon as it arrives. The API sends
+  `X-Accel-Buffering: no`, which nginx honours, but turn buffering off explicitly anyway.
+- **Keeps idle connections open for at least 60 s.** The API sends a `: ping` comment after 15 s
+  without other traffic on a stream (`MEGOOFLAGS_SSE_HEARTBEAT_SECONDS`), but the first one can take
+  up to 45 s. The samples below allow an hour. When a proxy closes a stream anyway, the SDK
+  reconnects and keeps serving its last known flags in the meantime, but changes arrive late.
+- **Sends the forwarded headers** `X-Forwarded-For` and `X-Forwarded-Proto`, so that MegooFlags logs
+  the real client address and knows the request came over HTTPS (secure cookies, passkeys, SSO).
+- **Connects from a trusted address.** The bundled Caddy passes forwarded headers on only from
+  private IP ranges. If your proxy reaches it from a public address, add that address to
+  `MEGOOFLAGS_TRUSTED_PROXIES` (Caddy syntax, for example `private_ranges 203.0.113.10`).
+- **Matches `MEGOOFLAGS_PUBLIC_URL`**: set it to the `https://` address users reach through the
+  proxy. Passkeys and SSO are bound to it, and integrations use it to link to flags.
+
+## Samples
+
+Each sample terminates TLS on port 443 and forwards to the bundle at `http://127.0.0.1:8080`, on the
+same host. The certificate is read from `/etc/megooflags-proxy/fullchain.pem` and `privkey.pem`
+(Caddy gets its own). Replace `flags.example.com` with your domain, and add your usual redirect from
+port 80. CI runs all four against the current images with `scripts/proxy_samples_test.sh`. The files
+are in
+[`docs/examples/proxies/`](https://github.com/mmhy2003/MegooFlags/tree/main/docs/examples/proxies).
+
+### nginx
+
+<Code code={nginx} lang="nginx" title="/etc/nginx/conf.d/megooflags.conf" />
+
+### Caddy
+
+Run it with `MF_DOMAIN=flags.example.com` in Caddy's environment. Caddy gets and renews the
+certificate on its own, so ports 80 and 443 must be reachable.
+
+<Code code={caddyfile} lang="txt" title="/etc/caddy/Caddyfile" />
+
+### Traefik
+
+Traefik v3 reads a static file and a dynamic file. Run it with `MF_DOMAIN=flags.example.com` in
+its environment.
+
+<Code code={traefik} lang="yaml" title="/etc/traefik/traefik.yml" />
+
+<Code code={traefikDynamic} lang="yaml" title="/etc/traefik/dynamic.yml" />
+
+### HAProxy
+
+HAProxy 3.0 or later, for the `crt-store` section.
+
+<Code code={haproxy} lang="txt" title="/etc/haproxy/haproxy.cfg" />
+
+## Cloudflare
+
+- Proxied (orange cloud) records work: Cloudflare passes server-sent events on without buffering.
+  It closes connections that are idle for 100 s; the heartbeats keep the streams below that.
+- Set the SSL/TLS mode to **Full (strict)**, with a valid certificate on the origin: either the
+  bundle in automatic-HTTPS mode, or your own proxy with a Cloudflare origin certificate.
+- If Cloudflare connects to the bundled Caddy directly, add
+  [Cloudflare's IP ranges](https://www.cloudflare.com/ips/) to `MEGOOFLAGS_TRUSTED_PROXIES`, so that
+  Caddy accepts its forwarded headers.
+
+## AWS Application Load Balancer
+
+- Set the load balancer's idle timeout to 120 s or more (the default is 60 s).
+- Terminate HTTPS on the load balancer and forward to the instances on port 80, with the bundle in
+  plain-HTTP mode.
+- Use `/readyz` as the target group's health check path: it answers 200 once the API is ready to serve.
+- The load balancer's addresses are in your VPC's private ranges, which Caddy trusts already.
+
+## Coolify
+
+Coolify puts its own Traefik in front of every application.
+
+- Deploy the bundle's `docker-compose.yml` as a Docker Compose resource, assign your domain to the
+  `caddy` service on port 80 and let Coolify handle the certificate.
+- Leave `MEGOOFLAGS_SITE_ADDRESS` empty, so that the bundled Caddy serves plain HTTP, and set
+  `MEGOOFLAGS_PUBLIC_URL` to the domain.
+- Nothing needs tuning for the streams: Traefik passes server-sent events on at once.
+
+<Aside>
+  Multi-node deployments put the same kind of proxy or load balancer in front of
+  the worker nodes. The same rules apply. See [Multi-node
+  deployment](/MegooFlags/deploy/multi-node/).
+</Aside>

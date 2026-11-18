@@ -1,0 +1,36 @@
+# Single-node footprint (scripts/perf.sh), on top of docker-compose.yml and compose.ci.yml: the
+# long-running services limited to 2 vCPU / 1.875 GiB together, inside the PRD's 2 vCPU / 2 GB VM
+# (migrate exits before the load starts).
+services:
+  caddy:
+    deploy:
+      resources:
+        limits: {cpus: "0.25", memory: 128M}
+    ulimits:
+      nofile: 65536
+  web:
+    deploy:
+      resources:
+        limits: {cpus: "0.25", memory: 256M}
+    # The image's health check starts a new `node` every 10 s. Under a 0.25 CPU quota that takes
+    # 3 to 10 s (its start-up threads are throttled), past the image's 3 s timeout; on a VM the
+    # containers share the cores instead. The image's test is kept, with more time.
+    healthcheck:
+      timeout: 15s
+      start_period: 60s
+  api:
+    environment:
+      MEGOOFLAGS_API_WORKERS: 2
+    deploy:
+      resources:
+        limits: {cpus: "1.0", memory: 768M}
+    ulimits:
+      nofile: 65536
+  db:
+    deploy:
+      resources:
+        limits: {cpus: "0.4", memory: 640M}
+  valkey:
+    deploy:
+      resources:
+        limits: {cpus: "0.1", memory: 128M}

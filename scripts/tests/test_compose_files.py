@@ -31,6 +31,16 @@ def test_role_passed_to_api() -> None:
     assert "MEGOOFLAGS_ROLE: ${MEGOOFLAGS_ROLE:-standalone}" in _api_environment(text)
 
 
+def test_update_check_passed_to_api() -> None:
+    text = (DEPLOY / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "MEGOOFLAGS_UPDATE_CHECK: ${MEGOOFLAGS_UPDATE_CHECK:-true}" in _api_environment(text)
+
+
+def test_env_example_lists_update_check() -> None:
+    text = (DEPLOY / ".env.example").read_text(encoding="utf-8")
+    assert "\nMEGOOFLAGS_UPDATE_CHECK=true\n" in text
+
+
 def test_dockerfile_creates_data_dir() -> None:
     text = (ROOT / "api" / "Dockerfile").read_text(encoding="utf-8")
     assert "mkdir -p /var/lib/megooflags" in text
