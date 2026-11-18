@@ -200,7 +200,7 @@ pnpm --dir web gen:api
 git diff --exit-code -- api/openapi.json web/lib/api/schema.d.ts
 
 # docs site
-(cd site && pnpm install --frozen-lockfile && pnpm format:check && pnpm check && pnpm test && pnpm build)
+(cd site && pnpm install --frozen-lockfile && pnpm format:check && pnpm check && pnpm build && pnpm test)
 
 # images and smoke
 docker build -t megooflags-api:ci api && docker build -t megooflags-web:ci web && bash scripts/smoke.sh http \

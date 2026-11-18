@@ -176,8 +176,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
       - run: pnpm check
-      - run: pnpm test
+      # The tests check the built site in dist/, so build first.
       - run: pnpm build
+      - run: pnpm test
 
   web-e2e:
     runs-on: ubuntu-24.04

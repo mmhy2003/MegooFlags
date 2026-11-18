@@ -18,7 +18,10 @@ function pages(dir: string): string[] {
 
 describe("REST API reference", () => {
   it("has a page for GET /api/system/version", () => {
-    expect(existsSync(operations), `${operations} is missing`).toBe(true);
+    expect(
+      existsSync(operations),
+      `${operations} is missing: run \`pnpm build\` before \`pnpm test\``,
+    ).toBe(true);
     const found = pages(operations).filter((page) => {
       const html = readFileSync(page, "utf8");
       return html.includes("/api/system/version") && />\s*GET\s*</i.test(html);
