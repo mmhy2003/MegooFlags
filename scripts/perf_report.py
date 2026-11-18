@@ -133,7 +133,24 @@ def _all(*checks: Check) -> Check:
 
 _NO_ERRORS = _at_most("errors", 0)
 _REMOTE = _all(_below("p99_ms", 50), _NO_ERRORS, _at_least("rps", 2000))
-_PROPAGATION = _below("prop_p95_ms", 5000)
+_P95 = _below("prop_p95_ms", 5000)
+
+
+def _updates(m: Metrics) -> float | None:
+    """Flips times streams: the updates the streams should have shown."""
+    flips, streams = _num(m, "flips"), _num(m, "streams_opened")
+    return None if flips is None or streams is None else flips * streams
+
+
+def _few_missed(m: Metrics) -> bool:
+    # mfload has no sample for a missed update. With a flip interval of at least its 30 s miss
+    # window, a miss took over 30 s, so the p95 over every update is < 5 s only if the sampled p95
+    # is and at most 5 % were missed.
+    missed, updates = _num(m, "missed"), _updates(m)
+    return missed is not None and updates is not None and missed <= 0.05 * updates
+
+
+_PROPAGATION = _all(_P95, _few_missed)
 _REMOTE_TARGET = "p99 < 50 ms, no errors, at 2000 rps per API container"
 _PROPAGATION_TARGET = "p95 < 5 s"
 
@@ -171,7 +188,8 @@ GATES: list[tuple[str, str, str, Check]] = [
             _at_most("oom_killed", 0),
             _below("p99_ms", 50),
             _NO_ERRORS,
-            _PROPAGATION,
+            # A flip every second: a missed update may only be superseded by the next one.
+            _P95,
         ),
     ),
 ]
@@ -192,6 +210,10 @@ def _cell(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
+def _missed(m: Metrics) -> str:
+    return f"{_n(m.get('missed'))} of {_n(_updates(m))} updates missed"
+
+
 def _measured(name: str, m: Metrics) -> str:
     if name.startswith("local_eval_"):
         guard = "guard passed" if _num(m, "passed") == 1 else "guard failed"
@@ -199,7 +221,7 @@ def _measured(name: str, m: Metrics) -> str:
     if name.startswith("remote_"):
         errors = _n(m.get("errors"))
         return f"p99 {_n(m.get('p99_ms'))} ms, {errors} errors at {_n(m.get('rps'), 0)} rps"
-    prop = f"propagation p95 {_s(m.get('prop_p95_ms'))}"
+    prop = f"propagation p95 {_s(m.get('prop_p95_ms'))} ({_missed(m)})"
     if name.startswith("propagation_"):
         return f"{prop} over {_n(m.get('flips'))} flips on {_n(m.get('streams_opened'))} streams"
     if name == "streams_100k":
@@ -320,7 +342,8 @@ def _sizing(scenarios: dict[str, Any]) -> list[str]:
             "- **Single node, 2 vCPU / 2 GB.** Under the small-team load "
             f"({_n(m.get('streams_opened'))} SDK streams, a flag write every second and "
             f"{_n(m.get('rps'), 0)} remote evaluations per second), the whole bundle measured "
-            f"p99 {_n(m.get('p99_ms'))} ms, propagation p95 {_s(m.get('prop_p95_ms'))}, "
+            f"p99 {_n(m.get('p99_ms'))} ms, propagation p95 {_s(m.get('prop_p95_ms'))} "
+            f"({_missed(m)}), "
             f"memory up to {_n(m.get('mem_max_mib'))} MiB, {_n(m.get('restarts'))} restarts. "
             "Beyond that load, add API replicas or move to multi-node."
         )

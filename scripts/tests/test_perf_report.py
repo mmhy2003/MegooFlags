@@ -168,7 +168,7 @@ def _full(metrics: dict[str, Any], **extra: Any) -> dict[str, Any]:
 
 
 REMOTE = {"rps": 2000.4, "count": 120000, "errors": 0, "p50_ms": 3.1, "p95_ms": 9.0, "p99_ms": 14.2}
-PROP = {"streams_opened": 30, "streams_dropped": 0, "flips": 20, "prop_p95_ms": 900.0}
+PROP = {"streams_opened": 30, "streams_dropped": 0, "flips": 20, "prop_p95_ms": 900.0, "missed": 0}
 PASSING = {
     "version": "1.0.0",
     "profile": "full",
@@ -274,12 +274,39 @@ def test_render_sections_in_order() -> None:
         ("footprint_single", {"restarts": 1}, "Single-node footprint"),
         ("footprint_single", {"prop_p95_ms": 5000.0}, "Single-node footprint"),
         ("footprint_single", {"errors": 2}, "Single-node footprint"),
+        # More than 5 % of the updates (flips x streams) missed: p95 over all of them is not < 5 s.
+        ("propagation_replicas", {"missed": 31}, "Propagation across API replicas"),
+        ("propagation_cluster", {"missed": 349}, "Propagation to worker nodes"),
+        ("streams_100k", {"missed": 100001}, "100k streams per cluster"),
     ],
 )
 def test_render_failing_gate(name: str, metrics: dict[str, Any], row: str) -> None:
     rows = _rows(render(_with(name, metrics=metrics)))
     assert rows[row] == "fail"
     assert [v for v in rows.values() if v != "pass"] == ["fail"]
+
+
+def test_render_few_missed_updates_pass() -> None:
+    doc = _with("propagation_replicas", metrics={"missed": 30})
+    assert _rows(render(doc))["Propagation across API replicas"] == "pass"
+
+
+def test_render_missed_propagation_metric_fails() -> None:
+    doc = _with("propagation_cluster")
+    del doc["scenarios"]["propagation_cluster"]["metrics"]["missed"]
+    assert _rows(render(doc))["Propagation to worker nodes"] == "fail"
+
+
+def test_render_shows_missed_updates() -> None:
+    doc = _with("propagation_replicas", metrics={"missed": 349})
+    doc["scenarios"]["footprint_single"]["metrics"]["missed"] = 121
+    report = render(doc)
+    nfr = report.split("## Reported values", 1)[0]
+    assert "349 of 600 updates missed" in nfr
+    # A flip every second: a missed update may only be superseded, so it is shown, not gated.
+    assert _rows(report)["Single-node footprint"] == "pass"
+    sizing = report.split("## Sizing guidance", 1)[1]
+    assert "121 of 600 updates missed" in sizing
 
 
 def test_render_missing_metric_fails() -> None:

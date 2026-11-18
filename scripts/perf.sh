@@ -38,7 +38,9 @@ chmod 755 "$state" "$state/certs"
 if [ "$profile" = full ]; then
   nflags=10000 rps=2000 duration=60 warmup=15
   whole_duration=30 whole_warmup=5
-  prop_flip=5 prop_hold=100      # 20 flips
+  # 20 flips, each longer apart than mfload's 30 s miss window: an update slower than the interval
+  # would otherwise count as missed, with no sample, and cut the p95 off at the interval.
+  prop_flip=35 prop_hold=700
   big_streams=100000 big_ramp=300 big_hold=600 big_flip=30
   foot_hold=600
 else
@@ -282,7 +284,7 @@ load prop-replicas streams --target http://caddy --key "$key" --streams 30 --ram
 [ "$profile" = full ] && prop_status=full prop_reduced="" || prop_status=reduced prop_reduced="3 flips"
 meta propagation_replicas "$prop_status" "$prop_reduced" \
   "{\"api\": \"unlimited\", \"api_workers\": \"$replica_workers\", \"replicas\": \"3\"}" \
-  "30 streams on the $nflags-flag project; 4 workers per replica (MF_PERF_REPLICA_API_WORKERS): at 3 x 8 on 16 CPUs p95 was 11.9 s"
+  "30 streams on the $nflags-flag project, a flip every $prop_flip s; $replica_workers workers per replica (MF_PERF_REPLICA_API_WORKERS): at 3 x 8 on 16 CPUs p95 was 11.9 s"
 single down -v --remove-orphans
 echo "propagation across replicas done"
 
@@ -344,7 +346,8 @@ load prop-cluster streams --target http://worker-1 --target http://worker-2 --ta
   --key "$ckey" --streams 30 --ramp-seconds 3 --hold "$prop_hold" --flip-every "$prop_flip" \
   --api "$cp_api" --insecure --token "$token" --project cluster --env "$cenv" --flag "$cflag" \
   --out /out/propagation_cluster.json
-meta propagation_cluster "$prop_status" "$prop_reduced" "$worker_limits" "30 streams over 3 workers"
+meta propagation_cluster "$prop_status" "$prop_reduced" "$worker_limits" \
+  "30 streams over 3 workers, a flip every $prop_flip s"
 echo "propagation through the control plane done"
 
 # 6. Many streams: one worker's capacity inside its limits, then enough workers for 100k.
