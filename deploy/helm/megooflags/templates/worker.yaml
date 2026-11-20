@@ -1,0 +1,158 @@
+{{- if eq .Values.role "worker" }}
+{{- $fullname := include "megooflags.fullname" . }}
+{{- $secret := include "megooflags.secretName" . }}
+{{- $ca := .Values.worker.controlPlaneCa }}
+{{- $persistence := .Values.worker.persistence }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullname }}-worker
+  labels:
+    {{- include "megooflags.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ ternary (len .Values.worker.nodeTokens) (int .Values.worker.replicas) (gt (len .Values.worker.nodeTokens) 0) }}
+  serviceName: {{ $fullname }}-worker-headless
+  # Each pod reads its own token, so they need not start one after another.
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      {{- include "megooflags.selectorLabels" (dict "ctx" $ "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "megooflags.selectorLabels" (dict "ctx" $ "component" "worker") | nindent 8 }}
+      annotations:
+        {{- include "megooflags.podAnnotations" (dict "ctx" $ "extra" .Values.worker.podAnnotations) | nindent 8 }}
+    spec:
+      {{- include "megooflags.podSecurity" . | nindent 6 }}
+      {{- with include "megooflags.scheduling" .Values.worker }}
+      {{- . | nindent 6 }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: {{ include "megooflags.image" (dict "ctx" $ "name" "megooflags-api") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Pod <fullname>-worker-<n> runs with the Secret's key token-<n>.
+          command:
+            - /bin/sh
+            - -c
+            - |
+              ordinal="${HOSTNAME##*-}"
+              file="/etc/megooflags/tokens/token-${ordinal}"
+              if [ ! -s "$file" ]; then
+                echo "node token token-${ordinal} is missing from Secret {{ $secret }}: add it, or lower the replica count" >&2
+                exit 1
+              fi
+              MEGOOFLAGS_NODE_TOKEN="$(cat "$file")"
+              export MEGOOFLAGS_NODE_TOKEN
+              exec python -m megooflags_api.serve
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "megooflags.configName" . }}
+          {{- with .Values.worker.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/megooflags
+            - name: tokens
+              mountPath: /etc/megooflags/tokens
+              readOnly: true
+            {{- if or $ca.configMap $ca.secret }}
+            - name: ca
+              mountPath: /etc/megooflags/certs
+              readOnly: true
+            {{- end }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+          {{- with .Values.worker.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- include "megooflags.containerSecurity" . | nindent 10 }}
+      volumes:
+        - name: tokens
+          secret:
+            secretName: {{ $secret }}
+            defaultMode: 0440
+        {{- if $ca.configMap }}
+        - name: ca
+          configMap:
+            name: {{ $ca.configMap }}
+        {{- else if $ca.secret }}
+        - name: ca
+          secret:
+            secretName: {{ $ca.secret }}
+        {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- with $persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-worker
+  labels:
+    {{- include "megooflags.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "megooflags.selectorLabels" (dict "ctx" $ "component" "worker") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+---
+# Gives each worker pod a stable DNS name, also before it is ready.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-worker-headless
+  labels:
+    {{- include "megooflags.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "megooflags.selectorLabels" (dict "ctx" $ "component" "worker") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+{{- end }}

@@ -625,3 +625,167 @@ def test_api_replicas(tmp_path: Path) -> None:
 def test_worker_has_no_control_plane_workloads(tmp_path: Path) -> None:
     kinds = {kind for kind, _ in by_kind(render(tmp_path, WORKER))}
     assert not kinds & {"Deployment", "Job"}
+
+
+WORKERS = {
+    "role": "worker",
+    "worker": {
+        "controlPlaneUrl": "https://cp.example.com",
+        "nodeTokens": ["mf_node_a", "mf_node_b"],
+    },
+}
+WORKER_RESOURCES = {
+    ("ConfigMap", "mf-megooflags-config"),
+    ("Secret", "mf-megooflags"),
+    ("StatefulSet", "mf-megooflags-worker"),
+    ("Service", "mf-megooflags-worker"),
+    ("Service", "mf-megooflags-worker-headless"),
+}
+
+
+def _workers(**worker: Any) -> dict[str, Any]:
+    return {**WORKERS, "worker": {**WORKERS["worker"], **worker}}
+
+
+def _worker_set(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    return find(docs, "StatefulSet", "mf-megooflags-worker")
+
+
+def test_worker_resources(tmp_path: Path) -> None:
+    result = _helm(WORKERS, tmp_path)
+    assert result.returncode == 0, result.stderr
+    docs = [doc for doc in yaml.safe_load_all(result.stdout) if doc is not None]
+    assert by_kind(docs) == WORKER_RESOURCES
+    words = ("mf-megooflags-web", "mf-megooflags-api", "kind: Job", "postgresql", "valkey")
+    for word in (*words, "MEGOOFLAGS_SECRET_KEY"):
+        assert word not in result.stdout
+
+
+def test_worker_replicas_follow_tokens(tmp_path: Path) -> None:
+    values = _workers(nodeTokens=["mf_node_a", "mf_node_b", "mf_node_c"])
+    assert _worker_set(render(tmp_path, values))["spec"]["replicas"] == 3
+
+
+def test_worker_existing_secret_replicas(tmp_path: Path) -> None:
+    values = {**_workers(nodeTokens=[], replicas=4), "existingSecret": "tokens"}
+    docs = render(tmp_path, values)
+    assert _worker_set(docs)["spec"]["replicas"] == 4
+    assert ("Secret", "mf-megooflags") not in by_kind(docs)
+
+
+def test_worker_picks_token_by_ordinal(tmp_path: Path) -> None:
+    for values, secret in [(WORKERS, "mf-megooflags"), ({**WORKERS, "existingSecret": "t"}, "t")]:
+        pod = _worker_set(render(tmp_path, values))["spec"]["template"]
+        worker = _container(pod, "worker")
+        assert worker["image"] == f"ghcr.io/mmhy2003/megooflags-api:{_app_version()}"
+        command = _command(worker)
+        assert command.startswith("/bin/sh -c ")
+        assert "token-${ordinal}" in command
+        assert f"Secret {secret}:" in command
+        assert "exec python -m megooflags_api.serve" in command
+        assert worker["envFrom"] == [{"configMapRef": {"name": "mf-megooflags-config"}}]
+        assert {"name": "tokens", "mountPath": "/etc/megooflags/tokens", "readOnly": True} in (
+            worker["volumeMounts"]
+        )
+        assert {"name": "tokens", "secret": {"secretName": secret, "defaultMode": 288}} in (
+            pod["spec"]["volumes"]
+        )
+        assert pod["spec"]["securityContext"]["fsGroup"] == 10001
+        assert pod["spec"]["automountServiceAccountToken"] is False
+        assert worker["securityContext"] == {
+            "allowPrivilegeEscalation": False,
+            "capabilities": {"drop": ["ALL"]},
+        }
+
+
+def test_worker_volume(tmp_path: Path) -> None:
+    statefulset = _worker_set(render(tmp_path, WORKERS))
+    (claim,) = statefulset["spec"]["volumeClaimTemplates"]
+    assert claim["metadata"]["name"] == "data"
+    assert claim["spec"]["accessModes"] == ["ReadWriteOnce"]
+    assert claim["spec"]["resources"] == {"requests": {"storage": "1Gi"}}
+    assert "storageClassName" not in claim["spec"]
+    worker = _container(statefulset["spec"]["template"], "worker")
+    assert {"name": "data", "mountPath": "/var/lib/megooflags"} in worker["volumeMounts"]
+    values = _workers(persistence={"size": "2Gi", "storageClass": "fast"})
+    (claim,) = _worker_set(render(tmp_path, values))["spec"]["volumeClaimTemplates"]
+    assert claim["spec"]["storageClassName"] == "fast"
+    assert claim["spec"]["resources"] == {"requests": {"storage": "2Gi"}}
+
+
+@pytest.mark.parametrize(
+    ("source", "volume"),
+    [
+        ("configMap", {"configMap": {"name": "cp-ca"}}),
+        ("secret", {"secret": {"secretName": "cp-ca"}}),
+    ],
+)
+def test_worker_ca_mount(tmp_path: Path, source: str, volume: dict[str, Any]) -> None:
+    docs = render(tmp_path, _workers(controlPlaneCa={source: "cp-ca"}))
+    pod = _worker_set(docs)["spec"]["template"]
+    assert {"name": "ca", **volume} in pod["spec"]["volumes"]
+    mount = {"name": "ca", "mountPath": "/etc/megooflags/certs", "readOnly": True}
+    assert mount in _container(pod, "worker")["volumeMounts"]
+    assert _config(docs)["MEGOOFLAGS_CONTROL_PLANE_CA_FILE"] == "/etc/megooflags/certs/ca.crt"
+    plain = _worker_set(render(tmp_path, WORKERS))["spec"]["template"]
+    assert [v["name"] for v in plain["spec"]["volumes"]] == ["tokens"]
+
+
+def test_worker_insecure_flag(tmp_path: Path) -> None:
+    docs = render(tmp_path, _workers(controlPlaneInsecure=True))
+    assert _config(docs)["MEGOOFLAGS_CONTROL_PLANE_INSECURE"] == "true"
+
+
+def test_worker_parallel_pods(tmp_path: Path) -> None:
+    docs = render(tmp_path, WORKERS)
+    spec = _worker_set(docs)["spec"]
+    assert spec["podManagementPolicy"] == "Parallel"
+    assert spec["updateStrategy"] == {"type": "RollingUpdate"}
+    assert spec["serviceName"] == "mf-megooflags-worker-headless"
+    selector = spec["selector"]["matchLabels"]
+    assert selector["app.kubernetes.io/component"] == "worker"
+    assert spec["template"]["metadata"]["labels"] == selector
+    service = find(docs, "Service", "mf-megooflags-worker")
+    assert service["spec"]["type"] == "ClusterIP"
+    assert service["spec"]["selector"] == selector
+    assert service["spec"]["ports"] == [
+        {"name": "http", "port": 8000, "targetPort": "http", "protocol": "TCP"}
+    ]
+    headless = find(docs, "Service", "mf-megooflags-worker-headless")
+    assert headless["spec"]["clusterIP"] == "None"
+    assert headless["spec"]["publishNotReadyAddresses"] is True
+    assert headless["spec"]["selector"] == selector
+
+
+def test_worker_probes(tmp_path: Path) -> None:
+    pod = _worker_set(render(tmp_path, WORKERS))["spec"]["template"]
+    worker = _container(pod, "worker")
+    assert worker["ports"] == [{"name": "http", "containerPort": 8000, "protocol": "TCP"}]
+    assert worker["livenessProbe"]["httpGet"] == {"path": "/healthz", "port": "http"}
+    assert worker["livenessProbe"]["periodSeconds"] == 10
+    assert worker["livenessProbe"]["failureThreshold"] == 3
+    assert worker["readinessProbe"]["httpGet"] == {"path": "/readyz", "port": "http"}
+    assert worker["readinessProbe"]["periodSeconds"] == 5
+    assert worker["startupProbe"]["httpGet"] == {"path": "/healthz", "port": "http"}
+
+
+def test_worker_pod_settings(tmp_path: Path) -> None:
+    toleration = {"key": "dedicated", "operator": "Exists", "effect": "NoSchedule"}
+    values = _workers(
+        resources={"limits": {"memory": "256Mi"}},
+        extraEnv=[{"name": "EXTRA", "value": "1"}],
+        podAnnotations={"example.com/w": "1"},
+        nodeSelector={"pool": "edge"},
+        tolerations=[toleration],
+        affinity={"nodeAffinity": {}},
+    )
+    pod = _worker_set(render(tmp_path, values))["spec"]["template"]
+    assert pod["metadata"]["annotations"]["example.com/w"] == "1"
+    assert "checksum/config" in pod["metadata"]["annotations"]
+    assert "checksum/secret" in pod["metadata"]["annotations"]
+    assert pod["spec"]["nodeSelector"] == {"pool": "edge"}
+    assert pod["spec"]["tolerations"] == [toleration]
+    assert pod["spec"]["affinity"] == {"nodeAffinity": {}}
+    worker = _container(pod, "worker")
+    assert worker["env"] == [{"name": "EXTRA", "value": "1"}]
+    assert worker["resources"] == {"limits": {"memory": "256Mi"}}
