@@ -16,9 +16,6 @@ ROOT = Path(__file__).resolve().parents[2]
 CHART = ROOT / "deploy" / "helm" / "megooflags"
 SECRET = "s" * 32
 REQUIRE = bool(os.environ.get("MEGOOFLAGS_REQUIRE_HELM"))
-pytestmark = pytest.mark.skipif(
-    shutil.which("helm") is None and not REQUIRE, reason="helm is not installed"
-)
 
 WORKER = {
     "role": "worker",
@@ -50,15 +47,17 @@ CONTROL_PLANE_ONLY = {
 }
 
 
+def _run_helm(*args: str) -> subprocess.CompletedProcess[str]:
+    # Skips the calling test, not the module: the README test needs no helm.
+    if shutil.which("helm") is None and not REQUIRE:
+        pytest.skip("helm is not installed")
+    return subprocess.run(["helm", *args], capture_output=True, text=True, check=False)
+
+
 def _helm(values: dict[str, Any], tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     path = tmp_path / "values.json"
     path.write_text(json.dumps(values), encoding="utf-8")
-    return subprocess.run(
-        ["helm", "template", "mf", str(CHART), "--namespace", "mf", "-f", str(path), *args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    return _run_helm("template", "mf", str(CHART), "--namespace", "mf", "-f", str(path), *args)
 
 
 def render(tmp_path: Path, values: dict[str, Any]) -> list[dict[str, Any]]:
@@ -981,9 +980,7 @@ ROLES = ["standalone", "control-plane", "worker"]
 def test_helm_lint(tmp_path: Path, role: str) -> None:
     path = tmp_path / "values.json"
     path.write_text(json.dumps(_role_values(role)), encoding="utf-8")
-    result = subprocess.run(
-        ["helm", "lint", str(CHART), "-f", str(path)], capture_output=True, text=True, check=False
-    )
+    result = _run_helm("lint", str(CHART), "-f", str(path))
     assert result.returncode == 0, result.stdout + result.stderr
 
 
@@ -1017,3 +1014,11 @@ def test_kubeconform(tmp_path: Path, role: str) -> None:
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_readme_describes_every_value() -> None:
+    readme = (CHART / "README.md").read_text(encoding="utf-8")
+    values = yaml.safe_load((CHART / "values.yaml").read_text(encoding="utf-8"))
+    missing = [key for key in values if f"`{key}`" not in readme]
+    assert not missing, f"README.md does not describe {missing}"
+    assert "oci://ghcr.io/mmhy2003/charts/megooflags" in readme
