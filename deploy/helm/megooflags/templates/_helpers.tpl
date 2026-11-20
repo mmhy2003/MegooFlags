@@ -71,13 +71,21 @@ Pod settings shared by the api, web and migration pods: no service account token
 the images' uid 10001.
 */}}
 {{- define "megooflags.podSecurity" -}}
+{{- include "megooflags.podSecurityAs" (dict "ctx" . "uid" 10001) -}}
+{{- end -}}
+
+{{/*
+Pod settings with another uid, as podSecurity. Takes (dict "ctx" $ "uid" 999): 999 is the
+postgres and valkey images' own user.
+*/}}
+{{- define "megooflags.podSecurityAs" -}}
 automountServiceAccountToken: false
 securityContext:
   runAsNonRoot: true
-  runAsUser: 10001
-  runAsGroup: 10001
-  fsGroup: 10001
-{{- with .Values.imagePullSecrets }}
+  runAsUser: {{ .uid }}
+  runAsGroup: {{ .uid }}
+  fsGroup: {{ .uid }}
+{{- with .ctx.Values.imagePullSecrets }}
 imagePullSecrets:
   {{- toYaml . | nindent 2 }}
 {{- end }}

@@ -279,6 +279,13 @@ CONTROL_PLANE_WORKLOADS = {
     ("Service", "mf-megooflags-web"),
     ("Job", "mf-megooflags-migrate-1"),
 }
+STORES = {
+    ("StatefulSet", "mf-megooflags-postgresql"),
+    ("Service", "mf-megooflags-postgresql"),
+    ("Deployment", "mf-megooflags-valkey"),
+    ("Service", "mf-megooflags-valkey"),
+}
+STORE_SECURITY = {"runAsNonRoot": True, "runAsUser": 999, "runAsGroup": 999, "fsGroup": 999}
 
 
 def _app_version() -> str:
@@ -304,14 +311,139 @@ def _command(container: dict[str, Any]) -> str:
     return " ".join(container["command"])
 
 
-# The bundled stores come next: these become exact matches then.
 def test_standalone_resources(tmp_path: Path) -> None:
-    assert CONTROL_PLANE_WORKLOADS <= by_kind(render(tmp_path, {"secretKey": SECRET}))
+    assert by_kind(render(tmp_path, {"secretKey": SECRET})) == CONTROL_PLANE_WORKLOADS | STORES
 
 
 def test_control_plane_resources(tmp_path: Path) -> None:
     docs = render(tmp_path, _role_values("control-plane"))
-    assert CONTROL_PLANE_WORKLOADS <= by_kind(docs)
+    assert by_kind(docs) == CONTROL_PLANE_WORKLOADS | STORES
+
+
+def _env(container: dict[str, Any]) -> dict[str, Any]:
+    return {item["name"]: item.get("value", item.get("valueFrom")) for item in container["env"]}
+
+
+def test_postgresql_statefulset(tmp_path: Path) -> None:
+    docs = render(tmp_path, {"secretKey": SECRET})
+    statefulset = find(docs, "StatefulSet", "mf-megooflags-postgresql")
+    assert statefulset["spec"]["serviceName"] == "mf-megooflags-postgresql"
+    selector = statefulset["spec"]["selector"]["matchLabels"]
+    assert selector["app.kubernetes.io/component"] == "postgresql"
+    pod = statefulset["spec"]["template"]
+    assert pod["metadata"]["labels"] == selector
+    assert pod["spec"]["automountServiceAccountToken"] is False
+    assert pod["spec"]["securityContext"] == STORE_SECURITY
+    postgres = _container(pod, "postgresql")
+    assert postgres["image"] == "postgres:16"
+    assert _env(postgres) == {
+        "POSTGRES_USER": "megooflags",
+        "POSTGRES_DB": "megooflags",
+        "POSTGRES_PASSWORD": {
+            "secretKeyRef": {"name": "mf-megooflags", "key": "POSTGRES_PASSWORD"}
+        },
+        "PGDATA": "/var/lib/postgresql/data/pgdata",
+    }
+    assert postgres["ports"] == [{"name": "postgresql", "containerPort": 5432, "protocol": "TCP"}]
+    assert postgres["readinessProbe"]["exec"]["command"] == [
+        "pg_isready",
+        "-U",
+        "megooflags",
+        "-d",
+        "megooflags",
+    ]
+    assert postgres["volumeMounts"] == [{"name": "data", "mountPath": "/var/lib/postgresql/data"}]
+    assert postgres["securityContext"] == {
+        "allowPrivilegeEscalation": False,
+        "capabilities": {"drop": ["ALL"]},
+    }
+    assert "resources" not in postgres
+    (claim,) = statefulset["spec"]["volumeClaimTemplates"]
+    assert claim["metadata"]["name"] == "data"
+    assert claim["spec"]["accessModes"] == ["ReadWriteOnce"]
+    assert claim["spec"]["resources"] == {"requests": {"storage": "8Gi"}}
+    assert "storageClassName" not in claim["spec"]
+    service = find(docs, "Service", "mf-megooflags-postgresql")
+    assert service["spec"]["type"] == "ClusterIP"
+    assert service["spec"]["selector"] == selector
+    assert service["spec"]["ports"] == [
+        {"name": "postgresql", "port": 5432, "targetPort": "postgresql", "protocol": "TCP"}
+    ]
+
+
+def test_postgresql_values(tmp_path: Path) -> None:
+    values = {
+        "existingSecret": "mine",
+        "postgresql": {
+            "image": "postgres:16.4",
+            "persistence": {"size": "20Gi", "storageClass": "fast"},
+            "resources": {"limits": {"memory": "1Gi"}},
+        },
+    }
+    statefulset = find(render(tmp_path, values), "StatefulSet", "mf-megooflags-postgresql")
+    postgres = _container(statefulset["spec"]["template"], "postgresql")
+    assert postgres["image"] == "postgres:16.4"
+    assert _env(postgres)["POSTGRES_PASSWORD"] == {
+        "secretKeyRef": {"name": "mine", "key": "POSTGRES_PASSWORD"}
+    }
+    assert postgres["resources"] == {"limits": {"memory": "1Gi"}}
+    (claim,) = statefulset["spec"]["volumeClaimTemplates"]
+    assert claim["spec"]["storageClassName"] == "fast"
+    assert claim["spec"]["resources"] == {"requests": {"storage": "20Gi"}}
+
+
+def test_valkey_no_persistence(tmp_path: Path) -> None:
+    docs = render(tmp_path, {"secretKey": SECRET})
+    deployment = find(docs, "Deployment", "mf-megooflags-valkey")
+    selector = deployment["spec"]["selector"]["matchLabels"]
+    assert selector["app.kubernetes.io/component"] == "valkey"
+    pod = deployment["spec"]["template"]
+    assert pod["metadata"]["labels"] == selector
+    assert pod["spec"]["automountServiceAccountToken"] is False
+    assert pod["spec"]["securityContext"] == STORE_SECURITY
+    assert "volumes" not in pod["spec"]
+    valkey = _container(pod, "valkey")
+    assert valkey["image"] == "valkey/valkey:8"
+    assert valkey["args"] == ["valkey-server", "--save", "", "--appendonly", "no"]
+    assert "volumeMounts" not in valkey
+    assert valkey["readinessProbe"]["exec"]["command"] == ["valkey-cli", "ping"]
+    assert valkey["ports"] == [{"name": "valkey", "containerPort": 6379, "protocol": "TCP"}]
+    assert valkey["securityContext"] == {
+        "allowPrivilegeEscalation": False,
+        "capabilities": {"drop": ["ALL"]},
+    }
+    service = find(docs, "Service", "mf-megooflags-valkey")
+    assert service["spec"]["type"] == "ClusterIP"
+    assert service["spec"]["selector"] == selector
+    assert service["spec"]["ports"] == [
+        {"name": "valkey", "port": 6379, "targetPort": "valkey", "protocol": "TCP"}
+    ]
+
+
+def test_valkey_values(tmp_path: Path) -> None:
+    values = {
+        "secretKey": SECRET,
+        "valkey": {"image": "valkey/valkey:8.1", "resources": {"limits": {"memory": "256Mi"}}},
+    }
+    pod = _pod(render(tmp_path, values), "Deployment", "mf-megooflags-valkey")
+    valkey = _container(pod, "valkey")
+    assert valkey["image"] == "valkey/valkey:8.1"
+    assert valkey["resources"] == {"limits": {"memory": "256Mi"}}
+
+
+def test_stores_disabled(tmp_path: Path) -> None:
+    values = {
+        "secretKey": SECRET,
+        "postgresql": {"enabled": False},
+        "externalDatabase": {"url": "postgresql+asyncpg://u:p@db.example.com:5432/flags"},
+        "valkey": {"enabled": False},
+        "externalValkey": {"url": "redis://cache.example.com:6379/0"},
+    }
+    assert by_kind(render(tmp_path, values)) == CONTROL_PLANE_WORKLOADS
+
+
+def test_worker_has_no_stores(tmp_path: Path) -> None:
+    assert not by_kind(render(tmp_path, WORKER)) & STORES
 
 
 def test_image_tag_defaults_to_app_version(tmp_path: Path) -> None:
