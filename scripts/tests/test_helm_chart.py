@@ -938,3 +938,82 @@ def test_ingress_passthrough(tmp_path: Path) -> None:
 def test_routing_off_by_default(tmp_path: Path, role: str) -> None:
     kinds = {kind for kind, _ in by_kind(render(tmp_path, _role_values(role)))}
     assert not kinds & {"Ingress", "HTTPRoute"}
+
+
+@pytest.mark.parametrize(
+    ("role", "component"),
+    [
+        pytest.param("control-plane", "api", id="control-plane"),
+        pytest.param("worker", "worker", id="worker"),
+    ],
+)
+def test_service_monitor(tmp_path: Path, role: str, component: str) -> None:
+    default = render(tmp_path, _role_values(role))
+    assert "ServiceMonitor" not in {kind for kind, _ in by_kind(default)}
+    monitor_values = {"serviceMonitor": {"enabled": True, "labels": {"release": "prom"}}}
+    docs = render(tmp_path, {**_role_values(role), "metrics": monitor_values})
+    monitor = find(docs, "ServiceMonitor", "mf-megooflags")
+    assert monitor["apiVersion"] == "monitoring.coreos.com/v1"
+    assert monitor["metadata"]["labels"]["release"] == "prom"
+    assert monitor["metadata"]["labels"]["app.kubernetes.io/instance"] == "mf"
+    assert monitor["spec"]["selector"] == {
+        "matchLabels": {
+            "app.kubernetes.io/name": "megooflags",
+            "app.kubernetes.io/instance": "mf",
+            "app.kubernetes.io/component": component,
+        }
+    }
+    assert monitor["spec"]["endpoints"] == [{"port": "http", "path": "/metrics", "interval": "30s"}]
+    # One Service per pod, or Prometheus scrapes the pods twice (the worker's headless one).
+    selector = monitor["spec"]["selector"]["matchLabels"]
+    matched = [
+        doc["metadata"]["name"]
+        for doc in docs
+        if doc["kind"] == "Service" and selector.items() <= doc["metadata"]["labels"].items()
+    ]
+    assert matched == [f"mf-megooflags-{component}"]
+
+
+ROLES = ["standalone", "control-plane", "worker"]
+
+
+@pytest.mark.parametrize("role", ROLES)
+def test_helm_lint(tmp_path: Path, role: str) -> None:
+    path = tmp_path / "values.json"
+    path.write_text(json.dumps(_role_values(role)), encoding="utf-8")
+    result = subprocess.run(
+        ["helm", "lint", str(CHART), "-f", str(path)], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.skipif(
+    shutil.which("kubeconform") is None and not REQUIRE, reason="kubeconform is not installed"
+)
+@pytest.mark.parametrize("role", ROLES)
+def test_kubeconform(tmp_path: Path, role: str) -> None:
+    values = {
+        **_role_values(role),
+        "ingress": {"enabled": True},
+        "httpRoute": {"enabled": True, "parentRefs": [{"name": "gw"}]},
+        "metrics": {"serviceMonitor": {"enabled": True}},
+    }
+    rendered = _helm(values, tmp_path)
+    assert rendered.returncode == 0, rendered.stderr
+    result = subprocess.run(
+        [
+            "kubeconform",
+            "-strict",
+            "-summary",
+            "-schema-location",
+            "default",
+            "-schema-location",
+            "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/"
+            "{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
+        ],
+        input=rendered.stdout,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

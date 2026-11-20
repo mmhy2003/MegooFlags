@@ -144,7 +144,8 @@ metadata:
   name: {{ $fullname }}-worker-headless
   labels:
     {{- include "megooflags.labels" . | nindent 4 }}
-    app.kubernetes.io/component: worker
+    # Not "worker": the ServiceMonitor selects the worker Service, and would scrape twice.
+    app.kubernetes.io/component: worker-headless
 spec:
   clusterIP: None
   publishNotReadyAddresses: true
