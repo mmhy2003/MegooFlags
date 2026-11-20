@@ -162,6 +162,13 @@ MEGOOFLAGS_SECRET_KEY=local-dummy-secret-key-0123456789abcdef docker compose \
 export MEGOOFLAGS_KEYCLOAK_URL=http://localhost:8180
 ```
 
+With megoocolab-runner, each worktree gets its own containers (the sets are in `megoocolab.toml`):
+
+```bash
+megoocolab-runner services run api -- bash -c 'cd api && uv run pytest'
+megoocolab-runner services run db -- bash scripts/check_migrations.sh
+```
+
 Then, from the repository root:
 
 ```bash
