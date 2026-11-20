@@ -268,3 +268,228 @@ def test_external_urls_used(tmp_path: Path) -> None:
 def test_worker_secret_has_one_token_per_replica(tmp_path: Path) -> None:
     values = {**WORKER, "worker": {**WORKER["worker"], "nodeTokens": ["mf_node_a", "mf_node_b"]}}
     assert _secret(render(tmp_path, values)) == {"token-0": "mf_node_a", "token-1": "mf_node_b"}
+
+
+CONTROL_PLANE_WORKLOADS = {
+    ("ConfigMap", "mf-megooflags-config"),
+    ("Secret", "mf-megooflags"),
+    ("Deployment", "mf-megooflags-api"),
+    ("Deployment", "mf-megooflags-web"),
+    ("Service", "mf-megooflags-api"),
+    ("Service", "mf-megooflags-web"),
+    ("Job", "mf-megooflags-migrate-1"),
+}
+
+
+def _app_version() -> str:
+    match = re.search(r'^appVersion:\s*"?([^"\s]+)"?\s*$', (CHART / "Chart.yaml").read_text(), re.M)
+    assert match
+    return match.group(1)
+
+
+def _pod(docs: list[dict[str, Any]], kind: str, name: str) -> dict[str, Any]:
+    pod: dict[str, Any] = find(docs, kind, name)["spec"]["template"]
+    return pod
+
+
+def _container(pod: dict[str, Any], name: str, init: bool = False) -> dict[str, Any]:
+    for container in pod["spec"]["initContainers" if init else "containers"]:
+        if container["name"] == name:
+            found: dict[str, Any] = container
+            return found
+    raise AssertionError(f"no container {name}")
+
+
+def _command(container: dict[str, Any]) -> str:
+    return " ".join(container["command"])
+
+
+# The bundled stores come next: these become exact matches then.
+def test_standalone_resources(tmp_path: Path) -> None:
+    assert CONTROL_PLANE_WORKLOADS <= by_kind(render(tmp_path, {"secretKey": SECRET}))
+
+
+def test_control_plane_resources(tmp_path: Path) -> None:
+    docs = render(tmp_path, _role_values("control-plane"))
+    assert CONTROL_PLANE_WORKLOADS <= by_kind(docs)
+
+
+def test_image_tag_defaults_to_app_version(tmp_path: Path) -> None:
+    docs = render(tmp_path, {"secretKey": SECRET})
+    version = _app_version()
+    api = _pod(docs, "Deployment", "mf-megooflags-api")
+    web = _pod(docs, "Deployment", "mf-megooflags-web")
+    job = _pod(docs, "Job", "mf-megooflags-migrate-1")
+    assert _container(api, "api")["image"] == f"ghcr.io/mmhy2003/megooflags-api:{version}"
+    assert _container(api, "wait-for-migrations", init=True)["image"] == (
+        f"ghcr.io/mmhy2003/megooflags-api:{version}"
+    )
+    assert _container(job, "migrate")["image"] == f"ghcr.io/mmhy2003/megooflags-api:{version}"
+    assert _container(web, "web")["image"] == f"ghcr.io/mmhy2003/megooflags-web:{version}"
+
+
+def test_image_registry_empty(tmp_path: Path) -> None:
+    values = {"secretKey": SECRET, "image": {"registry": "", "tag": "ci", "pullPolicy": "Never"}}
+    docs = render(tmp_path, values)
+    api = _container(_pod(docs, "Deployment", "mf-megooflags-api"), "api")
+    web = _container(_pod(docs, "Deployment", "mf-megooflags-web"), "web")
+    assert api["image"] == "megooflags-api:ci"
+    assert web["image"] == "megooflags-web:ci"
+    assert api["imagePullPolicy"] == web["imagePullPolicy"] == "Never"
+
+
+def test_image_pull_secrets(tmp_path: Path) -> None:
+    docs = render(tmp_path, {"secretKey": SECRET, "imagePullSecrets": [{"name": "ghcr"}]})
+    for kind, name in [
+        ("Deployment", "mf-megooflags-api"),
+        ("Deployment", "mf-megooflags-web"),
+        ("Job", "mf-megooflags-migrate-1"),
+    ]:
+        assert _pod(docs, kind, name)["spec"]["imagePullSecrets"] == [{"name": "ghcr"}]
+
+
+def test_api_waits_for_migrations(tmp_path: Path) -> None:
+    api = _pod(render(tmp_path, {"secretKey": SECRET}), "Deployment", "mf-megooflags-api")
+    init = _container(api, "wait-for-migrations", init=True)
+    assert "alembic current" in _command(init)
+    assert "(head)" in _command(init)
+    assert init["envFrom"] == [
+        {"configMapRef": {"name": "mf-megooflags-config"}},
+        {"secretRef": {"name": "mf-megooflags"}},
+    ]
+    assert _container(api, "api")["envFrom"] == init["envFrom"]
+
+
+def test_migrate_job(tmp_path: Path) -> None:
+    values = {"secretKey": SECRET, "migrate": {"annotations": {"argocd.argoproj.io/hook": "Sync"}}}
+    job = find(render(tmp_path, values), "Job", "mf-megooflags-migrate-1")
+    assert job["metadata"]["annotations"]["argocd.argoproj.io/hook"] == "Sync"
+    assert job["spec"]["backoffLimit"] == 0
+    pod = job["spec"]["template"]
+    assert pod["spec"]["restartPolicy"] == "Never"
+    migrate = _container(pod, "migrate")
+    assert "alembic upgrade head" in _command(migrate)
+    assert migrate["envFrom"][1] == {"secretRef": {"name": "mf-megooflags"}}
+
+
+def _checksums(tmp_path: Path, values: dict[str, Any]) -> dict[str, str]:
+    api = _pod(render(tmp_path, values), "Deployment", "mf-megooflags-api")
+    annotations: dict[str, str] = api["metadata"]["annotations"]
+    return annotations
+
+
+def test_checksum_annotations_change(tmp_path: Path) -> None:
+    before = _checksums(tmp_path, {"secretKey": SECRET})
+    after = _checksums(tmp_path, {"secretKey": SECRET, "config": {"MEGOOFLAGS_LOG_LEVEL": "DEBUG"}})
+    assert before["checksum/config"] != after["checksum/config"]
+    assert before["checksum/secret"] == after["checksum/secret"]
+    rotated = _checksums(tmp_path, {"secretKey": "t" * 32})
+    assert rotated["checksum/secret"] != before["checksum/secret"]
+    assert "checksum/secret" not in _checksums(tmp_path, {"existingSecret": "mine"})
+
+
+def test_pod_annotations_merged(tmp_path: Path) -> None:
+    values = {
+        "secretKey": SECRET,
+        "api": {"podAnnotations": {"example.com/a": "1"}},
+        "web": {"podAnnotations": {"example.com/w": "2"}},
+    }
+    docs = render(tmp_path, values)
+    api = _pod(docs, "Deployment", "mf-megooflags-api")["metadata"]["annotations"]
+    web = _pod(docs, "Deployment", "mf-megooflags-web")["metadata"]["annotations"]
+    assert api["example.com/a"] == "1"
+    assert "checksum/config" in api
+    assert web["example.com/w"] == "2"
+
+
+def test_web_points_at_api_service(tmp_path: Path) -> None:
+    web = _pod(render(tmp_path, {"secretKey": SECRET}), "Deployment", "mf-megooflags-web")
+    env = {item["name"]: item.get("value") for item in _container(web, "web")["env"]}
+    assert env["MEGOOFLAGS_API_URL"] == "http://mf-megooflags-api:8000"
+
+
+def test_services_and_probes(tmp_path: Path) -> None:
+    docs = render(tmp_path, {"secretKey": SECRET})
+    for component, port in [("api", 8000), ("web", 3000)]:
+        service = find(docs, "Service", f"mf-megooflags-{component}")
+        assert service["spec"]["ports"] == [
+            {"name": "http", "port": port, "targetPort": "http", "protocol": "TCP"}
+        ]
+        assert service["spec"]["selector"]["app.kubernetes.io/component"] == component
+        deployment = find(docs, "Deployment", f"mf-megooflags-{component}")
+        assert deployment["spec"]["strategy"] == {
+            "type": "RollingUpdate",
+            "rollingUpdate": {"maxUnavailable": 0, "maxSurge": 1},
+        }
+    api = _container(_pod(docs, "Deployment", "mf-megooflags-api"), "api")
+    assert api["livenessProbe"]["httpGet"] == {"path": "/healthz", "port": "http"}
+    assert api["livenessProbe"]["periodSeconds"] == 10
+    assert api["livenessProbe"]["failureThreshold"] == 3
+    assert api["readinessProbe"]["httpGet"] == {"path": "/readyz", "port": "http"}
+    assert api["readinessProbe"]["periodSeconds"] == 5
+    web = _container(_pod(docs, "Deployment", "mf-megooflags-web"), "web")
+    assert web["livenessProbe"]["tcpSocket"] == {"port": "http"}
+    assert web["readinessProbe"]["tcpSocket"] == {"port": "http"}
+
+
+def test_pods_non_root(tmp_path: Path) -> None:
+    docs = render(tmp_path, {"secretKey": SECRET})
+    for kind, name in [
+        ("Deployment", "mf-megooflags-api"),
+        ("Deployment", "mf-megooflags-web"),
+        ("Job", "mf-megooflags-migrate-1"),
+    ]:
+        spec = _pod(docs, kind, name)["spec"]
+        assert spec["automountServiceAccountToken"] is False
+        assert spec["securityContext"] == {
+            "runAsNonRoot": True,
+            "runAsUser": 10001,
+            "runAsGroup": 10001,
+            "fsGroup": 10001,
+        }
+        for container in spec["containers"] + spec.get("initContainers", []):
+            assert container["securityContext"] == {
+                "allowPrivilegeEscalation": False,
+                "capabilities": {"drop": ["ALL"]},
+            }, (name, container["name"])
+
+
+def test_pod_scheduling_and_extra_env(tmp_path: Path) -> None:
+    affinity = {"nodeAffinity": {"preferredDuringSchedulingIgnoredDuringExecution": []}}
+    toleration = {"key": "dedicated", "operator": "Exists", "effect": "NoSchedule"}
+    values = {
+        "secretKey": SECRET,
+        "api": {
+            "extraEnv": [{"name": "EXTRA", "value": "1"}],
+            "nodeSelector": {"pool": "flags"},
+            "tolerations": [toleration],
+            "affinity": affinity,
+            "resources": {"limits": {"memory": "512Mi"}},
+        },
+        "web": {"extraEnv": [{"name": "WEB_EXTRA", "value": "2"}]},
+        "migrate": {"resources": {"limits": {"memory": "256Mi"}}},
+    }
+    docs = render(tmp_path, values)
+    api = _pod(docs, "Deployment", "mf-megooflags-api")["spec"]
+    assert api["nodeSelector"] == {"pool": "flags"}
+    assert api["tolerations"] == [toleration]
+    assert api["affinity"] == affinity
+    container = _container({"spec": api}, "api")
+    assert {"name": "EXTRA", "value": "1"} in container["env"]
+    assert container["resources"] == {"limits": {"memory": "512Mi"}}
+    web = _pod(docs, "Deployment", "mf-megooflags-web")["spec"]
+    assert "nodeSelector" not in web
+    assert {"name": "WEB_EXTRA", "value": "2"} in _container({"spec": web}, "web")["env"]
+    job = _pod(docs, "Job", "mf-megooflags-migrate-1")
+    assert _container(job, "migrate")["resources"] == {"limits": {"memory": "256Mi"}}
+
+
+def test_api_replicas(tmp_path: Path) -> None:
+    docs = render(tmp_path, {"secretKey": SECRET, "api": {"replicas": 3}})
+    assert find(docs, "Deployment", "mf-megooflags-api")["spec"]["replicas"] == 3
+    assert find(docs, "Deployment", "mf-megooflags-web")["spec"]["replicas"] == 1
+
+
+def test_worker_has_no_control_plane_workloads(tmp_path: Path) -> None:
+    kinds = {kind for kind, _ in by_kind(render(tmp_path, WORKER))}
+    assert not kinds & {"Deployment", "Job"}
