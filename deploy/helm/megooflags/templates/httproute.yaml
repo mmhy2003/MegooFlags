@@ -1,0 +1,57 @@
+{{- if .Values.httpRoute.enabled }}
+{{- $fullname := include "megooflags.fullname" . }}
+{{- $route := .Values.httpRoute }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "megooflags.labels" . | nindent 4 }}
+spec:
+  {{- with $route.parentRefs }}
+  parentRefs:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $route.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - matches:
+        {{- range include "megooflags.apiPaths" . | fromYamlArray }}
+        - path:
+            type: {{ eq .type "Prefix" | ternary "PathPrefix" .type }}
+            value: {{ .path }}
+        {{- end }}
+      {{- if $route.apiResponseHeaders }}
+      # The headers deploy/Caddyfile adds to API responses (web pages set their own).
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: X-Content-Type-Options
+                value: nosniff
+              - name: Referrer-Policy
+                value: strict-origin-when-cross-origin
+              - name: X-Frame-Options
+                value: DENY
+      {{- end }}
+      {{- with $route.timeouts.request }}
+      # "0s": no timeout, so SDK and worker streams stay open.
+      timeouts:
+        request: {{ . | quote }}
+      {{- end }}
+      backendRefs:
+        - name: {{ include "megooflags.apiService" . }}
+          port: 8000
+    {{- if ne .Values.role "worker" }}
+    # Everything else is the web UI. /metrics is never routed.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ $fullname }}-web
+          port: 3000
+    {{- end }}
+{{- end }}

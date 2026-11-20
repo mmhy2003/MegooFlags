@@ -144,3 +144,24 @@ affinity:
   {{- toYaml . | nindent 2 }}
 {{- end }}
 {{- end -}}
+
+{{/*
+The paths routed to the API, as deploy/Caddyfile and deploy/Caddyfile.worker route them
+("/x/*" is a prefix). Workers serve no /api. A YAML list of {type, path}.
+*/}}
+{{- define "megooflags.apiPaths" -}}
+{{- if ne .Values.role "worker" }}
+- {type: Prefix, path: /api}
+{{- end }}
+- {type: Prefix, path: /sdk}
+- {type: Prefix, path: /ofrep}
+- {type: Exact, path: /healthz}
+- {type: Exact, path: /readyz}
+{{- end -}}
+
+{{/*
+The Service that serves the API paths: the api, or the worker on worker releases.
+*/}}
+{{- define "megooflags.apiService" -}}
+{{- include "megooflags.fullname" . }}-{{ eq .Values.role "worker" | ternary "worker" "api" }}
+{{- end -}}

@@ -789,3 +789,152 @@ def test_worker_pod_settings(tmp_path: Path) -> None:
     worker = _container(pod, "worker")
     assert worker["env"] == [{"name": "EXTRA", "value": "1"}]
     assert worker["resources"] == {"limits": {"memory": "256Mi"}}
+
+
+ROUTED = [
+    pytest.param("standalone", "Caddyfile", "mf-megooflags-api", id="standalone"),
+    pytest.param("control-plane", "Caddyfile", "mf-megooflags-api", id="control-plane"),
+    pytest.param("worker", "Caddyfile.worker", "mf-megooflags-worker", id="worker"),
+]
+API_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Frame-Options": "DENY",
+}
+
+
+def _routed(role: str, **routing: Any) -> dict[str, Any]:
+    return {**_role_values(role), **routing}
+
+
+def _route_rules(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rules: list[dict[str, Any]] = find(docs, "HTTPRoute", "mf-megooflags")["spec"]["rules"]
+    return rules
+
+
+def _api_rule(rules: list[dict[str, Any]]) -> dict[str, Any]:
+    (rule,) = [r for r in rules if r["backendRefs"][0]["port"] == 8000]
+    return rule
+
+
+@pytest.mark.parametrize(("role", "caddyfile", "service"), ROUTED)
+def test_ingress_paths_match_caddyfile(
+    tmp_path: Path, role: str, caddyfile: str, service: str
+) -> None:
+    docs = render(tmp_path, _routed(role, ingress={"enabled": True}))
+    ingress = find(docs, "Ingress", "mf-megooflags")
+    assert ingress["apiVersion"] == "networking.k8s.io/v1"
+    (rule,) = ingress["spec"]["rules"]
+    assert "host" not in rule
+    api: set[tuple[str, str]] = set()
+    other: set[tuple[str, str, str, int]] = set()
+    for path in rule["http"]["paths"]:
+        backend = path["backend"]["service"]
+        key = (path["pathType"], path["path"])
+        if backend["name"] == service:
+            assert backend["port"] == {"number": 8000}
+            api.add(key)
+        else:
+            other.add((*key, backend["name"], backend["port"]["number"]))
+    assert api == caddy_paths(caddyfile)
+    if role == "worker":
+        assert other == set()
+    else:
+        assert other == {("Prefix", "/", "mf-megooflags-web", 3000)}
+    assert "/metrics" not in {p["path"] for p in rule["http"]["paths"]}
+
+
+@pytest.mark.parametrize(("role", "caddyfile", "service"), ROUTED)
+def test_httproute_paths_match_caddyfile(
+    tmp_path: Path, role: str, caddyfile: str, service: str
+) -> None:
+    parent = {"name": "gw", "namespace": "infra"}
+    values = _routed(role, httpRoute={"enabled": True, "parentRefs": [parent]})
+    route = find(render(tmp_path, values), "HTTPRoute", "mf-megooflags")
+    assert route["apiVersion"] == "gateway.networking.k8s.io/v1"
+    assert route["spec"]["parentRefs"] == [parent]
+    assert "hostnames" not in route["spec"]
+    api: set[tuple[str, str]] = set()
+    other: set[tuple[str, str, str, int]] = set()
+    for rule in route["spec"]["rules"]:
+        (backend,) = rule["backendRefs"]
+        for match in rule["matches"]:
+            kind = "Prefix" if match["path"]["type"] == "PathPrefix" else match["path"]["type"]
+            key = (kind, match["path"]["value"])
+            if backend["name"] == service:
+                assert backend["port"] == 8000
+                api.add(key)
+            else:
+                other.add((*key, backend["name"], backend["port"]))
+    assert api == caddy_paths(caddyfile)
+    if role == "worker":
+        assert other == set()
+    else:
+        assert other == {("Prefix", "/", "mf-megooflags-web", 3000)}
+
+
+@pytest.mark.parametrize("role", ["control-plane", "worker"])
+def test_httproute_api_headers_and_timeout(tmp_path: Path, role: str) -> None:
+    rules = _route_rules(render(tmp_path, _routed(role, httpRoute={"enabled": True})))
+    api = _api_rule(rules)
+    (modifier,) = api["filters"]
+    assert modifier["type"] == "ResponseHeaderModifier"
+    headers = modifier["responseHeaderModifier"]["set"]
+    assert {h["name"]: h["value"] for h in headers} == API_HEADERS
+    assert api["timeouts"] == {"request": "0s"}
+    for rule in rules:
+        if rule is not api:
+            assert "filters" not in rule
+            assert "timeouts" not in rule
+
+
+def test_httproute_switches_off(tmp_path: Path) -> None:
+    route = {"enabled": True, "apiResponseHeaders": False, "timeouts": {"request": ""}}
+    rules = _route_rules(render(tmp_path, _routed("control-plane", httpRoute=route)))
+    for rule in rules:
+        assert "filters" not in rule
+        assert "timeouts" not in rule
+    route = {"enabled": True, "timeouts": {"request": "1h"}}
+    rules = _route_rules(render(tmp_path, _routed("control-plane", httpRoute=route)))
+    assert _api_rule(rules)["timeouts"] == {"request": "1h"}
+
+
+def test_httproute_hostnames(tmp_path: Path) -> None:
+    route = {"enabled": True, "hostnames": ["flags.example.com"]}
+    doc = find(
+        render(tmp_path, _routed("control-plane", httpRoute=route)), "HTTPRoute", "mf-megooflags"
+    )
+    assert doc["spec"]["hostnames"] == ["flags.example.com"]
+
+
+def test_ingress_passthrough(tmp_path: Path) -> None:
+    tls = [{"hosts": ["flags.example.com"], "secretName": "flags-tls"}]
+    annotations = {"traefik.ingress.kubernetes.io/router.entrypoints": "web"}
+    ingress_values = {
+        "enabled": True,
+        "className": "traefik",
+        "annotations": annotations,
+        "host": "flags.example.com",
+        "tls": tls,
+    }
+    docs = render(tmp_path, _routed("control-plane", ingress=ingress_values))
+    ingress = find(docs, "Ingress", "mf-megooflags")
+    assert ingress["metadata"]["annotations"] == annotations
+    assert ingress["spec"]["ingressClassName"] == "traefik"
+    assert ingress["spec"]["tls"] == tls
+    (rule,) = ingress["spec"]["rules"]
+    assert rule["host"] == "flags.example.com"
+    plain = find(
+        render(tmp_path, _routed("control-plane", ingress={"enabled": True})),
+        "Ingress",
+        "mf-megooflags",
+    )
+    assert "ingressClassName" not in plain["spec"]
+    assert "tls" not in plain["spec"]
+    assert "annotations" not in plain["metadata"]
+
+
+@pytest.mark.parametrize("role", ["standalone", "control-plane", "worker"])
+def test_routing_off_by_default(tmp_path: Path, role: str) -> None:
+    kinds = {kind for kind, _ in by_kind(render(tmp_path, _role_values(role)))}
+    assert not kinds & {"Ingress", "HTTPRoute"}
