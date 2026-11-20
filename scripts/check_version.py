@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Check that VERSION, api/pyproject.toml and web/package.json agree, and optionally a tag."""
+"""Check that VERSION, api/pyproject.toml, web/package.json and the Helm chart's Chart.yaml
+(version and appVersion) agree, and optionally a tag."""
 
 import argparse
 import json
@@ -11,6 +12,11 @@ from pathlib import Path
 
 TAG_RE = re.compile(r"^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-rc\.([1-9]\d*))?$")
 VERSION_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+
+# Chart.yaml is read with a regex: release.yml runs this script under the system python3,
+# which has no yaml module.
+CHART_RE = re.compile(r'^(version|appVersion):\s*["\']?([^"\'\s]+)["\']?\s*$', re.M)
+CHART_PATH = "deploy/helm/megooflags/Chart.yaml"
 
 MISSING = "<missing>"
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent
@@ -61,6 +67,13 @@ def read_versions(root: Path) -> dict[str, str]:
         versions["web/package.json"] = str(data.get("version", MISSING))
     else:
         versions["web/package.json"] = MISSING
+
+    chart = root / CHART_PATH
+    chart_fields = (
+        dict(CHART_RE.findall(chart.read_text(encoding="utf-8"))) if chart.is_file() else {}
+    )
+    for field in ("version", "appVersion"):
+        versions[f"{CHART_PATH} ({field})"] = chart_fields.get(field, MISSING)
 
     return versions
 

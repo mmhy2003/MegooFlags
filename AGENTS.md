@@ -71,7 +71,8 @@ Change all of these **in one commit**:
 1. `VERSION`
 2. `api/pyproject.toml` (`version`)
 3. `web/package.json` (`version`)
-4. `CHANGELOG.md`: move the `[Unreleased]` items into a new `## [X.Y.Z] - YYYY-MM-DD` section and leave an empty `[Unreleased]` above it.
+4. `deploy/helm/megooflags/Chart.yaml` (`version` and `appVersion`)
+5. `CHANGELOG.md`: move the `[Unreleased]` items into a new `## [X.Y.Z] - YYYY-MM-DD` section and leave an empty `[Unreleased]` above it.
 
 Then regenerate the files that embed the version, and include them in the same commit:
 

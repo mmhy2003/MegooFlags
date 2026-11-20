@@ -8,6 +8,8 @@ def test_matching_versions_pass(make_repo):
         "VERSION": "0.1.0",
         "api/pyproject.toml": "0.1.0",
         "web/package.json": "0.1.0",
+        "deploy/helm/megooflags/Chart.yaml (version)": "0.1.0",
+        "deploy/helm/megooflags/Chart.yaml (appVersion)": "0.1.0",
     }
     assert check(root) == []
 
@@ -35,8 +37,43 @@ def test_missing_package_json_fails(make_repo):
     assert check(root) == ["web/package.json has <missing>, VERSION has 0.1.0"]
 
 
+def test_chart_version_mismatch_fails(make_repo):
+    root = make_repo(chart="0.2.0")
+    assert check(root) == [
+        "deploy/helm/megooflags/Chart.yaml (version) has 0.2.0, VERSION has 0.1.0"
+    ]
+
+
+def test_chart_app_version_mismatch_fails(make_repo):
+    root = make_repo(app="0.2.0")
+    assert check(root) == [
+        "deploy/helm/megooflags/Chart.yaml (appVersion) has 0.2.0, VERSION has 0.1.0"
+    ]
+
+
+def test_missing_chart_fails(make_repo):
+    root = make_repo()
+    (root / "deploy" / "helm" / "megooflags" / "Chart.yaml").unlink()
+    versions = read_versions(root)
+    assert versions["deploy/helm/megooflags/Chart.yaml (version)"] == "<missing>"
+    assert versions["deploy/helm/megooflags/Chart.yaml (appVersion)"] == "<missing>"
+    assert check(root) == [
+        "deploy/helm/megooflags/Chart.yaml (version) has <missing>, VERSION has 0.1.0",
+        "deploy/helm/megooflags/Chart.yaml (appVersion) has <missing>, VERSION has 0.1.0",
+    ]
+
+
+def test_chart_app_version_unquoted(make_repo):
+    root = make_repo()
+    (root / "deploy" / "helm" / "megooflags" / "Chart.yaml").write_text(
+        "apiVersion: v2\nname: megooflags\nversion: 0.1.0\nappVersion: 0.1.0\n",
+        encoding="utf-8",
+    )
+    assert check(root) == []
+
+
 def test_invalid_version_file_fails(make_repo):
-    root = make_repo(version="0.1", api="0.1", web="0.1")
+    root = make_repo(version="0.1", api="0.1", web="0.1", chart="0.1", app="0.1")
     errors = check(root)
     assert len(errors) == 1
     assert "VERSION" in errors[0]

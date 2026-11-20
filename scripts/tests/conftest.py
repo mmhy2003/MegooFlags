@@ -12,7 +12,13 @@ MakeRepo = Callable[..., Path]
 
 @pytest.fixture
 def make_repo(tmp_path: Path) -> MakeRepo:
-    def factory(version: str = "0.1.0", api: str = "0.1.0", web: str = "0.1.0") -> Path:
+    def factory(
+        version: str = "0.1.0",
+        api: str = "0.1.0",
+        web: str = "0.1.0",
+        chart: str = "0.1.0",
+        app: str = "0.1.0",
+    ) -> Path:
         (tmp_path / "VERSION").write_text(f"{version}\n", encoding="utf-8")
         (tmp_path / "api").mkdir(exist_ok=True)
         (tmp_path / "api" / "pyproject.toml").write_text(
@@ -21,6 +27,12 @@ def make_repo(tmp_path: Path) -> MakeRepo:
         (tmp_path / "web").mkdir(exist_ok=True)
         (tmp_path / "web" / "package.json").write_text(
             json.dumps({"name": "x", "version": web}), encoding="utf-8"
+        )
+        chart_dir = tmp_path / "deploy" / "helm" / "megooflags"
+        chart_dir.mkdir(parents=True, exist_ok=True)
+        (chart_dir / "Chart.yaml").write_text(
+            f'apiVersion: v2\nname: megooflags\nversion: {chart}\nappVersion: "{app}"\n',
+            encoding="utf-8",
         )
         return tmp_path
 
