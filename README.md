@@ -42,6 +42,19 @@ snapshots kept on disk. See [Multi-node deployment](https://mmhy2003.github.io/M
 [Migrating from a single node](https://mmhy2003.github.io/MegooFlags/deploy/multi-node-migration/) to move a single node over without
 downtime.
 
+## Kubernetes
+
+The Helm chart runs a single node, a control plane or workers on Kubernetes, routed by an Ingress or a
+Gateway API HTTPRoute:
+
+```bash
+helm install megooflags oci://ghcr.io/mmhy2003/charts/megooflags --version <v> \
+  --namespace megooflags --create-namespace \
+  --set secretKey=$(openssl rand -hex 32)
+```
+
+See [Kubernetes (Helm)](https://mmhy2003.github.io/MegooFlags/deploy/kubernetes/).
+
 ## Development
 
 Prerequisites:
@@ -99,7 +112,7 @@ api/       FastAPI server, Alembic migrations, openapi.json
 web/       Next.js UI and the typed API client
 cli/       megooflags CLI and Go API client
 terraform/ Terraform provider
-deploy/    single-node, control-plane and worker compose files, Caddyfiles and .env examples
+deploy/    single-node, control-plane and worker compose files, Caddyfiles, .env examples and the Helm chart
 scripts/   version, release, migration and smoke-test scripts
 sdks/      SDKs, one directory per language (reserved)
 spec/      shared evaluation spec and SDK conformance suite (reserved)
