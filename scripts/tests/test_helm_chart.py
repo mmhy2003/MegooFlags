@@ -835,7 +835,9 @@ def test_ingress_paths_match_caddyfile(
             api.add(key)
         else:
             other.add((*key, backend["name"], backend["port"]["number"]))
-    assert api == caddy_paths(caddyfile)
+    # Every api path is Prefix in the Ingress: Traefik ranks Ingress routers by rule length, so an
+    # Exact /readyz (Path(`/readyz`)) ties with the catch-all (PathPrefix(`/`)) and can go to web.
+    assert api == {("Prefix", path) for _, path in caddy_paths(caddyfile)}
     if role == "worker":
         assert other == set()
     else:

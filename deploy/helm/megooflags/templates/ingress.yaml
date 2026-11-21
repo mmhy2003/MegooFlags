@@ -27,9 +27,11 @@ spec:
     - http:
     {{- end }}
         paths:
+          {{- /* Prefix even for /healthz and /readyz: Traefik ranks Ingress routers by rule
+          length, and Path(`/readyz`) ties with the catch-all PathPrefix(`/`). */}}
           {{- range include "megooflags.apiPaths" . | fromYamlArray }}
           - path: {{ .path }}
-            pathType: {{ .type }}
+            pathType: Prefix
             backend:
               service:
                 name: {{ include "megooflags.apiService" $ }}
