@@ -126,6 +126,12 @@
     "description": "Supported versions and how to report a vulnerability privately."
   },
   {
+    "source": "deploy/helm/megooflags/README.md",
+    "dest": "deploy/kubernetes.md",
+    "title": "Kubernetes (Helm)",
+    "description": "Install MegooFlags on Kubernetes with the Helm chart: single node, control plane and workers."
+  },
+  {
     "source": "perf/REPORT.md",
     "dest": "deploy/performance.md",
     "title": "Performance and sizing",

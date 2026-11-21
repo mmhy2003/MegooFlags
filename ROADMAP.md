@@ -22,7 +22,7 @@ plan of the product requirements; the dates depend on the GA checklist, not on a
   and LaunchDarkly.
 - Deployment: the single-node Docker Compose bundle with automatic HTTPS or plain HTTP, and multi-node
   deployments (one control plane and any number of workers) from the same images, replacing a separate
-  relay.
+  relay, and a Helm chart for Kubernetes.
 - Update notices in the UI.
 
 ## Phase 2 (`1.Y.Z` releases)
@@ -31,7 +31,6 @@ plan of the product requirements; the dates depend on the GA checklist, not on a
 - Guarded rollouts that roll back when a linked metric or error rate crosses a threshold.
 - Code references: find where each flag is used, to help clean up old flags.
 - Observability integrations (Datadog, Grafana, Sentry and analytics tools).
-- A Helm chart.
 - Control-plane redundancy: a standby control plane with database replication and failover.
 
 ## Not planned

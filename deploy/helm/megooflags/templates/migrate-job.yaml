@@ -1,0 +1,50 @@
+{{- if ne .Values.role "worker" }}
+# One Job per Helm revision: each install or upgrade migrates once, before the new
+# api pods leave their init container.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "megooflags.fullname" . }}-migrate-{{ .Release.Revision }}
+  labels:
+    {{- include "megooflags.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  {{- with .Values.migrate.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "megooflags.selectorLabels" (dict "ctx" $ "component" "migrate") | nindent 8 }}
+      annotations:
+        {{- include "megooflags.podAnnotations" (dict "ctx" $) | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "megooflags.podSecurity" . | nindent 6 }}
+      containers:
+        - name: migrate
+          image: {{ include "megooflags.image" (dict "ctx" $ "name" "megooflags-api") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              i=0
+              until alembic current >/dev/null 2>&1; do
+                i=$((i + 1))
+                if [ "$i" -ge 150 ]; then
+                  echo "the database did not accept connections within 5 minutes" >&2
+                  exit 1
+                fi
+                sleep 2
+              done
+              exec alembic upgrade head
+          {{- include "megooflags.envFrom" . | nindent 10 }}
+          {{- with .Values.migrate.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- include "megooflags.containerSecurity" . | nindent 10 }}
+{{- end }}

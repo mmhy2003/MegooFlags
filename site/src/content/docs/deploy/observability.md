@@ -36,6 +36,9 @@ scrape_configs:
 
 On a worker node the network is `megooflags-worker_default`, and the target is `api:8000`.
 
+On Kubernetes with the Prometheus Operator, set `metrics.serviceMonitor.enabled=true` in the Helm
+chart: see [Kubernetes (Helm)](/MegooFlags/deploy/kubernetes/#metrics).
+
 ### HTTP
 
 | Metric                                     | Type      | Labels                      | Meaning                                       |

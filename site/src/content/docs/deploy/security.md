@@ -45,3 +45,6 @@ root; `api/…` files are under `api/src/megooflags_api/`.
   `overlap_seconds` (default 86400, at most 30 days). Deploy the new secret within that window; afterwards the old one is refused
   and open streams that use it are closed. Use `overlap_seconds=0` to revoke at once, for example
   after a leak.
+- **Kubernetes.** The Helm chart has no Caddy, so the API's `X-Content-Type-Options`,
+  `Referrer-Policy` and `X-Frame-Options` headers come from the HTTPRoute filter or the ingress
+  controller: see [Kubernetes (Helm)](/MegooFlags/deploy/kubernetes/#routing).

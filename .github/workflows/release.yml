@@ -174,8 +174,37 @@ jobs:
       - name: Inspect
         run: docker buildx imagetools inspect "${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ needs.meta.outputs.image_version }}"
 
-  release:
+  # The Helm chart, versioned like the images: oci://ghcr.io/mmhy2003/charts/megooflags.
+  chart:
     needs: [meta, merge]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.meta.outputs.image_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Package
+        run: helm package deploy/helm/megooflags --version "$VERSION" --app-version "$VERSION" --destination dist
+      - name: Push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          helm push "dist/megooflags-$VERSION.tgz" oci://ghcr.io/mmhy2003/charts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chart
+          path: dist/megooflags-*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: [meta, merge, chart]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -184,6 +213,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: release-notes
+      - uses: actions/download-artifact@v4
+        with:
+          name: chart
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -198,7 +230,8 @@ jobs:
             "${flags[@]}" \
             deploy/docker-compose.yml deploy/Caddyfile deploy/.env.example \
             deploy/docker-compose.control-plane.yml \
-            deploy/docker-compose.worker.yml deploy/Caddyfile.worker deploy/.env.worker.example
+            deploy/docker-compose.worker.yml deploy/Caddyfile.worker deploy/.env.worker.example \
+            "megooflags-${{ needs.meta.outputs.image_version }}.tgz"
 
   sdk-go-release:
     if: startsWith(github.ref_name, 'sdks/go/v')

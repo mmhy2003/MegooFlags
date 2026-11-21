@@ -1,0 +1,51 @@
+{{- if .Values.ingress.enabled }}
+{{- $fullname := include "megooflags.fullname" . }}
+{{- $ingress := .Values.ingress }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "megooflags.labels" . | nindent 4 }}
+  {{- with $ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with $ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- if $ingress.host }}
+    - host: {{ $ingress.host | quote }}
+      http:
+    {{- else }}
+    - http:
+    {{- end }}
+        paths:
+          {{- /* Prefix even for /healthz and /readyz: Traefik ranks Ingress routers by rule
+          length, and Path(`/readyz`) ties with the catch-all PathPrefix(`/`). */}}
+          {{- range include "megooflags.apiPaths" . | fromYamlArray }}
+          - path: {{ .path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "megooflags.apiService" $ }}
+                port:
+                  number: 8000
+          {{- end }}
+          {{- if ne .Values.role "worker" }}
+          # Everything else is the web UI. /metrics is never routed.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}-web
+                port:
+                  number: 3000
+          {{- end }}
+{{- end }}

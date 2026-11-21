@@ -1,0 +1,115 @@
+# standalone (one node), control-plane, or worker. One role per release.
+role: standalone
+
+image:
+  registry: ghcr.io/mmhy2003
+  tag: ""            # default: the chart's appVersion
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# MEGOOFLAGS_SECRET_KEY, 32+ characters. Required unless role is worker or existingSecret is set.
+secretKey: ""
+# A Secret with the same keys as the chart's own (see README).
+existingSecret: ""
+
+# Environment for the api or worker pods, with the defaults of the Compose files.
+config:
+  MEGOOFLAGS_PUBLIC_URL: ""
+  MEGOOFLAGS_LOG_LEVEL: INFO
+  FORWARDED_ALLOW_IPS: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1"
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  OTEL_SERVICE_NAME: ""          # default: megooflags-api, or megooflags-worker
+  OTEL_TRACES_SAMPLER_ARG: "1.0"
+  MEGOOFLAGS_PERSIST_CONTEXT: "false"
+  MEGOOFLAGS_EXPOSURE_RETENTION_DAYS: "30"
+  MEGOOFLAGS_CLIENT_RATE_LIMIT_PER_MINUTE: "600"
+  MEGOOFLAGS_SSE_HEARTBEAT_SECONDS: "15"
+  MEGOOFLAGS_STREAM_RECHECK_SECONDS: "30"
+  # Not 0 (one per CPU): that counts the node's CPUs, not the pod's limit.
+  MEGOOFLAGS_API_WORKERS: "2"
+  MEGOOFLAGS_WEBHOOK_ALLOW_PRIVATE: "false"
+  MEGOOFLAGS_WEBHOOK_TIMEOUT_SECONDS: "10"
+  MEGOOFLAGS_WEBHOOK_RETENTION_DAYS: "7"
+  MEGOOFLAGS_UPDATE_CHECK: "true"
+  MEGOOFLAGS_WORKER_BUFFER_MAX_MB: "64"
+  MEGOOFLAGS_WORKER_DRAIN_GRACE_SECONDS: "30"
+
+api:
+  replicas: 1
+  resources: {}
+  extraEnv: []
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+web:
+  replicas: 1
+  resources: {}
+  extraEnv: []
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+migrate:
+  annotations: {}    # e.g. Argo CD: argocd.argoproj.io/hook: Sync
+  resources: {}
+
+postgresql:
+  enabled: true
+  image: postgres:16
+  password: megooflags
+  persistence:
+    size: 8Gi
+    storageClass: ""
+  resources: {}
+externalDatabase:
+  url: ""            # postgresql+asyncpg://user:password@host:5432/db
+
+valkey:
+  enabled: true
+  image: valkey/valkey:8
+  resources: {}
+externalValkey:
+  url: ""            # redis://host:6379/0
+
+worker:
+  controlPlaneUrl: ""
+  nodeTokens: []     # one replica per token, from the Nodes page
+  replicas: 0        # only with existingSecret (keys token-0 ... token-N-1)
+  controlPlaneInsecure: false
+  controlPlaneCa:
+    configMap: ""
+    secret: ""
+    key: ca.crt
+  persistence:
+    size: 1Gi
+    storageClass: ""
+  resources: {}
+  extraEnv: []
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
+  tls: []
+
+httpRoute:
+  enabled: false
+  parentRefs: []
+  hostnames: []
+  apiResponseHeaders: true
+  timeouts:
+    request: "0s"    # "" leaves timeouts out
+
+metrics:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}

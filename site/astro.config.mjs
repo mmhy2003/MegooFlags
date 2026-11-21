@@ -54,6 +54,7 @@ export default defineConfig({
             "deploy/reverse-proxy",
             "deploy/multi-node",
             "deploy/multi-node-migration",
+            "deploy/kubernetes",
             "deploy/upgrades",
             "deploy/configuration",
             "deploy/observability",

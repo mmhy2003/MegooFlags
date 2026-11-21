@@ -9,7 +9,7 @@ Humans follow them too. When a rule here and a habit of yours disagree, this fil
 |---|---|
 | `api/` | FastAPI server (`megooflags_api`, Python 3.12, src layout), Alembic migrations, `openapi.json` |
 | `web/` | Next.js 16 App Router UI (TypeScript, Tailwind 4, shadcn/ui, `output: "standalone"`) |
-| `deploy/` | Reference single-node bundle: `docker-compose.yml`, `Caddyfile`, `.env.example`; the multi-node files `docker-compose.control-plane.yml`, `docker-compose.worker.yml`, `Caddyfile.worker` and `.env.worker.example` (see `site/src/content/docs/deploy/multi-node.md`); and the CI override `compose.ci.yml` |
+| `deploy/` | Reference single-node bundle: `docker-compose.yml`, `Caddyfile`, `.env.example`; the multi-node files `docker-compose.control-plane.yml`, `docker-compose.worker.yml`, `Caddyfile.worker` and `.env.worker.example` (see `site/src/content/docs/deploy/multi-node.md`); the CI override `compose.ci.yml`; and `helm/megooflags/`, the Helm chart (see its `README.md`) |
 | `scripts/` | Version, release and check scripts shared by CI, the release workflow and developers |
 | `sdks/` | In-repo SDKs, one directory per language (see `sdks/README.md`) |
 | `spec/` | Reserved for the shared evaluation spec and SDK conformance suite (see `spec/README.md`) |
@@ -71,7 +71,8 @@ Change all of these **in one commit**:
 1. `VERSION`
 2. `api/pyproject.toml` (`version`)
 3. `web/package.json` (`version`)
-4. `CHANGELOG.md`: move the `[Unreleased]` items into a new `## [X.Y.Z] - YYYY-MM-DD` section and leave an empty `[Unreleased]` above it.
+4. `deploy/helm/megooflags/Chart.yaml` (`version` and `appVersion`)
+5. `CHANGELOG.md`: move the `[Unreleased]` items into a new `## [X.Y.Z] - YYYY-MM-DD` section and leave an empty `[Unreleased]` above it.
 
 Then regenerate the files that embed the version, and include them in the same commit:
 
@@ -162,6 +163,13 @@ MEGOOFLAGS_SECRET_KEY=local-dummy-secret-key-0123456789abcdef docker compose \
 export MEGOOFLAGS_KEYCLOAK_URL=http://localhost:8180
 ```
 
+With megoocolab-runner, each worktree gets its own containers (the sets are in `megoocolab.toml`):
+
+```bash
+megoocolab-runner services run api -- bash -c 'cd api && uv run pytest'
+megoocolab-runner services run db -- bash scripts/check_migrations.sh
+```
+
 Then, from the repository root:
 
 ```bash
@@ -216,6 +224,20 @@ bash scripts/cluster_test.sh
 # the load test harness in its tiny profile (the perf-smoke job), without gates; prints "perf OK (tiny)"
 # and writes the git-ignored perf/results/tiny.json
 bash scripts/perf.sh tiny
+
+# helm; install Helm v3.19.0, kind v0.30.0, kubeconform v0.7.0 and kubectl into ~/.local/bin once:
+curl -fsSL https://get.helm.sh/helm-v3.19.0-linux-amd64.tar.gz | tar -xz -C /tmp \
+  && install /tmp/linux-amd64/helm ~/.local/bin/
+curl -fsSLo ~/.local/bin/kind https://kind.sigs.k8s.io/dl/v0.30.0/kind-linux-amd64 && chmod +x ~/.local/bin/kind
+curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz \
+  | tar -xz -C ~/.local/bin kubeconform
+curl -fsSLo ~/.local/bin/kubectl "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+  && chmod +x ~/.local/bin/kubectl
+# render tests, helm lint and kubeconform
+MEGOOFLAGS_REQUIRE_HELM=1 uv run --frozen --project api pytest -v scripts/tests/test_helm_chart.py
+# an install on kind from the same :ci images; prints "helm OK". Set MF_HELM_CLUSTER,
+# MF_HELM_INGRESS_PORT and MF_HELM_GATEWAY_PORT to avoid clashes with another cluster or port
+bash scripts/helm_test.sh
 ```
 
 For a release, a maintainer runs `bash scripts/perf.sh full` on the build machine (it takes about an
@@ -372,6 +394,10 @@ Images go to `ghcr.io/mmhy2003/megooflags-api` and `ghcr.io/mmhy2003/megooflags-
 | `latest` | `latest` | `latest` |
 
 An rc tag never moves `X.Y`, `X` or `latest`. The GitHub release notes come from the matching `CHANGELOG.md` section, and the release attaches `docker-compose.yml`, `Caddyfile` and `.env.example`, plus the multi-node files `docker-compose.control-plane.yml`, `docker-compose.worker.yml`, `Caddyfile.worker` and `.env.worker.example`.
+
+The release also pushes the Helm chart to `oci://ghcr.io/mmhy2003/charts/megooflags:<image version>`
+(for example `1.4.2` or `1.4.2-rc.1`) and attaches `megooflags-<version>.tgz`. After the first push, a
+maintainer makes the GHCR package `charts/megooflags` public, once. Agents never push charts.
 
 ## 11. SDKs
 
