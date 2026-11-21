@@ -75,3 +75,33 @@ def test_ci_has_helm_job() -> None:
         "bash scripts/helm_test.sh",
     ):
         assert command in runs
+
+
+def test_release_chart_job() -> None:
+    chart = _load("release.yml")["jobs"]["chart"]
+    assert chart["needs"] == ["meta", "merge"]
+    assert chart["permissions"] == {"contents": "read", "packages": "write"}
+    assert chart["env"]["VERSION"] == "${{ needs.meta.outputs.image_version }}"
+    setup = [s for s in chart["steps"] if s.get("uses") == "azure/setup-helm@v4"]
+    assert len(setup) == 1
+    assert setup[0]["with"]["version"] == "v3.19.0"
+    runs = "\n".join(step["run"] for step in chart["steps"] if "run" in step)
+    assert (
+        'helm package deploy/helm/megooflags --version "$VERSION" --app-version "$VERSION"' in runs
+    )
+    assert "helm push" in runs
+    assert "oci://ghcr.io/mmhy2003/charts" in runs
+    uploads = [
+        s for s in chart["steps"] if s.get("uses", "").startswith("actions/upload-artifact@")
+    ]
+    assert len(uploads) == 1
+    assert uploads[0]["with"]["name"] == "chart"
+
+
+def test_release_job_attaches_chart() -> None:
+    release = _load("release.yml")["jobs"]["release"]
+    assert "chart" in release["needs"]
+    downloads = [
+        s for s in release["steps"] if s.get("uses", "").startswith("actions/download-artifact@")
+    ]
+    assert "chart" in [s["with"].get("name") for s in downloads]

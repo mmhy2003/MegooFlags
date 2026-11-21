@@ -125,6 +125,11 @@ def test_release_attaches_cluster_files() -> None:
         assert name in text, name
 
 
+def test_release_attaches_chart() -> None:
+    text = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "megooflags-${{ needs.meta.outputs.image_version }}.tgz" in text
+
+
 _DURATION = re.compile(r"^(\d+)(ms|s|m|h)?$")
 _UNIT_SECONDS = {"ms": 0.001, "s": 1, "m": 60, "h": 3600, None: 1}
 
