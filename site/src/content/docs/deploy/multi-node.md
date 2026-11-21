@@ -33,6 +33,9 @@ To turn an existing single node into a control plane without downtime, follow
 There is one control plane. Control-plane failover is not part of this release: while the control
 plane is down, workers keep serving, but nobody can change flags.
 
+On Kubernetes, the Helm chart runs the same roles, one per release: see
+[Kubernetes (Helm)](/MegooFlags/deploy/kubernetes/).
+
 ## Settings
 
 The multi-node settings, in `.env` next to the compose file:

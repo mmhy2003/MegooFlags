@@ -73,6 +73,9 @@ of the same or a newer compatible version, never an older one. Before 1.0, worke
 The full procedure, with draining each worker first, is in
 [Rolling upgrades](/MegooFlags/deploy/multi-node/#rolling-upgrades).
 
+With Helm, upgrade the control-plane release first, then the worker release; the image tags follow
+the chart's `appVersion`. See [Kubernetes (Helm)](/MegooFlags/deploy/kubernetes/#upgrades).
+
 ## SDKs, the CLI and Terraform
 
 The SDKs, the `megooflags` CLI and the Terraform provider have their own versions and release tags
