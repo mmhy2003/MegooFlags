@@ -6,6 +6,7 @@ import {
 } from "@playwright/test";
 
 import { adminApi, createTestFlag, ok, SHOP } from "./support/api";
+import { ADMIN, VIEWER } from "./support/users";
 
 const LIST = `/projects/${SHOP}/change-requests`;
 // Every change request this run opens starts with it, so afterAll cancels exactly those.
@@ -51,7 +52,8 @@ async function openRequest(
     const path = `/api/projects/${SHOP}/flags/${flag}/environments/production`;
     const current = await ok(await api.get(path), `GET ${path}`);
     const { version } = (await current.json()) as { version: number };
-    payload = { version, enabled: true, fallthrough: { variation: "true" } };
+    // A new flag serves its first variation, "true", so this is a real change.
+    payload = { version, enabled: true, fallthrough: { variation: "false" } };
   }
   const created = await ok(
     await api.post(`/api/projects/${SHOP}/change-requests`, {
@@ -118,5 +120,65 @@ test.describe.serial("change requests", () => {
       .getByRole("link", { name: config.title })
       .click();
     await expect(page).toHaveURL(new RegExp(`${LIST}/${config.id}$`));
+  });
+
+  test("shows the diff of a targeting request", async ({ page }) => {
+    await page.goto(`${LIST}/${config.id}`);
+    await expect(
+      page.getByRole("heading", { level: 1, name: config.title }),
+    ).toBeVisible();
+    await expect(page.getByText("0 of 1 approvals")).toBeVisible();
+    const diff = page.getByRole("group", { name: "Proposed change" });
+    const after = diff.getByRole("region", { name: "After" });
+    await expect(after.locator('[data-kind="add"]')).toContainText(
+      '"variation": "false"',
+    );
+    await expect(page.getByRole("link", { name: config.flag })).toHaveAttribute(
+      "href",
+      `/projects/${SHOP}/flags/${config.flag}?env=production`,
+    );
+  });
+
+  test("summarises a toggle request", async ({ page }) => {
+    await page.goto(`${LIST}/${toggle.id}`);
+    await expect(page.getByText("Turn the flag on")).toBeVisible();
+    await expect(page.getByText("Currently off")).toBeVisible();
+    await expect(
+      page.getByRole("group", { name: "Proposed change" }),
+    ).toHaveCount(0);
+  });
+
+  test("comments", async ({ page }) => {
+    const body = `${RUN} looks good to me`;
+    await page.goto(`${LIST}/${toggle.id}`);
+    await page.getByLabel("Comment", { exact: true }).fill(body);
+    await page.getByRole("button", { name: "Comment" }).click();
+    const comments = page.getByRole("list", { name: "Comments" });
+    const item = comments.getByRole("listitem").filter({ hasText: body });
+    await expect(item).toContainText(ADMIN.email);
+    await expect(item.locator("time")).toBeVisible();
+    await expect(page.getByLabel("Comment", { exact: true })).toHaveValue("");
+  });
+
+  test.describe("as a viewer", () => {
+    test.use({ storageState: VIEWER.storageState });
+
+    test("there is no comment box", async ({ page }) => {
+      await page.goto(`${LIST}/${toggle.id}`);
+      await expect(
+        page.getByRole("list", { name: "Comments" }).getByRole("listitem"),
+      ).toContainText(`${RUN} looks good to me`);
+      await expect(page.getByLabel("Comment", { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Comment" })).toHaveCount(
+        0,
+      );
+    });
+  });
+
+  test("unknown request", async ({ page }) => {
+    await page.goto(`${LIST}/00000000-0000-0000-0000-000000000000`);
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Page not found" }),
+    ).toBeVisible();
   });
 });
