@@ -29,6 +29,66 @@ async function invite(page: Page, email: string, name: string, role?: string) {
   await dialog.getByRole("button", { name: "Invite", exact: true }).click();
 }
 
+/**
+ * Invites a member through the API, with an organization role when given; `active` also sets
+ * their password, as accepting the invitation does.
+ */
+async function seedMember(
+  email: string,
+  name: string,
+  { role, active = false }: { role?: string; active?: boolean } = {},
+): Promise<void> {
+  const api = await adminApi();
+  try {
+    const created = await ok(
+      await api.post("/api/users", { data: { email, name } }),
+      `invite ${email}`,
+    );
+    const { user, invite } = (await created.json()) as {
+      user: { id: string };
+      invite: { url: string };
+    };
+    if (role)
+      await ok(
+        await api.post("/api/bindings", {
+          data: {
+            subject_kind: "user",
+            subject_id: user.id,
+            role,
+            scope: "org",
+          },
+        }),
+        `give ${email} ${role}`,
+      );
+    if (active) {
+      const token = invite.url.split("/").pop() ?? "";
+      await ok(
+        await api.post(`/api/invitations/${token}`, {
+          data: { password: PASSWORD },
+        }),
+        `accept ${email}'s invitation`,
+      );
+    }
+  } finally {
+    await api.dispose();
+  }
+}
+
+/** Opens the Manage dialog of the member with this email, on Members filtered to them. */
+async function manage(page: Page, email: string, name: string) {
+  await page.goto(`${MEMBERS}&q=${encodeURIComponent(email)}`);
+  await memberRow(page, email).getByRole("button", { name: "Manage" }).click();
+  const dialog = page.getByRole("dialog", { name });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/** Closes a dialog; the page behind it is hidden from the accessibility tree while it is open. */
+async function closeDialog(dialog: Locator) {
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
+}
+
 test.afterAll(async () => {
   const api = await adminApi();
   try {
@@ -214,6 +274,144 @@ test.describe("members", () => {
     await expect(
       dialog.getByText("Someone with this email is already a member"),
     ).toBeVisible();
+  });
+});
+
+test.describe("manage a member", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("assign and remove roles", async ({ page }) => {
+    const email = `${RUN}-roles@invite.e2e.test`;
+    const name = "Rory Roles";
+    await seedMember(email, name, { role: "viewer" });
+    const dialog = await manage(page, email, name);
+
+    const access = dialog.getByRole("listitem");
+    await expect(access).toHaveText(["viewer · Organization"]);
+
+    const form = dialog.getByRole("form", { name: "Add access" });
+    await form.getByLabel("Role").selectOption("editor");
+    await form.getByLabel("Level").selectOption("project");
+    await form.getByLabel("Project", { exact: true }).selectOption("shop");
+    await form.getByRole("button", { name: "Add" }).click();
+    // The API doesn't promise an order, so look for each one.
+    await expect(access).toHaveCount(2);
+    await expect(
+      access.filter({ hasText: "editor · Project shop" }),
+    ).toHaveCount(1);
+    await expect(
+      access.filter({ hasText: "viewer · Organization" }),
+    ).toHaveCount(1);
+
+    await dialog
+      .getByRole("button", { name: "Remove editor · Project shop" })
+      .click();
+    await page
+      .getByRole("alertdialog", { name: "Remove access?" })
+      .getByRole("button", { name: "Remove access" })
+      .click();
+    await expect(access).toHaveText(["viewer · Organization"]);
+  });
+
+  test("rename", async ({ page }) => {
+    const email = `${RUN}-rename@invite.e2e.test`;
+    await seedMember(email, "Nina Name");
+    const dialog = await manage(page, email, "Nina Name");
+
+    await dialog.getByLabel("Name").fill("Nina Newname");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Name saved")).toBeVisible();
+    await closeDialog(dialog);
+    await expect(memberRow(page, email)).toContainText("Nina Newname");
+  });
+
+  test("new invite link", async ({ page }) => {
+    const invited = `${RUN}-link@invite.e2e.test`;
+    await seedMember(invited, "Lee Link");
+    const dialog = await manage(page, invited, "Lee Link");
+    await expect(
+      dialog.getByRole("button", { name: "Password reset link" }),
+    ).toHaveCount(0);
+    await dialog.getByRole("button", { name: "New invite link" }).click();
+    const reveal = page.getByRole("alertdialog", { name: "Invite link" });
+    await expect(reveal.locator("code")).toContainText("/invite/");
+    await reveal.getByRole("button", { name: "Done" }).click();
+    await expect(reveal).toHaveCount(0);
+
+    const active = `${RUN}-reset@invite.e2e.test`;
+    await seedMember(active, "Rita Reset", { active: true });
+    const other = await manage(page, active, "Rita Reset");
+    await expect(
+      other.getByRole("button", { name: "New invite link" }),
+    ).toHaveCount(0);
+    await other.getByRole("button", { name: "Password reset link" }).click();
+    await expect(
+      page
+        .getByRole("alertdialog", { name: "Password reset link" })
+        .locator("code"),
+    ).toContainText("/invite/");
+  });
+
+  test("reset two-factor", async ({ page }) => {
+    const email = `${RUN}-mfa@invite.e2e.test`;
+    await seedMember(email, "Max Factor", { active: true });
+    const dialog = await manage(page, email, "Max Factor");
+    await dialog.getByRole("button", { name: "Reset two-factor" }).click();
+    await page
+      .getByRole("alertdialog", { name: "Reset two-factor?" })
+      .getByRole("button", { name: "Reset two-factor" })
+      .click();
+    await expect(page.getByText("Two-factor reset")).toBeVisible();
+  });
+
+  test("disable and enable", async ({ page }) => {
+    const email = `${RUN}-toggle@invite.e2e.test`;
+    await seedMember(email, "Dee Disable", { active: true });
+    const dialog = await manage(page, email, "Dee Disable");
+
+    await dialog.getByRole("button", { name: "Disable" }).click();
+    const confirm = page.getByRole("alertdialog", {
+      name: "Disable Dee Disable?",
+    });
+    await expect(
+      confirm.getByText("They are signed out everywhere."),
+    ).toBeVisible();
+    await confirm.getByRole("button", { name: "Disable" }).click();
+    await expect(dialog).toContainText("Disabled");
+    await closeDialog(dialog);
+    await expect(memberRow(page, email)).toContainText("Disabled");
+
+    await memberRow(page, email)
+      .getByRole("button", { name: "Manage" })
+      .click();
+    await dialog.getByRole("button", { name: "Enable" }).click();
+    await expect(dialog).toContainText("Active");
+    await closeDialog(dialog);
+    await expect(memberRow(page, email)).toContainText("Active");
+  });
+
+  test("last admin", async ({ page }) => {
+    const email = `${RUN}-admin@invite.e2e.test`;
+    await seedMember(email, "Al Admin", { active: true });
+    await page.route("**/api/users/*/disable", (route) =>
+      route.fulfill({
+        status: 409,
+        json: {
+          code: "last_admin",
+          message: "The last admin can't be disabled",
+          details: null,
+        },
+      }),
+    );
+    const dialog = await manage(page, email, "Al Admin");
+    await dialog.getByRole("button", { name: "Disable" }).click();
+    await page
+      .getByRole("alertdialog", { name: "Disable Al Admin?" })
+      .getByRole("button", { name: "Disable" })
+      .click();
+    await expect(dialog.getByRole("alert")).toHaveText(
+      "This would leave the organization without an admin.",
+    );
   });
 });
 

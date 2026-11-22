@@ -10,6 +10,7 @@ import { type Column, DataList } from "@/components/patterns/data-list";
 import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
 import { StatusPill } from "@/components/patterns/status-pill";
 import { InviteDialog } from "@/components/settings/invite-dialog";
+import { MemberDialog } from "@/components/settings/member-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,7 +50,11 @@ async function orgRoles(): Promise<Map<string, string[]>> {
   return roles;
 }
 
-function columns(now: Date, roles: Map<string, string[]>): Column<User>[] {
+function columns(
+  now: Date,
+  roles: Map<string, string[]>,
+  onManage: (u: User) => void,
+): Column<User>[] {
   return [
     {
       id: "name",
@@ -103,9 +108,13 @@ function columns(now: Date, roles: Map<string, string[]>): Column<User>[] {
       id: "actions",
       header: "Actions",
       priority: "main",
-      // Managing a member comes with the member dialog.
-      cell: () => (
-        <Button variant="outline" className="min-h-11" disabled>
+      cell: (u) => (
+        <Button
+          variant="outline"
+          className="min-h-11"
+          aria-label={`Manage ${u.name}`}
+          onClick={() => onManage(u)}
+        >
           Manage
         </Button>
       ),
@@ -192,6 +201,11 @@ export function MembersTab() {
   const extra = first.data && more.first === first.data ? more : null;
   const cursor = extra ? extra.cursor : (first.data?.page.next_cursor ?? null);
   const [inviting, setInviting] = useState(false);
+  // The user stays set while the dialog closes, so its title doesn't change mid-animation.
+  const [managing, setManaging] = useState<{
+    open: boolean;
+    user: User | null;
+  }>({ open: false, user: null });
 
   const search = (next: string) => {
     const query = new URLSearchParams(params);
@@ -257,7 +271,9 @@ export function MembersTab() {
         <>
           <DataList
             caption="Members"
-            columns={columns(now, first.data.roles)}
+            columns={columns(now, first.data.roles, (user) =>
+              setManaging({ open: true, user }),
+            )}
             rows={rows}
             rowKey={(u) => u.id}
           />
@@ -287,6 +303,12 @@ export function MembersTab() {
         open={inviting}
         onOpenChange={setInviting}
         onInvited={first.reload}
+      />
+      <MemberDialog
+        user={managing.user}
+        open={managing.open}
+        onOpenChange={(open) => setManaging((m) => ({ ...m, open }))}
+        onChanged={first.reload}
       />
     </div>
   );
