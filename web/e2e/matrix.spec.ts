@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 import { adminApi, ok } from "./support/api";
 import {
@@ -11,6 +11,8 @@ import {
 const WIDTHS = [280, 344, 390, 880, 1024, 1440];
 const THEMES = ["light", "dark"] as const;
 const FLAG = "/projects/demo/flags/new-checkout?env=development";
+// What audit pages show for every entry's time (see fixTimes).
+const FIXED_TIME = "2026-12-28T12:28:28Z";
 // `mask` hides <time> elements, whose relative text changes from run to run. demo is never
 // changed and has no evaluations, so the flag pages (Insights too) are stable.
 const PAGES: {
@@ -21,6 +23,11 @@ const PAGES: {
   maskText?: RegExp[];
   /** Text that shows once the page's data has loaded. */
   ready?: string;
+  /**
+   * Gives every audit entry the same `occurred_at`. The masked <time> still takes the width of
+   * its text, which decides how the cards wrap, so a real timestamp changes the layout.
+   */
+  fixTimes?: boolean;
   detail?: boolean;
   /** Works out `path` at run time, for pages whose URL holds a generated id. */
   resolve?: () => Promise<string>;
@@ -66,6 +73,7 @@ const PAGES: {
     path: "/projects/gov/audit?action=change_request.create",
     mask: true,
     maskText: [/^[0-9a-f-]{36}$/],
+    fixTimes: true,
   },
   {
     name: "keys",
@@ -100,9 +108,22 @@ const PAGES: {
     name: "settings-audit",
     path: "/settings?tab=audit&action=sso_provider.create&resource_key=gov-oidc",
     mask: true,
+    fixTimes: true,
   },
   { name: "kit", path: "/dev/kit" },
 ];
+
+/** Answers the audit list with every entry's `occurred_at` set to one fixed instant. */
+async function fixAuditTimes(page: Page): Promise<void> {
+  await page.route(/\/api\/audit(\?|$)/, async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      items: { occurred_at: string }[];
+    };
+    for (const entry of body.items) entry.occurred_at = FIXED_TIME;
+    await route.fulfill({ response, json: body });
+  });
+}
 
 /** The detail page of gov's "Turn on targeting" request. */
 async function govRequest(): Promise<string> {
@@ -138,9 +159,11 @@ for (const theme of THEMES) {
       ready,
       detail,
       resolve,
+      fixTimes,
     } of PAGES) {
       for (const width of WIDTHS) {
         test(`${name} at ${width} px`, async ({ page }) => {
+          if (fixTimes) await fixAuditTimes(page);
           await page.setViewportSize({ width, height: 900 });
           await page.goto(resolve ? await resolve() : path);
           await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
