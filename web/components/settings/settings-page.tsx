@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AuditLog } from "@/components/audit/audit-log";
 import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
 import { MembersTab } from "@/components/settings/members-tab";
+import { RolesTab } from "@/components/settings/roles-tab";
 import { SecurityTab } from "@/components/settings/security-tab";
 import { TeamsTab } from "@/components/settings/teams-tab";
 import { ServiceTokenList } from "@/components/tokens/service-token-list";
@@ -26,6 +27,8 @@ function Panel({ tab, org }: { tab: SettingsTab; org: readonly Permission[] }) {
       return <MembersTab />;
     case "teams":
       return <TeamsTab canManage={org.includes("member.manage")} />;
+    case "roles":
+      return <RolesTab canManage={org.includes("role.manage")} />;
     case "tokens":
       return <ServiceTokenList />;
     case "security":

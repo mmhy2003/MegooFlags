@@ -6,6 +6,7 @@ import { ADMIN, PASSWORD, VIEWER } from "./support/users";
 const SETTINGS = "/settings";
 const MEMBERS = `${SETTINGS}?tab=members`;
 const TEAMS = `${SETTINGS}?tab=teams`;
+const ROLES = `${SETTINGS}?tab=roles`;
 // Every user this run invites has an email starting with it, so afterAll disables exactly those.
 const RUN = `e2e-${Date.now().toString(36)}`;
 
@@ -91,6 +92,13 @@ function teamRow(page: Page, key: string): Locator {
     .filter({ hasText: key });
 }
 
+function roleRow(page: Page, key: string): Locator {
+  return page
+    .getByRole("table", { name: "Roles" })
+    .getByRole("row")
+    .filter({ has: page.getByText(key, { exact: true }) });
+}
+
 /** Closes a dialog; the page behind it is hidden from the accessibility tree while it is open. */
 async function closeDialog(dialog: Locator) {
   await dialog.getByRole("button", { name: "Close" }).click();
@@ -124,6 +132,18 @@ test.afterAll(async () => {
       await ok(
         await api.delete(`/api/teams/${team.key}`),
         `delete ${team.key}`,
+      );
+    }
+    const roles = await ok(
+      await api.get("/api/roles", { params: { limit: 500 } }),
+      "list the roles",
+    );
+    for (const role of ((await roles.json()) as { items: { key: string }[] })
+      .items) {
+      if (!role.key.startsWith(RUN)) continue;
+      await ok(
+        await api.delete(`/api/roles/${role.key}`),
+        `delete ${role.key}`,
       );
     }
   } finally {
@@ -576,6 +596,125 @@ test.describe("teams", () => {
   });
 });
 
+test.describe("roles", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("create, edit and delete a custom role", async ({ page }) => {
+    const name = `${RUN} Toggler`;
+    const key = `${RUN}-toggler`;
+    await page.goto(ROLES);
+    await page.getByRole("button", { name: "New role" }).click();
+    const create = page.getByRole("dialog", { name: "New role" });
+    await create.getByLabel("Name").fill(name);
+    // "Key" alone would also match the "See SDK keys" permission.
+    await expect(create.getByLabel("Key", { exact: true })).toHaveValue(key);
+    for (const [label, where] of [
+      ["Organization", "Works only when granted for the whole organization."],
+      ["Project", "Works for the whole organization or for one project."],
+      [
+        "Environment",
+        "Works for the organization, a project or one environment.",
+      ],
+    ])
+      await expect(create.getByRole("group", { name: label })).toContainText(
+        where,
+      );
+    await create.getByLabel("See the project").check();
+    await create.getByLabel("Turn flags on and off").check();
+    await create.getByRole("button", { name: "Create role" }).click();
+    await expect(create).toHaveCount(0);
+
+    const row = roleRow(page, key);
+    await expect(row).toContainText(name);
+    await expect(row).toContainText("Custom");
+    await expect(row).toContainText("2 permissions");
+
+    await row.getByRole("button", { name: `Open ${name}` }).click();
+    const dialog = page.getByRole("dialog", { name });
+    await expect(dialog.getByLabel("See the project")).toBeChecked();
+    await dialog.getByLabel("Edit targeting").check();
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Role saved")).toBeVisible();
+    await closeDialog(dialog);
+    await expect(row).toContainText("3 permissions");
+
+    await row.getByRole("button", { name: `Open ${name}` }).click();
+    await dialog.getByRole("button", { name: "Delete role" }).click();
+    await page
+      .getByRole("alertdialog", { name: `Delete ${name}?` })
+      .getByRole("button", { name: "Delete role" })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await expect(roleRow(page, key)).toHaveCount(0);
+  });
+
+  test("a role in use", async ({ page }) => {
+    const name = `${RUN} Used`;
+    const key = `${RUN}-used`;
+    const team = `${RUN}-users`;
+    const api = await adminApi();
+    let binding = "";
+    try {
+      await ok(
+        await api.post("/api/roles", {
+          data: { key, name, permissions: ["project.read"] },
+        }),
+        "create the used role",
+      );
+      const created = await ok(
+        await api.post("/api/teams", { data: { key: team, name: team } }),
+        "create the team that uses it",
+      );
+      const { id } = (await created.json()) as { id: string };
+      const bound = await ok(
+        await api.post("/api/bindings", {
+          data: {
+            subject_kind: "team",
+            subject_id: id,
+            role: key,
+            scope: "org",
+          },
+        }),
+        "bind the role to the team",
+      );
+      binding = ((await bound.json()) as { id: string }).id;
+
+      await page.goto(ROLES);
+      await roleRow(page, key)
+        .getByRole("button", { name: `Open ${name}` })
+        .click();
+      const dialog = page.getByRole("dialog", { name });
+      await dialog.getByRole("button", { name: "Delete role" }).click();
+      await page
+        .getByRole("alertdialog", { name: `Delete ${name}?` })
+        .getByRole("button", { name: "Delete role" })
+        .click();
+      await expect(dialog.getByRole("alert")).toHaveText(
+        /^This role is still used by: 1 binding/,
+      );
+    } finally {
+      if (binding) await api.delete(`/api/bindings/${binding}`);
+      await api.delete(`/api/teams/${team}`);
+      await api.delete(`/api/roles/${key}`);
+      await api.dispose();
+    }
+  });
+
+  test("built-in roles are read-only", async ({ page }) => {
+    await page.goto(ROLES);
+    const row = roleRow(page, "admin");
+    await expect(row).toContainText("Built-in");
+    await row.getByRole("button", { name: "Open Admin" }).click();
+    const dialog = page.getByRole("dialog", { name: "Admin" });
+    await expect(
+      dialog.getByRole("listitem").filter({ hasText: "Manage roles" }),
+    ).toHaveCount(1);
+    await expect(dialog.getByRole("checkbox")).toHaveCount(0);
+    for (const name of ["Save", "Delete role"])
+      await expect(dialog.getByRole("button", { name })).toHaveCount(0);
+  });
+});
+
 test.describe("as a viewer", () => {
   test.use({
     storageState: VIEWER.storageState,
@@ -613,6 +752,19 @@ test.describe("as a viewer", () => {
       dialog.getByRole("searchbox", { name: "Add a member" }),
     ).toHaveCount(0);
     await expect(dialog.getByLabel("Name", { exact: true })).toHaveCount(0);
+  });
+
+  test("roles are read-only without role.manage", async ({ page }) => {
+    await page.goto(ROLES);
+    await expect(page.getByRole("table", { name: "Roles" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "New role" })).toHaveCount(0);
+    const row = roleRow(page, "gov-role");
+    test.skip((await row.count()) === 0, "the gov matrix role isn't seeded");
+    await row.getByRole("button", { name: /^Open / }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("checkbox")).toHaveCount(0);
+    for (const name of ["Save", "Delete role"])
+      await expect(dialog.getByRole("button", { name })).toHaveCount(0);
   });
 });
 
