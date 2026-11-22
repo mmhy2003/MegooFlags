@@ -12,6 +12,7 @@ import { StatusPill, type Status } from "@/components/patterns/status-pill";
 import { kitEnabled } from "@/lib/kit";
 
 import {
+  AccessSample,
   ConfirmSample,
   DataListSample,
   DialogSample,
@@ -96,6 +97,9 @@ async function Kit() {
         </Section>
         <Section id="kit-confirm" title="Confirm dialog">
           <ConfirmSample />
+        </Section>
+        <Section id="kit-access" title="Access">
+          <AccessSample />
         </Section>
         <Section id="kit-json" title="JSON viewer">
           <JsonViewer value={SAMPLE_JSON} label="Sample flag JSON" />

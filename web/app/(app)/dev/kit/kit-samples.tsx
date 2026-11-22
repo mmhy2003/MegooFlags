@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { AccessRows } from "@/components/access/access-rows";
+import { ScopePicker } from "@/components/access/scope-picker";
 import { ConfirmDialog } from "@/components/patterns/confirm-dialog";
 import { DataList, type Column } from "@/components/patterns/data-list";
 import { ResponsiveDialog } from "@/components/patterns/responsive-dialog";
@@ -12,6 +14,7 @@ import { UpdatePill } from "@/components/shell/version-footer";
 import { Button } from "@/components/ui/button";
 import { DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import type { AccessRow, ScopeValue } from "@/lib/access/bindings";
 
 type SampleFlag = {
   key: string;
@@ -153,6 +156,26 @@ export function ConfirmSample() {
         onConfirm={() => setConfirmed(true)}
       />
       {confirmed && <span>Confirmed</span>}
+    </div>
+  );
+}
+
+export function AccessSample() {
+  const [rows, setRows] = useState<AccessRow[]>([
+    { role: "viewer", scope: "org", project: null, env: null },
+  ]);
+  const [scope, setScope] = useState<ScopeValue>({
+    scope: "org",
+    project: null,
+    env: null,
+  });
+  return (
+    <div className="flex flex-col gap-6">
+      <AccessRows value={rows} onChange={setRows} idPrefix="kit-access" />
+      <fieldset className="flex flex-col gap-3">
+        <legend className="mb-1 text-sm font-medium">Scope</legend>
+        <ScopePicker value={scope} onChange={setScope} idPrefix="kit-scope" />
+      </fieldset>
     </div>
   );
 }
