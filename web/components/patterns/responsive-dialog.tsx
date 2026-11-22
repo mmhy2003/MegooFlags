@@ -23,6 +23,7 @@ export function ResponsiveDialog({
   children,
   footer,
   alert = false,
+  dismissible = true,
 }: {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -34,17 +35,25 @@ export function ResponsiveDialog({
   footer?: React.ReactNode;
   /** An alertdialog that a click outside does not dismiss. */
   alert?: boolean;
+  /**
+   * False for a dialog that only its own buttons close, such as a one-time secret: no close
+   * button, and Escape does nothing. Use it with `alert`.
+   */
+  dismissible?: boolean;
 }) {
   return (
     <Dialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(next) => {
+        if (next || dismissible) onOpenChange?.(next);
+      }}
       disablePointerDismissal={alert}
     >
       {trigger && <DialogTrigger render={trigger} />}
       <DialogContent
         // Only when set: an explicit undefined would drop Base UI's role="dialog".
         {...(alert && { role: "alertdialog" })}
+        showCloseButton={dismissible}
         className="max-h-[calc(100dvh-2rem)] overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))] sm:max-w-lg max-md:inset-0 max-md:top-0 max-md:left-0 max-md:h-dvh max-md:max-h-none max-md:w-screen max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:grid-rows-[auto_1fr_auto] max-md:rounded-none max-md:overflow-y-auto"
       >
         <DialogHeader className="pr-10">

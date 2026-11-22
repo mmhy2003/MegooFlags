@@ -27,10 +27,8 @@ export function SecretReveal({
   return (
     <ResponsiveDialog
       alert
+      dismissible={false}
       open={secret !== null}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
       title={title}
       description={description}
       footer={<Button onClick={onClose}>Done</Button>}
