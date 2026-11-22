@@ -5,7 +5,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ScrollText } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { AuditEntryDetails } from "@/components/audit/audit-entry-details";
 import { AuditFilters } from "@/components/audit/audit-filters";
+import { ExportDialog } from "@/components/audit/export-dialog";
 import { type Column, DataList } from "@/components/patterns/data-list";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
@@ -108,6 +110,12 @@ function columns(scope: AuditScope): Column<Entry>[] {
           priority: "main",
           cell: (e) => e.project ?? "—",
         },
+    {
+      id: "details",
+      header: "Details",
+      priority: "main",
+      cell: (e) => <AuditEntryDetails entry={e} />,
+    },
   ];
 }
 
@@ -235,7 +243,14 @@ export function AuditLog({ scope }: { scope: AuditScope }) {
 
   return (
     <>
-      <AuditFilters scope={scope} value={filters} onChange={update} />
+      <div className="flex flex-wrap items-end gap-x-2">
+        <div className="min-w-0 flex-1">
+          <AuditFilters scope={scope} value={filters} onChange={update} />
+        </div>
+        <div className="mb-4">
+          <ExportDialog filters={filters} scope={scope} />
+        </div>
+      </div>
       {body}
     </>
   );

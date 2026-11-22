@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import {
   type APIRequestContext,
   expect,
@@ -11,6 +13,7 @@ import { ADMIN } from "./support/users";
 const AUDIT = `/projects/${SHOP}/audit`;
 // The flag this run creates starts with it, so its entries are this run's own.
 const RUN = `e2e-${Date.now().toString(36)}`;
+const REQUEST_ID = `${RUN}-toggle`;
 
 let api: APIRequestContext;
 let flag: string;
@@ -21,7 +24,8 @@ test.beforeAll(async () => {
   await ok(
     await api.post(
       `/api/projects/${SHOP}/flags/${flag}/environments/development/toggle`,
-      { data: { enabled: true } },
+      // A proxy in front of the API would set it; the entry records it as the request ID.
+      { data: { enabled: true }, headers: { "X-Request-ID": REQUEST_ID } },
     ),
     "toggle on in development",
   );
@@ -41,6 +45,13 @@ function today(): string {
 /** The table rows of the flag's entries at desktop widths. */
 function rows(page: Page) {
   return page.getByRole("row").filter({ hasText: flag });
+}
+
+/** One term of an opened entry's details, with its value. */
+function detail(page: Page, term: string) {
+  return rows(page)
+    .locator("dl > div")
+    .filter({ has: page.getByRole("term").getByText(term, { exact: true }) });
 }
 
 test.describe("audit log", () => {
@@ -99,6 +110,69 @@ test.describe("audit log", () => {
     await expect(page).toHaveURL(
       new RegExp(`/projects/${SHOP}/flags/${flag}(\\?|$)`),
     );
+  });
+
+  test("details show the diff", async ({ page }) => {
+    await page.goto(`${AUDIT}?action=flag.toggle&resource_key=${flag}`);
+    await expect(rows(page)).toHaveCount(1);
+    await rows(page).getByRole("button", { name: "Details" }).click();
+    const diff = rows(page).getByRole("group", { name: "Before and after" });
+    await expect(diff.getByRole("region", { name: "Before" })).toContainText(
+      '"enabled": false',
+    );
+    await expect(diff.getByRole("region", { name: "After" })).toContainText(
+      '"enabled": true',
+    );
+    await expect(detail(page, "Request ID")).toContainText(REQUEST_ID);
+    await expect(detail(page, "IP address")).toBeVisible();
+    await expect(detail(page, "User agent")).toContainText("as recorded");
+  });
+
+  // Sign-in entries belong to no project, so the project page can't list them; the admin's
+  // own entries carry the method of the session that made them.
+  test("an entry made in a session shows its sign-in method", async ({
+    page,
+  }) => {
+    await page.goto(`${AUDIT}?action=flag.toggle&resource_key=${flag}`);
+    await rows(page).getByRole("button", { name: "Details" }).click();
+    await expect(
+      detail(page, "Sign-in method").getByRole("definition"),
+    ).toHaveText("password");
+  });
+
+  test("exports CSV and NDJSON", async ({ page }) => {
+    await page.goto(`${AUDIT}?resource_key=${flag}`);
+    await expect(rows(page)).toHaveCount(2);
+
+    const download = async (format: "CSV" | "NDJSON") => {
+      await page.getByRole("button", { name: "Export" }).click();
+      const dialog = page.getByRole("dialog", { name: "Export audit log" });
+      await expect(dialog).toContainText(
+        "Exports every entry that matches the current filters.",
+      );
+      await dialog.getByRole("radio", { name: format }).check();
+      const [file] = await Promise.all([
+        page.waitForEvent("download"),
+        dialog.getByRole("link", { name: "Download" }).click(),
+      ]);
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      return file;
+    };
+
+    const csv = await download("CSV");
+    expect(csv.suggestedFilename()).toMatch(/^audit-.*\.csv$/);
+    const csvText = readFileSync(await csv.path(), "utf8");
+    expect(csvText).toContain(flag);
+
+    const ndjson = await download("NDJSON");
+    expect(ndjson.suggestedFilename()).toMatch(/^audit-.*\.ndjson$/);
+    const lines = readFileSync(await ndjson.path(), "utf8")
+      .split("\n")
+      .filter(Boolean);
+    expect(lines).toHaveLength(2);
+    for (const line of lines)
+      expect(JSON.parse(line)).toMatchObject({ resource_key: flag });
   });
 });
 
