@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { useId } from "react";
+import { useId, useState } from "react";
 
 import { Comments } from "@/components/change-requests/comments";
 import { ProposedChange } from "@/components/change-requests/proposed-change";
+import { ReviewActions } from "@/components/change-requests/review-actions";
 import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
 import { PageHeader } from "@/components/patterns/page-header";
 import { StatusPill } from "@/components/patterns/status-pill";
@@ -84,7 +85,8 @@ function Reviews({ reviews }: { reviews: S["ReviewOut"][] }) {
 
 /**
  * A change request: what it changes and where, a warning when the flag changed since, its
- * reviews and its comments. An unknown or hidden request is the not-found page.
+ * reviews, its comments and the review actions. An unknown or hidden request is the not-found
+ * page.
  */
 export function ChangeRequestDetail({
   project,
@@ -94,6 +96,8 @@ export function ChangeRequestDetail({
   id: string;
 }) {
   const changeId = useId();
+  // The request as the last action returned it, until the next load.
+  const [changed, setChanged] = useState<S["ChangeRequestOut"] | null>(null);
   const cr = useApiData(`change-request:${project}:${id}`, () =>
     must(
       api.GET("/api/projects/{project}/change-requests/{id}", {
@@ -143,7 +147,7 @@ export function ChangeRequestDetail({
       </>
     );
 
-  const request = cr.data;
+  const request = changed?.id === cr.data.id ? changed : cr.data;
   const version =
     request.kind === "config"
       ? (request.current?.version ?? null)
@@ -222,6 +226,15 @@ export function ChangeRequestDetail({
           canComment={showCommentBox}
         />
       </div>
+      <ReviewActions
+        project={project}
+        cr={request}
+        onChanged={setChanged}
+        onReload={() => {
+          setChanged(null);
+          cr.reload();
+        }}
+      />
     </>
   );
 }

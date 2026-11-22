@@ -6,7 +6,8 @@ import {
 } from "@playwright/test";
 
 import { adminApi, createTestFlag, ok, SHOP } from "./support/api";
-import { ADMIN, VIEWER } from "./support/users";
+import { noHorizontalScroll, smallTargets } from "./support/checks";
+import { ADMIN, REVIEWER, VIEWER } from "./support/users";
 
 const LIST = `/projects/${SHOP}/change-requests`;
 // Every change request this run opens starts with it, so afterAll cancels exactly those.
@@ -40,13 +41,14 @@ test.afterAll(async () => {
   await api.dispose();
 });
 
-/** Opens a change request in production on a new flag. */
+/** Opens a change request in production, on `existing` or a new flag. */
 async function openRequest(
   api: APIRequestContext,
   kind: "config" | "toggle",
   title: string,
+  existing?: string,
 ): Promise<Opened> {
-  const flag = await createTestFlag(api, { prefix: RUN });
+  const flag = existing ?? (await createTestFlag(api, { prefix: RUN }));
   let payload: object = { enabled: true };
   if (kind === "config") {
     const path = `/api/projects/${SHOP}/flags/${flag}/environments/production`;
@@ -180,5 +182,167 @@ test.describe.serial("change requests", () => {
     await expect(
       page.getByRole("heading", { level: 1, name: "Page not found" }),
     ).toBeVisible();
+  });
+});
+
+/** The fallthrough of `flag` in production, read through the API. */
+async function fallthrough(flag: string): Promise<unknown> {
+  const path = `/api/projects/${SHOP}/flags/${flag}/environments/production`;
+  const response = await ok(await api.get(path), `GET ${path}`);
+  return ((await response.json()) as { fallthrough: unknown }).fallthrough;
+}
+
+/** The request's status pill in the page header. */
+function status(page: Page, label: string) {
+  return page.locator("header").getByText(label, { exact: true });
+}
+
+/** The sticky bar with Approve, Reject and Cancel request. */
+function actions(page: Page) {
+  return page.getByRole("region", { name: "Review actions" });
+}
+
+async function approve(page: Page, comment?: string) {
+  await actions(page).getByRole("button", { name: "Approve" }).click();
+  const dialog = page.getByRole("dialog", { name: "Approve change request" });
+  if (comment) await dialog.getByLabel("Comment").fill(comment);
+  await dialog.getByRole("button", { name: "Approve" }).click();
+}
+
+test.describe("reviewing", () => {
+  test.use({
+    storageState: REVIEWER.storageState,
+    viewport: { width: 1440, height: 900 },
+  });
+
+  test("approve applies the change", async ({ page }) => {
+    const cr = await openRequest(api, "config", `${RUN} approve`);
+    await page.goto(`${LIST}/${cr.id}`);
+    await actions(page).getByRole("button", { name: "Approve" }).click();
+    const dialog = page.getByRole("dialog", { name: "Approve change request" });
+    await expect(dialog).toContainText(
+      "This is the last approval needed, so the change is applied at once.",
+    );
+    await dialog.getByLabel("Comment").fill(`${RUN} ship it`);
+    await dialog.getByRole("button", { name: "Approve" }).click();
+
+    await expect(status(page, "Applied")).toBeVisible();
+    await expect(page.getByText("Change applied")).toBeVisible();
+    await expect(
+      page.getByRole("list", { name: "Reviews" }).getByRole("listitem"),
+    ).toContainText(`${RUN} ship it`);
+    await expect(actions(page)).toHaveCount(0);
+    expect(await fallthrough(cr.flag)).toMatchObject({ variation: "false" });
+  });
+
+  test("reject needs a reason", async ({ page }) => {
+    const cr = await openRequest(api, "toggle", `${RUN} reject`);
+    await page.goto(`${LIST}/${cr.id}`);
+    await actions(page).getByRole("button", { name: "Reject" }).click();
+    const dialog = page.getByRole("dialog", { name: "Reject change request" });
+    const submit = dialog.getByRole("button", { name: "Reject" });
+    await expect(submit).toBeDisabled();
+    await dialog.getByLabel("Reason").fill("   ");
+    await expect(submit).toBeDisabled();
+    await dialog.getByLabel("Reason").fill(`${RUN} not now`);
+    await submit.click();
+
+    await expect(status(page, "Rejected")).toBeVisible();
+    await expect(page.getByText("Change request rejected")).toBeVisible();
+    await expect(actions(page)).toHaveCount(0);
+  });
+
+  test("a stale request fails", async ({ page }) => {
+    const first = await openRequest(api, "config", `${RUN} stale one`);
+    const second = await openRequest(
+      api,
+      "config",
+      `${RUN} stale two`,
+      first.flag,
+    );
+    await page.goto(`${LIST}/${first.id}`);
+    await approve(page);
+    await expect(status(page, "Applied")).toBeVisible();
+
+    await page.goto(`${LIST}/${second.id}`);
+    await approve(page);
+    await expect(status(page, "Failed")).toBeVisible();
+    await expect(
+      page
+        .getByRole("alert")
+        .filter({ hasText: "The change couldn't be applied" }),
+    ).toContainText("the flag changed since this request was made");
+  });
+
+  test("someone else closed it", async ({ page }) => {
+    const cr = await openRequest(api, "toggle", `${RUN} closed`);
+    await page.goto(`${LIST}/${cr.id}`);
+    await expect(
+      actions(page).getByRole("button", { name: "Approve" }),
+    ).toBeVisible();
+    await ok(
+      await api.post(`/api/projects/${SHOP}/change-requests/${cr.id}/cancel`),
+      "cancel through the API",
+    );
+    await approve(page);
+
+    await expect(
+      page.getByText("Someone else closed this request"),
+    ).toBeVisible();
+    await expect(status(page, "Cancelled")).toBeVisible();
+    await expect(actions(page)).toHaveCount(0);
+  });
+
+  test("approve and reject at 344 px", async ({ page }) => {
+    await page.setViewportSize({ width: 344, height: 740 });
+    const cr = await openRequest(api, "config", `${RUN} narrow`);
+    await page.goto(`${LIST}/${cr.id}`);
+    for (const name of ["Approve", "Reject"])
+      await expect(
+        actions(page).getByRole("button", { name }),
+      ).toBeInViewport();
+    expect(await smallTargets(page)).toEqual([]);
+    expect(await noHorizontalScroll(page)).toBe(true);
+
+    await approve(page);
+    await expect(status(page, "Applied")).toBeVisible();
+  });
+});
+
+test.describe("the author", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("cancels the request", async ({ page }) => {
+    const cr = await openRequest(api, "toggle", `${RUN} cancel`);
+    await page.goto(`${LIST}/${cr.id}`);
+    const bar = actions(page);
+    await expect(
+      bar.getByRole("button", { name: "Cancel request" }),
+    ).toBeVisible();
+    await expect(bar.getByRole("button", { name: "Approve" })).toHaveCount(0);
+    await expect(bar.getByRole("button", { name: "Reject" })).toHaveCount(0);
+
+    await bar.getByRole("button", { name: "Cancel request" }).click();
+    await page
+      .getByRole("alertdialog")
+      .getByRole("button", { name: "Cancel request" })
+      .click();
+    await expect(status(page, "Cancelled")).toBeVisible();
+    await expect(page.getByText("Change request cancelled")).toBeVisible();
+    await expect(actions(page)).toHaveCount(0);
+  });
+});
+
+test.describe("a viewer", () => {
+  test.use({ storageState: VIEWER.storageState });
+
+  test("sees no actions", async ({ page }) => {
+    const cr = await openRequest(api, "toggle", `${RUN} viewer`);
+    await page.goto(`${LIST}/${cr.id}`);
+    await expect(
+      page.getByRole("heading", { level: 1, name: cr.title }),
+    ).toBeVisible();
+    for (const name of ["Approve", "Reject", "Cancel request"])
+      await expect(page.getByRole("button", { name })).toHaveCount(0);
   });
 });
