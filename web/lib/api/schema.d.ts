@@ -1968,7 +1968,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Tokens */
+        /**
+         * List Tokens
+         * @description Service tokens, newest first.
+         */
         get: operations["list_tokens_api_tokens_get"];
         put?: never;
         /**
@@ -14080,6 +14083,8 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number;
+                /** @description A project key: tokens with a binding in it, in one of its environments, or at org scope. */
+                project?: string | null;
             };
             header?: never;
             path?: never;

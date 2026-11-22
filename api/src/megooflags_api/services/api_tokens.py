@@ -4,12 +4,12 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.errors import key_inactive, not_found, validation_error
 from megooflags_api.models import ApiToken, Environment, Project, RoleBinding, User
-from megooflags_api.models.enums import ApiTokenKind, SubjectKind
+from megooflags_api.models.enums import ApiTokenKind, ScopeKind, SubjectKind
 from megooflags_api.schemas.tokens import PersonalTokenOut, TokenOut
 from megooflags_api.services.bindings import bindings_of
 from megooflags_api.services.pagination import decode_cursor, page_slice
@@ -155,24 +155,41 @@ async def token_out(session: AsyncSession, row: ApiToken) -> TokenOut:
     return (await tokens_out(session, [row]))[0]
 
 
+def _cursor_key(cursor: str) -> tuple[datetime, uuid.UUID]:
+    created_at, _, id_ = decode_cursor(cursor).partition("|")
+    try:
+        return datetime.fromisoformat(created_at), uuid.UUID(id_)
+    except ValueError:
+        raise validation_error("invalid cursor", "cursor") from None
+
+
 async def list_service_tokens(
-    session: AsyncSession, cursor: str | None, limit: int
+    session: AsyncSession, cursor: str | None, limit: int, project_id: uuid.UUID | None = None
 ) -> tuple[list[TokenOut], str | None]:
-    """Service tokens by id, revoked and expired ones included."""
+    """Service tokens newest first, keyed on (created_at, id), revoked and expired ones included.
+    With `project_id`, only tokens with a binding at org scope, in that project or in one of its
+    environments."""
     query = (
         select(ApiToken)
         .where(ApiToken.kind == ApiTokenKind.SERVICE)
-        .order_by(ApiToken.id)
+        .order_by(ApiToken.created_at.desc(), ApiToken.id.desc())
         .limit(limit + 1)
     )
+    if project_id is not None:
+        query = query.where(
+            ApiToken.id.in_(
+                select(RoleBinding.subject_id).where(
+                    RoleBinding.subject_kind == SubjectKind.SERVICE_TOKEN,
+                    or_(RoleBinding.scope == ScopeKind.ORG, RoleBinding.project_id == project_id),
+                )
+            )
+        )
     if cursor is not None:
-        try:
-            after = uuid.UUID(decode_cursor(cursor))
-        except ValueError:
-            raise validation_error("invalid cursor", "cursor") from None
-        query = query.where(ApiToken.id > after)
+        query = query.where(tuple_(ApiToken.created_at, ApiToken.id) < tuple_(*_cursor_key(cursor)))
     rows = list(await session.scalars(query))
-    page, next_cursor = page_slice(rows, limit, lambda row: str(row.id))
+    page, next_cursor = page_slice(
+        rows, limit, lambda row: f"{row.created_at.isoformat()}|{row.id}"
+    )
     return await tokens_out(session, page), next_cursor
 
 

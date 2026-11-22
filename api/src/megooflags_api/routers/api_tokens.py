@@ -14,7 +14,7 @@ from megooflags_api.models.enums import SubjectKind
 from megooflags_api.schemas.common import Page, RotateIn
 from megooflags_api.schemas.identity import BindingIn
 from megooflags_api.schemas.tokens import ServiceTokenCreate, TokenCreated, TokenOut
-from megooflags_api.services import api_tokens, bindings
+from megooflags_api.services import api_tokens, bindings, lookup
 from megooflags_api.services.audit import AuditDep, snapshot
 
 router = APIRouter(prefix="/tokens", tags=["tokens"], responses=ERROR_RESPONSES)
@@ -28,8 +28,17 @@ async def list_tokens(
     authz: ManageTokens,
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=500),
+    project: Annotated[
+        str | None,
+        Query(
+            description="A project key: tokens with a binding in it, in one of its environments, "
+            "or at org scope."
+        ),
+    ] = None,
 ) -> Page[TokenOut]:
-    items, next_cursor = await api_tokens.list_service_tokens(session, cursor, limit)
+    """Service tokens, newest first."""
+    project_id = None if project is None else (await lookup.get_project(session, project)).id
+    items, next_cursor = await api_tokens.list_service_tokens(session, cursor, limit, project_id)
     return Page[TokenOut](items=items, next_cursor=next_cursor)
 
 

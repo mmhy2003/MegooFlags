@@ -83,6 +83,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - `GET /api/system/version`: the running version and, for org admins, a newer release when one exists.
 - Reverse proxy samples for nginx, Caddy, Traefik and HAProxy in `docs/examples/proxies/`, tested in CI with an SDK stream held through each, and a guide to running behind a proxy, Cloudflare, an AWS load balancer or Coolify (https://mmhy2003.github.io/MegooFlags/deploy/reverse-proxy/).
 - Change requests returned by the API say whether you may approve (`can_approve`) or cancel (`can_cancel`) them.
+- `GET /api/tokens?project=<key>` lists the service tokens that can act in a project. The list is now newest first.
 
 ## [0.1.0]
 

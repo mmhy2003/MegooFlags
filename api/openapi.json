@@ -19786,6 +19786,7 @@
     },
     "/api/tokens": {
       "get": {
+        "description": "Service tokens, newest first.",
         "operationId": "list_tokens_api_tokens_get",
         "parameters": [
           {
@@ -19814,6 +19815,24 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "A project key: tokens with a binding in it, in one of its environments, or at org scope.",
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A project key: tokens with a binding in it, in one of its environments, or at org scope.",
+              "title": "Project"
             }
           }
         ],
