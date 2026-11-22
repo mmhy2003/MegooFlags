@@ -18,6 +18,16 @@ let api: APIRequestContext;
 
 test.beforeAll(async () => {
   api = await adminApi();
+  // Bound at org scope; created here so only this run's spec ever shows it.
+  await ok(
+    await api.post("/api/tokens", {
+      data: {
+        name: `${RUN} org`,
+        bindings: [{ role: "viewer", scope: "org" }],
+      },
+    }),
+    "create the org-wide token",
+  );
 });
 
 test.afterAll(async () => {
@@ -34,12 +44,45 @@ test.afterAll(async () => {
       await ok(await api.delete(`${path}/${key.id}`), `revoke ${key.name}`);
     }
   }
+  const tokens = await ok(
+    await api.get("/api/tokens", { params: { limit: 500 } }),
+    "list service tokens",
+  );
+  const { items } = (await tokens.json()) as {
+    items: { id: string; name: string; revoked_at: string | null }[];
+  };
+  for (const token of items) {
+    if (!token.name.startsWith(RUN) || token.revoked_at !== null) continue;
+    await ok(
+      await api.delete(`/api/tokens/${token.id}`),
+      `revoke ${token.name}`,
+    );
+  }
   await api.dispose();
 });
 
 /** The table rows of one key name at desktop widths; a rotation leaves two. */
-function rows(page: Page, name: string): Locator {
+function rows(page: Page | Locator, name: string): Locator {
   return page.getByRole("row").filter({ hasText: name });
+}
+
+/** The Service tokens section of the page. */
+function tokens(page: Page): Locator {
+  return page.getByRole("region", { name: "Service tokens" });
+}
+
+/** The one-time token dialog: only Done closes it. Returns the secret. */
+async function readToken(page: Page): Promise<string> {
+  const reveal = page.getByRole("alertdialog", { name: "Service token" });
+  await expect(reveal).toBeVisible();
+  await expect(
+    reveal.getByRole("button", { name: "Copy token" }),
+  ).toBeVisible();
+  const secret = (await reveal.locator("code").textContent()) ?? "";
+  expect(secret.length).toBeGreaterThan(20);
+  await reveal.getByRole("button", { name: "Done" }).click();
+  await expect(reveal).toBeHidden();
+  return secret;
 }
 
 /** Creates a key through the dialog, checks the one-time secret, and returns it. */
@@ -118,7 +161,10 @@ test.describe("SDK keys", () => {
     await expect(rows(page, name)).toHaveCount(1);
     await expect(rows(page, name)).toContainText("Active");
 
-    await page.getByLabel("Show revoked and expired").check();
+    await page
+      .getByRole("region", { name: "SDK keys" })
+      .getByLabel("Show revoked and expired")
+      .check();
     await expect(rows(page, name)).toHaveCount(2);
     await expect(rows(page, name).filter({ hasText: "Revoked" })).toHaveCount(
       1,
@@ -163,5 +209,114 @@ test.describe("a viewer", () => {
     );
     await expect(page.getByRole("button", { name: "Rotate" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Revoke/ })).toHaveCount(0);
+  });
+});
+
+test.describe("Service tokens", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("create a service token from the project", async ({ page }) => {
+    const name = `${RUN} ci`;
+    await page.goto(KEYS);
+    const section = tokens(page);
+    await section
+      .getByRole("button", { name: "New service token" })
+      .first()
+      .click();
+    const form = page.getByRole("dialog", { name: "New service token" });
+    await form.getByLabel("Name", { exact: true }).fill(name);
+    await expect(form.getByLabel("Expires")).toHaveValue("never");
+    const access = form.getByRole("group", { name: "Access 1" });
+    await expect(access.getByLabel("Role")).toHaveValue("viewer");
+    await expect(access.getByLabel("Level")).toHaveValue("project");
+    await expect(access.getByLabel("Project")).toHaveValue(SHOP);
+    await expect(access.getByLabel("Project")).toBeDisabled();
+    await form.getByRole("button", { name: "Create token" }).click();
+    const secret = await readToken(page);
+
+    const row = rows(section, name);
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText("Active");
+    await expect(row).toContainText(`viewer · Project ${SHOP}`);
+    await expect(row).toContainText("Never");
+    await expect(row).toContainText(secret.slice(0, 12));
+    await expect(row).not.toContainText(secret);
+  });
+
+  test("change its access", async ({ page }) => {
+    const name = `${RUN} ci`;
+    await page.goto(KEYS);
+    const row = rows(tokens(page), name);
+    await row.getByRole("button", { name: "Access" }).click();
+    const dialog = page.getByRole("dialog", { name: `Access of ${name}` });
+    const add = dialog.getByRole("form", { name: "Add access" });
+    await add.getByLabel("Role").selectOption("editor");
+    await add.getByLabel("Level").selectOption("environment");
+    await add.getByLabel("Environment").selectOption("development");
+    await add.getByRole("button", { name: "Add" }).click();
+    await expect(
+      dialog.getByText(`editor · ${SHOP} / development`),
+    ).toBeVisible();
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(row).toContainText(`viewer · Project ${SHOP}`);
+    await expect(row).toContainText(`editor · ${SHOP} / development`);
+
+    await row.getByRole("button", { name: "Access" }).click();
+    await dialog
+      .getByRole("button", { name: `Remove viewer · Project ${SHOP}` })
+      .click();
+    await page
+      .getByRole("alertdialog", { name: "Remove access?" })
+      .getByRole("button", { name: "Remove access" })
+      .click();
+    await expect(
+      dialog.getByText(`viewer · Project ${SHOP}`, { exact: true }),
+    ).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(row).not.toContainText(`viewer · Project ${SHOP}`);
+    await expect(row).toContainText(`editor · ${SHOP} / development`);
+  });
+
+  test("rotate and revoke", async ({ page }) => {
+    const name = `${RUN} ci`;
+    await page.goto(KEYS);
+    const section = tokens(page);
+    await rows(section, name).getByRole("button", { name: "Rotate" }).click();
+    const dialog = page.getByRole("dialog", { name: `Rotate ${name}` });
+    await dialog.getByRole("radio", { name: "Revoke the old one now" }).check();
+    await dialog.getByRole("button", { name: "Rotate token" }).click();
+    await readToken(page);
+    await expect(rows(section, name)).toHaveCount(1);
+    await expect(rows(section, name)).toContainText("Active");
+
+    await rows(section, name).getByRole("button", { name: "Revoke" }).click();
+    await page
+      .getByRole("alertdialog", { name: `Revoke ${name}?` })
+      .getByRole("button", { name: "Revoke token" })
+      .click();
+    await expect(rows(section, name)).toHaveCount(0);
+  });
+
+  test("org-wide tokens are marked", async ({ page }) => {
+    await page.goto(KEYS);
+    const row = rows(tokens(page), `${RUN} org`);
+    await expect(row).toContainText("viewer · Organization");
+    await expect(row.getByText("Org-wide", { exact: true })).toBeVisible();
+  });
+});
+
+test.describe("a viewer and service tokens", () => {
+  test.use({
+    storageState: VIEWER.storageState,
+    viewport: { width: 1440, height: 900 },
+  });
+
+  test("hidden without token.manage", async ({ page }) => {
+    await page.goto(`${KEYS}?env=development`);
+    await expect(rows(page, "e2e server").first()).toBeVisible();
+    await expect(tokens(page)).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "Service tokens" }),
+    ).toHaveCount(0);
   });
 });

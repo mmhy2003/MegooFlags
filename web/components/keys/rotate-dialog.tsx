@@ -10,9 +10,11 @@ import { DEFAULT_OVERLAP, OVERLAP_CHOICES } from "@/lib/tokens/expiry";
 function Form({
   onRotate,
   onDone,
+  submitLabel,
 }: {
   onRotate: (overlapSeconds: number) => Promise<void>;
   onDone: () => void;
+  submitLabel: string;
 }) {
   const id = useId();
   const [overlap, setOverlap] = useState(DEFAULT_OVERLAP);
@@ -60,7 +62,7 @@ function Form({
           Cancel
         </DialogClose>
         <Button type="submit" disabled={busy}>
-          Rotate key
+          {submitLabel}
         </Button>
       </div>
     </form>
@@ -76,12 +78,15 @@ export function RotateDialog({
   onOpenChange,
   name,
   onRotate,
+  submitLabel = "Rotate key",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Stays set while the dialog closes, so its title doesn't change mid-animation. */
   name: string;
   onRotate: (overlapSeconds: number) => Promise<void>;
+  /** The submit button, such as "Rotate token". */
+  submitLabel?: string;
 }) {
   return (
     <ResponsiveDialog
@@ -90,7 +95,13 @@ export function RotateDialog({
       title={`Rotate ${name}`}
       description="You get a new secret. Put it in place before the old one stops working."
     >
-      {open && <Form onRotate={onRotate} onDone={() => onOpenChange(false)} />}
+      {open && (
+        <Form
+          onRotate={onRotate}
+          onDone={() => onOpenChange(false)}
+          submitLabel={submitLabel}
+        />
+      )}
     </ResponsiveDialog>
   );
 }

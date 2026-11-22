@@ -13,7 +13,6 @@ import { EmptyState } from "@/components/patterns/empty-state";
 import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
 import { SecretReveal } from "@/components/patterns/secret-reveal";
 import { StatusPill } from "@/components/patterns/status-pill";
-import { useProjectPermissions } from "@/components/shell/use-project-permissions";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,6 +21,7 @@ import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { ApiError, failureText, must } from "@/lib/flags/errors";
 import { can } from "@/lib/flags/permissions";
+import type { MePermissions } from "@/lib/nav";
 import {
   credentialPill,
   credentialState,
@@ -130,11 +130,17 @@ function columns(now: Date, actions: RowActions | null): Column<SdkKey>[] {
  * The project's SDK keys, one environment at a time (`?env=`), for the environments where the
  * caller holds sdk_key.read. Creating, rotating and revoking need sdk_key.manage there.
  */
-export function SdkKeyList({ project }: { project: string }) {
+export function SdkKeyList({
+  project,
+  perms,
+}: {
+  project: string;
+  /** The caller's permissions in the project; null while they load. */
+  perms: MePermissions | null;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const perms = useProjectPermissions(project, null, null);
   const envs = perms
     ? Object.entries(perms.environments)
         .filter(([, held]) => held.includes("sdk_key.read"))
