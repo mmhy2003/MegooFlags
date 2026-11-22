@@ -5,6 +5,7 @@ import { ADMIN, PASSWORD, VIEWER } from "./support/users";
 
 const SETTINGS = "/settings";
 const MEMBERS = `${SETTINGS}?tab=members`;
+const TEAMS = `${SETTINGS}?tab=teams`;
 // Every user this run invites has an email starting with it, so afterAll disables exactly those.
 const RUN = `e2e-${Date.now().toString(36)}`;
 
@@ -83,6 +84,13 @@ async function manage(page: Page, email: string, name: string) {
   return dialog;
 }
 
+function teamRow(page: Page, key: string): Locator {
+  return page
+    .getByRole("table", { name: "Teams" })
+    .getByRole("row")
+    .filter({ hasText: key });
+}
+
 /** Closes a dialog; the page behind it is hidden from the accessibility tree while it is open. */
 async function closeDialog(dialog: Locator) {
   await dialog.getByRole("button", { name: "Close" }).click();
@@ -104,6 +112,18 @@ test.afterAll(async () => {
       await ok(
         await api.post(`/api/users/${user.id}/disable`),
         `disable ${user.email}`,
+      );
+    }
+    const teams = await ok(
+      await api.get("/api/teams", { params: { limit: 500 } }),
+      "list the teams",
+    );
+    for (const team of ((await teams.json()) as { items: { key: string }[] })
+      .items) {
+      if (!team.key.startsWith(RUN)) continue;
+      await ok(
+        await api.delete(`/api/teams/${team.key}`),
+        `delete ${team.key}`,
       );
     }
   } finally {
@@ -415,6 +435,147 @@ test.describe("manage a member", () => {
   });
 });
 
+test.describe("teams", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("a team with members and a role", async ({ page }) => {
+    const name = `${RUN} Web`;
+    const key = `${RUN}-web`;
+    await page.goto(TEAMS);
+    await page.getByRole("button", { name: "New team" }).click();
+    const create = page.getByRole("dialog", { name: "New team" });
+    await create.getByLabel("Name").fill(name);
+    await expect(create.getByLabel("Key")).toHaveValue(key);
+    await create.getByLabel("Key").fill(`${key}-x`);
+    await create.getByLabel("Key").fill(key);
+    await create.getByRole("button", { name: "Create team" }).click();
+    await expect(create).toHaveCount(0);
+
+    const row = teamRow(page, key);
+    await expect(row).toContainText(name);
+    await row.getByRole("button", { name: `Open ${name}` }).click();
+    const dialog = page.getByRole("dialog", { name });
+
+    const members = dialog.getByRole("region", { name: "Members" });
+    await expect(members.getByText("No members yet.")).toBeVisible();
+    await members
+      .getByRole("searchbox", { name: "Add a member" })
+      .fill(VIEWER.email);
+    await members.getByRole("button", { name: `Add ${VIEWER.email}` }).click();
+    const member = members
+      .getByRole("list", { name: "Team members" })
+      .getByRole("listitem")
+      .filter({ hasText: VIEWER.email });
+    await expect(member).toContainText("Added by hand");
+
+    const access = dialog.getByRole("region", { name: "Access" });
+    const form = access.getByRole("form", { name: "Add access" });
+    await form.getByLabel("Role").selectOption("viewer");
+    await form.getByLabel("Level").selectOption("project");
+    await form.getByLabel("Project", { exact: true }).selectOption("shop");
+    await form.getByRole("button", { name: "Add" }).click();
+    await expect(access.getByRole("listitem")).toHaveText([
+      "viewer · Project shop",
+    ]);
+
+    await closeDialog(dialog);
+    await expect(row.getByRole("cell").nth(1)).toHaveText("1 member");
+    await expect(row).toContainText("viewer · Project shop");
+
+    await row.getByRole("button", { name: `Open ${name}` }).click();
+    await dialog.getByLabel("Name", { exact: true }).fill(`${name} Renamed`);
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Team renamed")).toBeVisible();
+    const renamed = page.getByRole("dialog", { name: `${name} Renamed` });
+
+    await renamed
+      .getByRole("region", { name: "Members" })
+      .getByRole("button", { name: `Remove ${VIEWER.email}` })
+      .click();
+    await page
+      .getByRole("alertdialog", { name: "Remove from the team?" })
+      .getByRole("button", { name: "Remove" })
+      .click();
+    await expect(
+      renamed
+        .getByRole("region", { name: "Members" })
+        .getByText("No members yet."),
+    ).toBeVisible();
+
+    await renamed.getByRole("button", { name: "Delete team" }).click();
+    await page
+      .getByRole("alertdialog", { name: `Delete ${name} Renamed?` })
+      .getByRole("button", { name: "Delete team" })
+      .click();
+    await expect(renamed).toHaveCount(0);
+    await expect(teamRow(page, key)).toHaveCount(0);
+  });
+
+  test("a key already in use shows on the key field", async ({ page }) => {
+    const key = `${RUN}-taken`;
+    const api = await adminApi();
+    try {
+      await ok(
+        await api.post("/api/teams", { data: { key, name: "Taken" } }),
+        "create the taken team",
+      );
+    } finally {
+      await api.dispose();
+    }
+    await page.goto(TEAMS);
+    await page.getByRole("button", { name: "New team" }).click();
+    const create = page.getByRole("dialog", { name: "New team" });
+    await create.getByLabel("Name").fill("Taken");
+    await create.getByLabel("Key").fill(key);
+    await create.getByRole("button", { name: "Create team" }).click();
+    await expect(create.getByLabel("Key")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    await expect(
+      create.getByText("Another team already uses this key"),
+    ).toBeVisible();
+  });
+
+  test("last admin", async ({ page }) => {
+    const name = `${RUN} Admins`;
+    const key = `${RUN}-admins`;
+    const api = await adminApi();
+    try {
+      await ok(
+        await api.post("/api/teams", { data: { key, name } }),
+        "create the admins team",
+      );
+    } finally {
+      await api.dispose();
+    }
+    await page.route(`**/api/teams/${key}`, (route) => {
+      if (route.request().method() !== "DELETE") return route.fallback();
+      return route.fulfill({
+        status: 409,
+        json: {
+          code: "last_admin",
+          message: "The last admin can't be removed",
+          details: null,
+        },
+      });
+    });
+    await page.goto(TEAMS);
+    await teamRow(page, key)
+      .getByRole("button", { name: `Open ${name}` })
+      .click();
+    const dialog = page.getByRole("dialog", { name });
+    await dialog.getByRole("button", { name: "Delete team" }).click();
+    await page
+      .getByRole("alertdialog", { name: `Delete ${name}?` })
+      .getByRole("button", { name: "Delete team" })
+      .click();
+    await expect(dialog.getByRole("alert")).toHaveText(
+      "This would leave the organization without an admin.",
+    );
+  });
+});
+
 test.describe("as a viewer", () => {
   test.use({
     storageState: VIEWER.storageState,
@@ -431,6 +592,27 @@ test.describe("as a viewer", () => {
     await expect(
       tablist(page).getByRole("tab", { name: "Teams" }),
     ).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("teams are read-only without member.manage", async ({ page }) => {
+    await page.goto(TEAMS);
+    await expect(
+      page
+        .getByRole("table", { name: "Teams" })
+        .or(page.getByText("No teams yet")),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "New team" })).toHaveCount(0);
+    const row = teamRow(page, "gov-team");
+    test.skip((await row.count()) === 0, "the gov matrix team isn't seeded");
+    await row.getByRole("button", { name: /^Open / }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("region", { name: "Members" })).toBeVisible();
+    for (const name of [/^Add/, /^Remove/, "Save", "Delete team"])
+      await expect(dialog.getByRole("button", { name })).toHaveCount(0);
+    await expect(
+      dialog.getByRole("searchbox", { name: "Add a member" }),
+    ).toHaveCount(0);
+    await expect(dialog.getByLabel("Name", { exact: true })).toHaveCount(0);
   });
 });
 

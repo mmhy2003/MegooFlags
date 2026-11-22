@@ -6,11 +6,13 @@ import { AuditLog } from "@/components/audit/audit-log";
 import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
 import { MembersTab } from "@/components/settings/members-tab";
 import { SecurityTab } from "@/components/settings/security-tab";
+import { TeamsTab } from "@/components/settings/teams-tab";
 import { ServiceTokenList } from "@/components/tokens/service-token-list";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApiData } from "@/hooks/use-api-data";
 import { api } from "@/lib/api/client";
 import { must } from "@/lib/flags/errors";
+import type { Permission } from "@/lib/access/permissions";
 import {
   pickTab,
   type SettingsTab,
@@ -18,10 +20,12 @@ import {
   visibleTabs,
 } from "@/lib/settings/tabs";
 
-function Panel({ tab }: { tab: SettingsTab }) {
+function Panel({ tab, org }: { tab: SettingsTab; org: readonly Permission[] }) {
   switch (tab) {
     case "members":
       return <MembersTab />;
+    case "teams":
+      return <TeamsTab canManage={org.includes("member.manage")} />;
     case "tokens":
       return <ServiceTokenList />;
     case "security":
@@ -85,7 +89,7 @@ export function SettingsPage() {
         </TabsList>
       </div>
       <TabsContent value={active} className="min-w-0">
-        <Panel tab={active} />
+        <Panel tab={active} org={perms.data.org} />
       </TabsContent>
     </Tabs>
   );
