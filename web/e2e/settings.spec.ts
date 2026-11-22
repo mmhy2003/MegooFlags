@@ -113,6 +113,52 @@ async function providerAction(page: Page, row: Locator, item: string) {
   await page.getByRole("menuitem", { name: item }).click();
 }
 
+// IdP metadata as the API tests build it (api/tests/sso_fixtures.py); the certificate isn't checked.
+const IDP_METADATA = `<md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata"
+    xmlns:ds="http://www.w3.org/2000/09/xmldsig#" entityID="https://idp.example.test/realms/test">
+  <md:IDPSSODescriptor WantAuthnRequestsSigned="false"
+      protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+    <md:KeyDescriptor use="signing">
+      <ds:KeyInfo><ds:X509Data><ds:X509Certificate>MIIBkTCB+wIJAKHBfpegPjMCMA0GCSqGSIb3DQEBCwUAMA0xCzAJBgNVBAYTAlVTMB4XDTI0MDEwMTAwMDAwMFoXDTM0MDEwMTAwMDAwMFowDTELMAkGA1UEBhMCVVM=</ds:X509Certificate>
+      </ds:X509Data></ds:KeyInfo>
+    </md:KeyDescriptor>
+    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>
+    <md:SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+        Location="https://idp.example.test/realms/test/protocol/saml"/>
+  </md:IDPSSODescriptor>
+</md:EntityDescriptor>`;
+
+/** Creates an SSO provider through the API: OIDC, or SAML with inline metadata. */
+async function seedProvider(
+  key: string,
+  protocol: "oidc" | "saml",
+): Promise<void> {
+  const api = await adminApi();
+  try {
+    const data =
+      protocol === "oidc"
+        ? {
+            key,
+            name: `${key} OIDC`,
+            protocol,
+            oidc: {
+              issuer: "https://idp.example.test",
+              client_id: "megooflags",
+            },
+            client_secret: "e2e-client-secret",
+          }
+        : {
+            key,
+            name: `${key} SAML`,
+            protocol,
+            saml: { idp_metadata_xml: IDP_METADATA },
+          };
+    await ok(await api.post("/api/sso/providers", { data }), `create ${key}`);
+  } finally {
+    await api.dispose();
+  }
+}
+
 /** Closes a dialog; the page behind it is hidden from the accessibility tree while it is open. */
 async function closeDialog(dialog: Locator) {
   await dialog.getByRole("button", { name: "Close" }).click();
@@ -845,6 +891,141 @@ test.describe("sso", () => {
         "cannot fetch SAML IdP metadata from https://127.0.0.1:9/metadata",
       ),
     ).toBeVisible();
+  });
+});
+
+test.describe("sso set-up", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("set-up URLs", async ({ page }) => {
+    const oidc = `${RUN}-urls-oidc`;
+    const saml = `${RUN}-urls-saml`;
+    await seedProvider(oidc, "oidc");
+    await seedProvider(saml, "saml");
+    await page.goto(SSO);
+
+    await providerAction(page, providerRow(page, oidc), "Set-up URLs");
+    let dialog = page.getByRole("dialog", { name: "Set-up URLs" });
+    await expect(dialog.getByRole("definition")).toHaveCount(1);
+    await expect(dialog).toContainText("Redirect URI");
+    await expect(dialog).toContainText(
+      `http://localhost:3000/api/auth/sso/${oidc}/callback`,
+    );
+    await expect(
+      dialog.getByRole("button", { name: "Copy redirect URI" }),
+    ).toBeVisible();
+    await closeDialog(dialog);
+
+    await providerAction(page, providerRow(page, saml), "Set-up URLs");
+    dialog = page.getByRole("dialog", { name: "Set-up URLs" });
+    const metadata = `http://localhost:3000/api/auth/sso/${saml}/saml/metadata`;
+    await expect(dialog.getByRole("definition")).toHaveText([
+      new RegExp(`^http://localhost:3000/api/auth/sso/${saml}/saml/acs`),
+      new RegExp(`^${metadata}`),
+      new RegExp(`^${metadata}`),
+    ]);
+    for (const name of ["Copy ACS URL", "Copy entity ID", "Copy metadata URL"])
+      await expect(dialog.getByRole("button", { name })).toBeVisible();
+    await expect(dialog).not.toContainText("Redirect URI");
+  });
+
+  test("no public URL", async ({ page }) => {
+    const key = `${RUN}-nourl`;
+    await page.route(/\/api\/sso\/providers\?/, (route) =>
+      route.fulfill({
+        json: {
+          items: [
+            {
+              id: "00000000-0000-4000-8000-000000000001",
+              key,
+              name: "No URL",
+              protocol: "oidc",
+              enabled: true,
+              oidc: {
+                issuer: "https://idp.example.test",
+                client_id: "megooflags",
+                scopes: ["openid"],
+                groups_claim: "groups",
+              },
+              saml: null,
+              has_client_secret: true,
+              has_sp_key: false,
+              jit_enabled: true,
+              link_by_verified_email: false,
+              default_role: null,
+              redirect_uri: null,
+              acs_url: null,
+              entity_id: null,
+              metadata_url: null,
+              created_at: "2026-01-01T00:00:00Z",
+              updated_at: "2026-01-01T00:00:00Z",
+            },
+          ],
+          next_cursor: null,
+        },
+      }),
+    );
+    await page.goto(SSO);
+    await providerAction(page, providerRow(page, key), "Set-up URLs");
+    const dialog = page.getByRole("dialog", { name: "Set-up URLs" });
+    await expect(
+      dialog.getByText(
+        "Set MEGOOFLAGS_PUBLIC_URL to this site's address, then restart the API.",
+      ),
+    ).toBeVisible();
+    await expect(dialog.getByRole("button", { name: /^Copy / })).toHaveCount(0);
+  });
+
+  test("group mappings", async ({ page }) => {
+    const key = `${RUN}-maps`;
+    const team = `${RUN}-devs`;
+    await seedProvider(key, "oidc");
+    const api = await adminApi();
+    try {
+      await ok(
+        await api.post("/api/teams", { data: { key: team, name: team } }),
+        `create ${team}`,
+      );
+    } finally {
+      await api.dispose();
+    }
+    await page.goto(SSO);
+    await providerAction(page, providerRow(page, key), "Group mappings");
+    const dialog = page.getByRole("dialog", { name: "Group mappings" });
+    await expect(dialog.getByText("No group mappings yet.")).toBeVisible();
+
+    const form = dialog.getByRole("form", { name: "Add a mapping" });
+    await form.getByLabel("Group").fill("devs");
+    await form.getByRole("radio", { name: "A team" }).check();
+    await form.getByLabel("Team", { exact: true }).selectOption(team);
+    await form.getByRole("button", { name: "Add mapping" }).click();
+    const list = dialog.getByRole("list", { name: "Group mappings" });
+    await expect(list.getByRole("listitem")).toHaveText([
+      `devs → team ${team}`,
+    ]);
+    await expect(form.getByLabel("Group")).toHaveValue("");
+
+    await form.getByLabel("Group").fill("ops");
+    await form.getByRole("radio", { name: "A role" }).check();
+    await form.getByLabel("Role", { exact: true }).selectOption("viewer");
+    await form.getByLabel("Level").selectOption("project");
+    await form.getByLabel("Project", { exact: true }).selectOption("shop");
+    await form.getByRole("button", { name: "Add mapping" }).click();
+    await expect(list.getByRole("listitem")).toHaveText([
+      `devs → team ${team}`,
+      "ops → viewer · Project shop",
+    ]);
+
+    await list
+      .getByRole("button", { name: `Remove devs → team ${team}` })
+      .click();
+    await page
+      .getByRole("alertdialog", { name: "Remove the mapping?" })
+      .getByRole("button", { name: "Remove mapping" })
+      .click();
+    await expect(list.getByRole("listitem")).toHaveText([
+      "ops → viewer · Project shop",
+    ]);
   });
 });
 

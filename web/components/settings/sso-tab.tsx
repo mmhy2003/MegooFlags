@@ -3,11 +3,13 @@
 import {
   Ellipsis,
   KeyRound,
+  Link,
   Pause,
   Pencil,
   Play,
   Plus,
   Trash2,
+  Users,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -17,10 +19,12 @@ import { type Column, DataList } from "@/components/patterns/data-list";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
 import { StatusPill } from "@/components/patterns/status-pill";
+import { MappingsDialog } from "@/components/settings/mappings-dialog";
 import {
   PROTOCOL_LABELS,
   ProviderForm,
 } from "@/components/settings/provider-form";
+import { SetupUrlsDialog } from "@/components/settings/setup-urls-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -40,6 +44,8 @@ type Provider = components["schemas"]["SsoProviderOut"];
 type RowActions = {
   onEdit: (p: Provider) => void;
   onToggle: (p: Provider) => void;
+  onSetupUrls: (p: Provider) => void;
+  onMappings: (p: Provider) => void;
   onDelete: (p: Provider) => void;
 };
 
@@ -122,6 +128,14 @@ function columns(actions: RowActions): Column<Provider>[] {
               {p.enabled ? <Pause aria-hidden /> : <Play aria-hidden />}
               {p.enabled ? "Disable" : "Enable"}
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => actions.onSetupUrls(p)}>
+              <Link aria-hidden />
+              Set-up URLs
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => actions.onMappings(p)}>
+              <Users aria-hidden />
+              Group mappings
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
@@ -150,6 +164,14 @@ export function SsoTab() {
     provider: Provider | null;
   }>({ open: false, provider: null });
   const [removing, setRemoving] = useState<{
+    open: boolean;
+    provider: Provider | null;
+  }>({ open: false, provider: null });
+  const [urls, setUrls] = useState<{
+    open: boolean;
+    provider: Provider | null;
+  }>({ open: false, provider: null });
+  const [mappings, setMappings] = useState<{
     open: boolean;
     provider: Provider | null;
   }>({ open: false, provider: null });
@@ -216,6 +238,8 @@ export function SsoTab() {
         columns={columns({
           onEdit: (provider) => setForm({ open: true, provider }),
           onToggle: (provider) => void toggle(provider),
+          onSetupUrls: (provider) => setUrls({ open: true, provider }),
+          onMappings: (provider) => setMappings({ open: true, provider }),
           onDelete: (provider) => setRemoving({ open: true, provider }),
         })}
         rows={list.data}
@@ -236,6 +260,16 @@ export function SsoTab() {
           setForm((f) => ({ ...f, open: false }));
           list.reload();
         }}
+      />
+      <SetupUrlsDialog
+        provider={urls.provider}
+        open={urls.open}
+        onOpenChange={(open) => setUrls((u) => ({ ...u, open }))}
+      />
+      <MappingsDialog
+        provider={mappings.provider}
+        open={mappings.open}
+        onOpenChange={(open) => setMappings((m) => ({ ...m, open }))}
       />
       <ConfirmDialog
         open={removing.open}
