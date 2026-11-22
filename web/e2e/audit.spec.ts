@@ -199,3 +199,27 @@ test("cards under 768 px", async ({ page }) => {
   await expect(cards).toBeHidden();
   await expect(page.getByRole("button", { name: /^Filters/ })).toBeHidden();
 });
+
+test("the organization tab shows org entries", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/settings?tab=audit&action=auth.sign_in");
+  const table = page.getByRole("table", { name: "Audit log" });
+  await expect(
+    table.getByRole("columnheader", { name: "Project" }),
+  ).toBeVisible();
+  const body = table.locator("tbody tr");
+  await expect(body.first()).toContainText("Signed in");
+  for (const row of await body.all())
+    await expect(row).toContainText("auth.sign_in");
+
+  // Sign-in entries belong to no project, so the project filter starts from every action.
+  await page.getByLabel("Action", { exact: true }).fill("");
+  await page.getByLabel("Project", { exact: true }).selectOption(SHOP);
+  await expect(page).toHaveURL(new RegExp(`[?&]project=${SHOP}(&|$)`));
+  await expect(page).not.toHaveURL(/[?&]action=/);
+  await expect(page).toHaveURL(/[?&]tab=audit(&|$)/);
+  // The project column is the fifth: time, action, actor, resource, project.
+  const projects = body.locator("td:nth-child(5)");
+  await expect(projects.first()).toHaveText(SHOP);
+  for (const cell of await projects.all()) await expect(cell).toHaveText(SHOP);
+});
