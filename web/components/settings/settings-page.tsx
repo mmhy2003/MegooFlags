@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { AuditLog } from "@/components/audit/audit-log";
 import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
+import { MembersTab } from "@/components/settings/members-tab";
 import { SecurityTab } from "@/components/settings/security-tab";
 import { ServiceTokenList } from "@/components/tokens/service-token-list";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -19,6 +20,8 @@ import {
 
 function Panel({ tab }: { tab: SettingsTab }) {
   switch (tab) {
+    case "members":
+      return <MembersTab />;
     case "tokens":
       return <ServiceTokenList />;
     case "security":
