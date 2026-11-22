@@ -1,16 +1,10 @@
 import { Suspense } from "react";
 
-import { PlaceholderPage } from "@/components/patterns/placeholder-page";
-import { projectTrail } from "@/lib/routes";
+import { ChangeRequestList } from "@/components/change-requests/change-request-list";
 
 async function Content({ params }: { params: Promise<{ project: string }> }) {
   const { project } = await params;
-  return (
-    <PlaceholderPage
-      title="Change requests"
-      trail={projectTrail(decodeURIComponent(project))}
-    />
-  );
+  return <ChangeRequestList project={decodeURIComponent(project)} />;
 }
 
 export default function ChangeRequestsPage({

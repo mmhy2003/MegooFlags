@@ -31,4 +31,12 @@ export const PREFS: E2EUser = {
   storageState: "e2e/.auth/prefs.json",
 };
 
-export const USERS = [ADMIN, VIEWER, PREFS];
+/** An org editor, who can review change requests that someone else opened. */
+export const REVIEWER: E2EUser = {
+  email: "reviewer@e2e.test",
+  name: "Rae Reviewer",
+  role: "editor",
+  storageState: "e2e/.auth/reviewer.json",
+};
+
+export const USERS = [ADMIN, VIEWER, PREFS, REVIEWER];

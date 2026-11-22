@@ -10,6 +10,7 @@ import {
   type E2EUser,
   PASSWORD,
   PREFS,
+  REVIEWER,
   USERS,
   VIEWER,
 } from "./support/users";
@@ -419,6 +420,7 @@ export default async function globalSetup(): Promise<void> {
     await seedNodes(admin);
     await ensureUser(admin, VIEWER);
     await ensureUser(admin, PREFS);
+    await ensureUser(admin, REVIEWER);
   } finally {
     await admin.dispose();
   }
