@@ -18,6 +18,9 @@ class UserOut(ApiModel):
     has_password: bool
     created_at: datetime
     last_login_at: datetime | None
+    # When the user's unused invitation link expires, also once that has passed; null when the
+    # invitation was accepted or the user never had one.
+    invitation_expires_at: datetime | None = None
 
 
 class UserCreate(ApiModel):

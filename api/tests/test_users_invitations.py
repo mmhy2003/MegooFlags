@@ -22,7 +22,7 @@ from helpers import (
 )
 from sqlalchemy import select, update
 
-from megooflags_api.models import Invitation, UserSession
+from megooflags_api.models import Invitation, User, UserSession
 from megooflags_api.models.enums import InvitationPurpose
 from megooflags_api.tracing import EXCLUDED_URLS
 
@@ -214,6 +214,101 @@ async def test_reset_link_replaces_older_links_and_ends_sessions(
     resets = await audit_entries(app, "user.reset_link")
     assert [e["resource_key"] for e in resets] == ["member@example.com"] * 2
     assert new not in str(await audit_entries(app))
+
+
+# The invitation expiry on users
+
+
+def token_of(link: dict[str, Any]) -> str:
+    match = INVITE_URL.match(link["url"])
+    assert match, link["url"]
+    return match.group(1)
+
+
+async def test_a_new_user_shows_the_invitation_expiry(admin: httpx.AsyncClient) -> None:
+    r = await admin.post("/api/users", json={"email": "new@example.com", "name": "New User"})
+    assert r.status_code == 201, r.text
+    body = r.json()
+    expires_at = body["invite"]["expires_at"]
+    assert body["user"]["invitation_expires_at"] == expires_at
+
+    r = await admin.get(f"/api/users/{body['user']['id']}")
+    assert r.status_code == 200, r.text
+    assert r.json()["invitation_expires_at"] == expires_at
+    r = await admin.get("/api/users", params={"q": "new@"})
+    assert [u["invitation_expires_at"] for u in r.json()["items"]] == [expires_at]
+
+
+async def test_the_invitation_expiry_stays_after_it_passes(
+    app: FastAPI, admin: httpx.AsyncClient
+) -> None:
+    user, _ = await create(admin)
+    past = datetime.now(UTC) - timedelta(days=1)
+    async with app.state.sessionmaker() as session:
+        await session.execute(
+            update(Invitation)
+            .where(Invitation.user_id == uuid.UUID(user["id"]))
+            .values(expires_at=past)
+        )
+        await session.commit()
+
+    r = await admin.get(f"/api/users/{user['id']}")
+    assert r.status_code == 200, r.text
+    assert datetime.fromisoformat(r.json()["invitation_expires_at"]) == past
+
+
+async def test_accepting_clears_the_invitation_expiry(
+    admin: httpx.AsyncClient, anon: httpx.AsyncClient
+) -> None:
+    user, token = await create(admin)
+    assert (await accept(anon, token)).status_code == 204
+    r = await admin.get(f"/api/users/{user['id']}")
+    assert r.status_code == 200, r.text
+    assert r.json()["invitation_expires_at"] is None
+
+
+async def test_reset_link_for_someone_who_never_joined_is_an_invite(
+    admin: httpx.AsyncClient, anon: httpx.AsyncClient
+) -> None:
+    user, _ = await create(admin)
+    r = await admin.post(f"/api/users/{user['id']}/reset-link")
+    assert r.status_code == 200, r.text
+    link = r.json()
+    r = await anon.get(f"/api/invitations/{token_of(link)}")
+    assert r.status_code == 200, r.text
+    assert r.json()["purpose"] == "invite"
+    r = await admin.get(f"/api/users/{user['id']}")
+    assert r.json()["invitation_expires_at"] == link["expires_at"]
+
+
+async def test_reset_link_for_a_user_with_a_password_is_a_reset(
+    app: FastAPI, admin: httpx.AsyncClient, anon: httpx.AsyncClient
+) -> None:
+    await seed_user(app, "admin@example.com")
+    user_id = await seed_user(app, "member@example.com", role="viewer")
+    r = await admin.post(f"/api/users/{user_id}/reset-link")
+    assert r.status_code == 200, r.text
+    r = await anon.get(f"/api/invitations/{token_of(r.json())}")
+    assert r.json()["purpose"] == "reset"
+    r = await admin.get(f"/api/users/{user_id}")
+    assert r.json()["invitation_expires_at"] is None
+
+
+async def test_reset_link_for_an_sso_user_who_signed_in_is_a_reset(
+    app: FastAPI, admin: httpx.AsyncClient, anon: httpx.AsyncClient
+) -> None:
+    user, _ = await create(admin)
+    async with app.state.sessionmaker() as session:
+        await session.execute(
+            update(User)
+            .where(User.id == uuid.UUID(user["id"]))
+            .values(last_login_at=datetime.now(UTC))
+        )
+        await session.commit()
+    r = await admin.post(f"/api/users/{user['id']}/reset-link")
+    assert r.status_code == 200, r.text
+    r = await anon.get(f"/api/invitations/{token_of(r.json())}")
+    assert r.json()["purpose"] == "reset"
 
 
 # Managing users

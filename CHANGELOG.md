@@ -16,6 +16,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - The API trusts `X-Forwarded-*` headers only from private networks (configurable with `FORWARDED_ALLOW_IPS`), not from any address.
 - API logs are JSON lines on stdout, with one access-log line per request. Set `MEGOOFLAGS_LOG_LEVEL` to change the level.
 - The guides moved from `docs/` to the docs site at https://mmhy2003.github.io/MegooFlags/.
+- A new link for someone who never joined is an invitation again, not a password reset.
 
 ### Added
 - docker-compose.control-plane.yml for the control plane of a multi-node deployment.
@@ -86,6 +87,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - `GET /api/tokens?project=<key>` lists the service tokens that can act in a project. The list is now newest first.
 - `GET /api/permissions` lists every permission with the level (organization, project, environment) where it works.
 - SSO providers returned by the API include the redirect URI (OIDC) or the ACS URL, entity ID and metadata URL (SAML) to enter at the identity provider.
+- Users returned by the API show when their unused invitation link expires (`invitation_expires_at`).
 
 ## [0.1.0]
 

@@ -2157,7 +2157,8 @@ export interface paths {
         put?: never;
         /**
          * Reset Link
-         * @description A password reset link for the user; older links stop working.
+         * @description An invitation link for someone who has no password and never signed in, otherwise a
+         *     password reset link; older links stop working.
          */
         post: operations["reset_link_api_users__id__reset_link_post"];
         delete?: never;
@@ -4823,6 +4824,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Invitation Expires At */
+            invitation_expires_at?: string | null;
             /** Last Login At */
             last_login_at: string | null;
             /** Name */

@@ -7011,6 +7011,18 @@
             "title": "Id",
             "type": "string"
           },
+          "invitation_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invitation Expires At"
+          },
           "last_login_at": {
             "anyOf": [
               {
@@ -20991,7 +21003,7 @@
     },
     "/api/users/{id}/reset-link": {
       "post": {
-        "description": "A password reset link for the user; older links stop working.",
+        "description": "An invitation link for someone who has no password and never signed in, otherwise a\npassword reset link; older links stop working.",
         "operationId": "reset_link_api_users__id__reset_link_post",
         "parameters": [
           {
