@@ -6233,6 +6233,17 @@
       "SsoProviderOut": {
         "additionalProperties": false,
         "properties": {
+          "acs_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acs Url"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -6252,6 +6263,17 @@
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
           },
           "has_client_secret": {
             "title": "Has Client Secret",
@@ -6278,6 +6300,17 @@
             "title": "Link By Verified Email",
             "type": "boolean"
           },
+          "metadata_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata Url"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -6294,6 +6327,17 @@
           },
           "protocol": {
             "$ref": "#/components/schemas/SsoProtocol"
+          },
+          "redirect_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redirect Uri"
           },
           "saml": {
             "anyOf": [

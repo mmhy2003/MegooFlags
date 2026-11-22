@@ -4564,6 +4564,8 @@ export interface components {
         };
         /** SsoProviderOut */
         SsoProviderOut: {
+            /** Acs Url */
+            acs_url?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -4573,6 +4575,8 @@ export interface components {
             default_role: string | null;
             /** Enabled */
             enabled: boolean;
+            /** Entity Id */
+            entity_id?: string | null;
             /** Has Client Secret */
             has_client_secret: boolean;
             /** Has Sp Key */
@@ -4588,10 +4592,14 @@ export interface components {
             key: string;
             /** Link By Verified Email */
             link_by_verified_email: boolean;
+            /** Metadata Url */
+            metadata_url?: string | null;
             /** Name */
             name: string;
             oidc: components["schemas"]["OidcConfig"] | null;
             protocol: components["schemas"]["SsoProtocol"];
+            /** Redirect Uri */
+            redirect_uri?: string | null;
             saml: components["schemas"]["SamlConfigOut"] | null;
             /**
              * Updated At

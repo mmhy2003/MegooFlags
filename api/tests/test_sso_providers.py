@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 import pytest
+from conftest import close_app
 from fastapi import FastAPI
 from helpers import (
     PUBLIC_URL,
@@ -12,6 +13,7 @@ from helpers import (
     audit_entries,
     bearer,
     create_project,
+    reset_database,
     seed_service_token,
     seed_user,
 )
@@ -19,9 +21,11 @@ from pydantic import AnyHttpUrl
 from sqlalchemy import select
 from sso_fixtures import idp_metadata
 
+from megooflags_api.main import create_app
 from megooflags_api.models import Role, RoleBinding, SsoGroupMapping, SsoProvider, Team, TeamMember
 from megooflags_api.models.enums import ScopeKind, SubjectKind
 from megooflags_api.services.sso_providers import METADATA_LIMIT
+from megooflags_api.settings import Settings
 
 SECRET = "oidc-client-secret-value"
 SP_KEY = "-----BEGIN PRIVATE KEY-----\nsp-private-key-material\n-----END PRIVATE KEY-----"
@@ -83,6 +87,23 @@ SP_ONLY_METADATA = (
     ' Location="https://sp.example.test/acs" index="0"/>'
     "</md:SPSSODescriptor></md:EntityDescriptor>"
 )
+
+
+@pytest.fixture
+async def public_api(migrated: None) -> AsyncIterator[httpx.AsyncClient]:
+    """An org admin client of an app with MEGOOFLAGS_PUBLIC_URL set."""
+    app = create_app(Settings(public_url="https://flags.example.org/"))
+    await reset_database(app)
+    transport = httpx.ASGITransport(app=app)
+    headers = bearer(await seed_service_token(app))
+    try:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test", headers=headers
+        ) as client:
+            yield client
+    finally:
+        await app.state.ruleset_cache.aclose()
+        await close_app(app)
 
 
 @pytest.fixture
@@ -638,3 +659,47 @@ async def test_viewer_cannot_manage_providers(
 
 async def test_anonymous_cannot_manage_providers(anon: httpx.AsyncClient) -> None:
     assert_error(await anon.get("/api/sso/providers"), 401, "unauthorized")
+
+
+SETUP_URLS = ("redirect_uri", "acs_url", "entity_id", "metadata_url")
+
+
+async def provider_views(api: httpx.AsyncClient, body: dict[str, Any]) -> list[dict[str, Any]]:
+    """The provider as create, GET one, list and PATCH return it."""
+    key = body["key"]
+    created = await create_provider(api, body)
+    read = (await api.get(f"/api/sso/providers/{key}")).json()
+    [listed] = [p for p in (await api.get("/api/sso/providers")).json()["items"] if p["key"] == key]
+    r = await api.patch(f"/api/sso/providers/{key}", json={"name": "Renamed"})
+    assert r.status_code == 200, r.text
+    return [created, read, listed, r.json()]
+
+
+async def test_oidc_provider_shows_its_redirect_uri(public_api: httpx.AsyncClient) -> None:
+    for view in await provider_views(public_api, OIDC):
+        assert view["redirect_uri"] == "https://flags.example.org/api/auth/sso/keycloak/callback"
+        assert view["acs_url"] is None
+        assert view["entity_id"] is None
+        assert view["metadata_url"] is None
+
+
+async def test_saml_provider_shows_acs_entity_and_metadata_urls(
+    public_api: httpx.AsyncClient,
+) -> None:
+    base = "https://flags.example.org/api/auth/sso"
+    for view in await provider_views(public_api, SAML):
+        assert view["acs_url"] == f"{base}/kc-saml/saml/acs"
+        assert view["metadata_url"] == f"{base}/kc-saml/saml/metadata"
+        assert view["entity_id"] == view["metadata_url"]
+        assert view["redirect_uri"] is None
+
+    named = SAML | {"key": "named", "saml": SAML["saml"] | {"sp_entity_id": "urn:megooflags"}}
+    for view in await provider_views(public_api, named):
+        assert view["entity_id"] == "urn:megooflags"
+        assert view["metadata_url"] == f"{base}/named/saml/metadata"
+
+
+async def test_setup_urls_are_null_without_a_public_url(api: httpx.AsyncClient) -> None:
+    for body in (OIDC, SAML):
+        for view in await provider_views(api, body):
+            assert {name: view[name] for name in SETUP_URLS} == dict.fromkeys(SETUP_URLS)

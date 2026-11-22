@@ -85,6 +85,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - Change requests returned by the API say whether you may approve (`can_approve`) or cancel (`can_cancel`) them.
 - `GET /api/tokens?project=<key>` lists the service tokens that can act in a project. The list is now newest first.
 - `GET /api/permissions` lists every permission with the level (organization, project, environment) where it works.
+- SSO providers returned by the API include the redirect URI (OIDC) or the ACS URL, entity ID and metadata URL (SAML) to enter at the identity provider.
 
 ## [0.1.0]
 
