@@ -391,7 +391,7 @@
       },
       "ChangeRequestOut": {
         "additionalProperties": false,
-        "description": "`current` (the live config) and `proposed` are set for config change requests only.",
+        "description": "`current` (the live config) and `proposed` are set for config change requests only.\n\n`can_approve` is true when the request is open, the caller holds `change.approve` in its\nenvironment, is not its author and has not reviewed it yet; `can_cancel` when it is open\nand the caller is its author or holds `project.manage`.",
         "properties": {
           "approvals": {
             "title": "Approvals",
@@ -408,6 +408,14 @@
           "base_version": {
             "title": "Base Version",
             "type": "integer"
+          },
+          "can_approve": {
+            "title": "Can Approve",
+            "type": "boolean"
+          },
+          "can_cancel": {
+            "title": "Can Cancel",
+            "type": "boolean"
           },
           "closed_at": {
             "anyOf": [
@@ -525,7 +533,9 @@
           "reviews",
           "comments",
           "current",
-          "proposed"
+          "proposed",
+          "can_approve",
+          "can_cancel"
         ],
         "title": "ChangeRequestOut",
         "type": "object"

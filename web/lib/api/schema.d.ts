@@ -2443,6 +2443,10 @@ export interface components {
         /**
          * ChangeRequestOut
          * @description `current` (the live config) and `proposed` are set for config change requests only.
+         *
+         *     `can_approve` is true when the request is open, the caller holds `change.approve` in its
+         *     environment, is not its author and has not reviewed it yet; `can_cancel` when it is open
+         *     and the caller is its author or holds `project.manage`.
          */
         ChangeRequestOut: {
             /** Approvals */
@@ -2453,6 +2457,10 @@ export interface components {
             author: string;
             /** Base Version */
             base_version: number;
+            /** Can Approve */
+            can_approve: boolean;
+            /** Can Cancel */
+            can_cancel: boolean;
             /** Closed At */
             closed_at: string | null;
             /** Comments */

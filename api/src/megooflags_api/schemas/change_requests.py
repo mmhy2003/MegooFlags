@@ -68,7 +68,12 @@ class ChangeRequestSummary(ApiModel):
 
 
 class ChangeRequestOut(ChangeRequestSummary):
-    """`current` (the live config) and `proposed` are set for config change requests only."""
+    """`current` (the live config) and `proposed` are set for config change requests only.
+
+    `can_approve` is true when the request is open, the caller holds `change.approve` in its
+    environment, is not its author and has not reviewed it yet; `can_cancel` when it is open
+    and the caller is its author or holds `project.manage`.
+    """
 
     description: str
     payload: dict[str, JsonValue]
@@ -78,3 +83,5 @@ class ChangeRequestOut(ChangeRequestSummary):
     comments: list[CommentOut]
     current: FlagConfigOut | None
     proposed: FlagConfigIn | None
+    can_approve: bool
+    can_cancel: bool

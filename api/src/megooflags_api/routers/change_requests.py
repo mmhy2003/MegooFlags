@@ -9,7 +9,7 @@ from megooflags_api.auth.rbac import Permission
 from megooflags_api.auth.require import Authz, require
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES, not_found
-from megooflags_api.models import Environment, Project
+from megooflags_api.models import ChangeRequest, Environment, Project
 from megooflags_api.models.enums import ChangeRequestStatus
 from megooflags_api.schemas.change_requests import (
     ApproveIn,
@@ -87,7 +87,7 @@ async def create_change_request(
         body,
         datetime.now(UTC),
     )
-    out = await change_requests.out(session, cr)
+    out = await change_requests.out(session, cr, _viewer(authz, cr))
     await session.commit()
     return out
 
@@ -97,7 +97,7 @@ async def read_change_request(
     session: SessionDep, authz: ReadProject, project: str, id: uuid.UUID
 ) -> ChangeRequestOut:
     cr = await change_requests.get(session, _project(authz), id, _visible(authz))
-    return await change_requests.out(session, cr)
+    return await change_requests.out(session, cr, _viewer(authz, cr))
 
 
 @router.post(f"{CHANGE_REQUESTS}/{{id}}/comments", status_code=201)
@@ -126,7 +126,7 @@ async def cancel_change_request(
     if authz.principal.actor_id != cr.author_id:
         authz.check(Permission.PROJECT_MANAGE, project_row.id)
     await change_requests.cancel(session, audit, cr, datetime.now(UTC))
-    out = await change_requests.out(session, cr)
+    out = await change_requests.out(session, cr, _viewer(authz, cr))
     await session.commit()
     return out
 
@@ -156,7 +156,7 @@ async def approve_change_request(
         None if body is None else body.comment,
         datetime.now(UTC),
     )
-    out = await change_requests.out(session, cr)
+    out = await change_requests.out(session, cr, _viewer(authz, cr))
     await session.commit()
     if applied:
         await bus.publish(project_row.id)
@@ -180,7 +180,7 @@ async def reject_change_request(
     await change_requests.reject(
         session, audit, cr.id, Actor.of(authz.principal), body.comment, datetime.now(UTC)
     )
-    out = await change_requests.out(session, cr)
+    out = await change_requests.out(session, cr, _viewer(authz, cr))
     await session.commit()
     return out
 
@@ -188,6 +188,16 @@ async def reject_change_request(
 def _project(authz: Authz) -> Project:
     assert authz.project is not None  # every route here has {project}
     return authz.project
+
+
+def _viewer(authz: Authz, cr: ChangeRequest) -> change_requests.Viewer:
+    """What the caller may do with `cr`, for `can_approve` and `can_cancel`."""
+    project_id = _project(authz).id
+    return change_requests.Viewer(
+        actor_id=authz.principal.actor_id,
+        may_approve=authz.authorizer.can(Permission.CHANGE_APPROVE, project_id, cr.environment_id),
+        may_manage=authz.authorizer.can(Permission.PROJECT_MANAGE, project_id),
+    )
 
 
 def _visible(authz: Authz) -> set[uuid.UUID] | None:
