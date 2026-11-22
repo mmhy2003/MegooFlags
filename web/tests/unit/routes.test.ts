@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  changeRequestPath,
   flagPath,
   homeTarget,
   newFlagPath,
@@ -31,6 +32,14 @@ describe("newFlagPath", () => {
   });
 });
 
+describe("changeRequestPath", () => {
+  it("points at a change request inside the project and encodes both parts", () => {
+    expect(changeRequestPath("my shop", "abc")).toBe(
+      "/projects/my%20shop/change-requests/abc",
+    );
+  });
+});
+
 describe("projectFromPath", () => {
   it("reads the project key from the URL", () => {
     expect(projectFromPath("/projects/demo")).toBe("demo");
@@ -53,6 +62,9 @@ describe("switchProjectPath", () => {
 
   it("drops deeper paths that belong to the old project", () => {
     expect(switchProjectPath("/projects/a/flags/x", "b")).toBe(
+      "/projects/b/flags",
+    );
+    expect(switchProjectPath("/projects/a/change-requests/abc", "b")).toBe(
       "/projects/b/flags",
     );
   });

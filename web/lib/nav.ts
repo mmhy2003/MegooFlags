@@ -34,7 +34,9 @@ const PROJECT_ITEMS: {
     key: "keys",
     label: "API & SDK keys",
     visible: (p) =>
-      Object.values(p.environments).some((env) => env.includes("sdk_key.read")),
+      Object.values(p.environments).some((env) =>
+        env.includes("sdk_key.read"),
+      ) || p.org.includes("token.manage"),
   },
   {
     key: "integrations",
@@ -64,7 +66,12 @@ export function navItems(
   if (role === "control-plane" && perms?.org.includes("org.manage")) {
     items.push({ key: "nodes", label: "Nodes", href: "/nodes" });
   }
-  if (perms?.org.some((p) => SETTINGS_PERMISSIONS.includes(p))) {
+  // Org-wide audit readers get Settings for its Audit log tab.
+  if (
+    perms?.org.some(
+      (p) => SETTINGS_PERMISSIONS.includes(p) || p === "audit.read",
+    )
+  ) {
     items.push({ key: "settings", label: "Settings", href: "/settings" });
   }
   return items;

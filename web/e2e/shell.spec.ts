@@ -57,11 +57,11 @@ test.describe("viewer", () => {
     viewport: { width: 1440, height: 900 },
   });
 
-  test("a viewer doesn't see Settings or Integrations", async ({ page }) => {
+  test("a viewer sees Settings but not Integrations", async ({ page }) => {
     await page.goto("/projects/demo/flags");
     const nav = page.getByRole("navigation", { name: "Main" });
     await expect(nav.getByRole("link", { name: "Audit log" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Settings" })).toHaveCount(0);
+    await expect(nav.getByRole("link", { name: "Settings" })).toHaveCount(1);
     await expect(nav.getByRole("link", { name: "Integrations" })).toHaveCount(
       0,
     );

@@ -55,7 +55,7 @@ describe("navItems", () => {
     ]);
   });
 
-  it("shows audit and keys to a viewer but not integrations or settings", () => {
+  it("shows audit, keys and settings to an org viewer but not integrations", () => {
     const viewer: MePermissions = {
       org: ["audit.read", "project.read", "evaluate", "sdk_key.read"],
       project: ["project.read", "audit.read"],
@@ -64,8 +64,29 @@ describe("navItems", () => {
     const result = keys("demo", viewer);
     expect(result).toContain("audit");
     expect(result).toContain("keys");
+    expect(result).toContain("settings");
     expect(result).not.toContain("integrations");
-    expect(result).not.toContain("settings");
+  });
+
+  it("shows settings for org audit.read and hides it without org permissions", () => {
+    const reader: MePermissions = {
+      org: ["audit.read"],
+      project: null,
+      environments: {},
+    };
+    expect(keys(null, reader)).toEqual(["settings"]);
+    expect(keys(null, { org: [], project: null, environments: {} })).toEqual(
+      [],
+    );
+  });
+
+  it("shows keys to a token manager without sdk_key.read", () => {
+    const perms: MePermissions = {
+      org: ["token.manage"],
+      project: ["project.read"],
+      environments: { production: [] },
+    };
+    expect(keys("demo", perms)).toContain("keys");
   });
 
   it("hides audit without audit.read and shows integrations with project.manage", () => {
