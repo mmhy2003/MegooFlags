@@ -49,7 +49,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - `GET /api/projects/{project}/flags` accepts `env` and `enabled` to list only flags that are on or off in an environment.
 - `GET /api/audit` and `/api/audit/export` accept `resource_key` to show the history of one flag or other resource.
 - `GET /api/projects/{project}/flags/{flag}/environments/{env}/evaluations?range=24h|7d|30d` returns a flag's evaluation counts per variation, hourly or daily.
-- Web UI app shell: a sidebar with a project switcher and a menu that follows your permissions (it collapses to icons and becomes a drawer on phones), and a header with ⌘K/Ctrl+K search, a light/dark/system theme switcher and an account menu. It uses the cyberpunk neon palette, works from 280 px wide, and warns when MegooFlags is opened over plain HTTP. Segments, Environments, Change requests, Audit log, API & SDK keys, Integrations and Settings are placeholder pages for now.
+- Web UI app shell: a sidebar with a project switcher and a menu that follows your permissions (it collapses to icons and becomes a drawer on phones), and a header with ⌘K/Ctrl+K search, a light/dark/system theme switcher and an account menu. It uses the cyberpunk neon palette, works from 280 px wide, and warns when MegooFlags is opened over plain HTTP. Segments and Environments are placeholder pages for now.
 - Web UI flags pages: a searchable, filterable flag list with bulk on/off, tag and archive actions; a New flag form; and a flag page with an environment strip (toggle, kill switch with confirmation), a targeting editor (prerequisites, individual targets, rules with segments, percentage rollouts) that saves after a reviewed diff or opens a change request where approval is needed, copy to other environments, Test this flag, change history with diffs, an evaluation chart, and settings for details, variations, archive, restore and delete. It works on phones from 280 px.
 - Your theme and sidebar choices are saved on your account (`PATCH /api/account/preferences`) and returned by `/api/auth/me`, so they follow you to other devices.
 - `GET /api/auth/me/permissions?project=<key>` lists what you may do org-wide, in a project and in each of its environments.
@@ -88,6 +88,11 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - `GET /api/permissions` lists every permission with the level (organization, project, environment) where it works.
 - SSO providers returned by the API include the redirect URI (OIDC) or the ACS URL, entity ID and metadata URL (SAML) to enter at the identity provider.
 - Users returned by the API show when their unused invitation link expires (`invitation_expires_at`).
+- Change requests page: review a change with its diff, comment, approve, reject or cancel, also on a phone.
+- Audit log page with filters, before/after details and CSV or NDJSON export, plus an organization audit log in Settings.
+- API & SDK keys page: create, rotate (with an overlap) and revoke SDK keys, and manage the service tokens that can act in the project.
+- API tokens page for personal tokens limited to a project or environment.
+- Settings: members and invitations, teams, custom roles, service tokens, SSO providers with set-up URLs and group mappings, and the require two-factor setting.
 
 ## [0.1.0]
 

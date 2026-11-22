@@ -47,10 +47,10 @@ the `web` job.
 
 | ID | Requirement | Status | Evidence |
 |---|---|---|---|
-| G-1 | Users, teams and roles with RBAC at org, project and environment level; custom roles | done (API) | `api/tests/test_rbac.py`, `api/tests/test_roles_bindings.py`, `api/tests/test_teams.py`, `api/tests/test_route_permissions.py`; the web Settings page (members, teams, roles) is a placeholder |
-| G-2 | Audit log of every change with a before/after diff, exportable | done (API) | `api/tests/test_audit_coverage.py`, `api/tests/test_audit_query.py` (NDJSON and CSV export); the web Audit log page is a placeholder |
-| G-3 | SSO with OIDC and SAML 2.0, just-in-time provisioning and group mapping | done (API) | `api/tests/test_sso_oidc.py`, `api/tests/test_sso_saml.py`, `api/tests/test_sso_keycloak.py`, `deploy/keycloak`; SSO is configured through the API only |
-| G-5 | API tokens scoped by project, environment and permission; separate server and client SDK keys | done (API) | `api/tests/test_service_tokens.py`, `api/tests/test_personal_tokens.py`, `api/tests/test_sdk_keys.py`, `api/tests/test_sdk_auth.py`; the web API & SDK keys page is a placeholder |
+| G-1 | Users, teams and roles with RBAC at org, project and environment level; custom roles | done | `api/tests/test_rbac.py`, `api/tests/test_roles_bindings.py`, `api/tests/test_teams.py`, `api/tests/test_route_permissions.py`, `web/e2e/settings.spec.ts` (members, teams, roles) |
+| G-2 | Audit log of every change with a before/after diff, exportable | done | `api/tests/test_audit_coverage.py`, `api/tests/test_audit_query.py` (NDJSON and CSV export), `web/e2e/audit.spec.ts` |
+| G-3 | SSO with OIDC and SAML 2.0, just-in-time provisioning and group mapping | done | `api/tests/test_sso_oidc.py`, `api/tests/test_sso_saml.py`, `api/tests/test_sso_keycloak.py`, `deploy/keycloak`, `web/e2e/settings.spec.ts` (SSO tab) |
+| G-5 | API tokens scoped by project, environment and permission; separate server and client SDK keys | done | `api/tests/test_service_tokens.py`, `api/tests/test_personal_tokens.py`, `api/tests/test_sdk_keys.py`, `api/tests/test_sdk_auth.py`, `web/e2e/keys.spec.ts`, `web/e2e/account-tokens.spec.ts` |
 
 ### Developer experience (PRD 6.5)
 
@@ -71,8 +71,8 @@ the `web` job.
 | UI-10 | Header with search and ⌘K/Ctrl+K, theme switcher and account menu; fixed on scroll | done | `web/e2e/palette.spec.ts`, `web/e2e/preferences.spec.ts` |
 | UI-12 | Responsive from 280 px with no horizontal page scrolling | done | `web/e2e/matrix.spec.ts` (280, 344, 390, 880, 1024 and 1440 px) |
 | UI-13 | Folding, unfolding or rotating keeps input, scroll and open dialogs | done | `web/e2e/kit.spec.ts`, `web/e2e/flags-mobile.spec.ts`, `web/e2e/flag-create.spec.ts` |
-| UI-14 | Tables (flags, segments, audit log, nodes) become cards on narrow screens | partial | flags and nodes: `web/e2e/flags-mobile.spec.ts`, `web/e2e/nodes.spec.ts`; the Segments and Audit log pages are placeholders (`web/app/(app)/projects/[project]/segments/page.tsx`, `web/app/(app)/projects/[project]/audit/page.tsx`) |
-| UI-15 | On 344 px: toggle a flag, kill switch, rollout, approve or reject a change request, search | partial | toggle, kill switch, rollout and search: `web/e2e/flags-mobile.spec.ts`; there is no screen to approve or reject a change request (`web/app/(app)/projects/[project]/change-requests/page.tsx` is a placeholder) |
+| UI-14 | Tables (flags, segments, audit log, nodes) become cards on narrow screens | done | flags, audit log and nodes: `web/e2e/flags-mobile.spec.ts`, `web/e2e/audit.spec.ts` ("cards under 768 px"), `web/e2e/nodes.spec.ts`; the Segments page follows in MF-458 |
+| UI-15 | On 344 px: toggle a flag, kill switch, rollout, approve or reject a change request, search | done | toggle, kill switch, rollout and search: `web/e2e/flags-mobile.spec.ts`; approve and reject a change request: `web/e2e/change-requests.spec.ts` ("approve and reject at 344 px") |
 | UI-16 | 44 × 44 px touch targets, no hover-only controls, 16 px inputs | done | `web/components/ui/input.tsx`, `web/e2e/kit.spec.ts`, `web/e2e/flags-mobile.spec.ts` |
 | UI-19 | Playwright visual and accessibility checks at six widths in both themes | done | `web/e2e/matrix.spec.ts`, `web/e2e/matrix.spec.ts-snapshots` |
 
@@ -94,7 +94,7 @@ the `web` job.
 | Item | Status | Evidence |
 |---|---|---|
 | All P0 items | partial | the partial rows above |
-| Change requests | partial | API: `api/tests/test_change_requests.py`, `api/tests/test_approvals_gate.py`; the web flag page opens requests (`web/e2e/flag-detail.spec.ts`), but the Change requests page that reviews them is a placeholder |
+| Change requests | done | API: `api/tests/test_change_requests.py`, `api/tests/test_approvals_gate.py`; the web flag page opens requests (`web/e2e/flag-detail.spec.ts`) and the Change requests page reviews them (`web/e2e/change-requests.spec.ts`) |
 | Scheduled changes | done (API) | `api/src/megooflags_api/routers/schedules.py`, `api/tests/test_schedules.py`; the web app has no form to schedule a change |
 | CLI | done | `cli/README.md`, `cli/e2e/e2e_test.go` (`cli` job) |
 | Terraform provider | done | `terraform/main.go`, `terraform/examples` (`terraform` job) |
@@ -257,10 +257,8 @@ both SSO and RBAC in full for free. Flagsmith and GrowthBook narrowed the gap on
 3. **The single-node footprint** fails: p99 674.6 ms at 50 rps, and 230 of 12 000 updates missed.
 4. **100k streams per cluster ran reduced** (17 721 streams on 12 workers on this host). A full-size run on
    a larger host is still needed.
-5. **Placeholder web pages.** Segments, Environments, Change requests, Audit log, API & SDK keys and
-   Settings are placeholders (`web/components/patterns/placeholder-page.tsx`). This leaves UI-14 and UI-15
-   partial (no screen to approve or reject a change request, or to list segments and the audit log as
-   cards), the change requests item of the GA row partial, and members, teams, roles, SSO and keys
-   manageable only through the API.
+5. **Placeholder web pages.** Segments and Environments are still placeholders
+   (`web/components/patterns/placeholder-page.tsx`); MF-458 replaces them. Until then segments and
+   environments are managed through the API or the CLI.
 
 No competitor matrix cell is unverified.
