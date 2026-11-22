@@ -8,6 +8,7 @@ import {
   SERVICE_EXPIRY_DEFAULT,
   expiresAt,
   expiryError,
+  expiryText,
 } from "@/lib/tokens/expiry";
 
 const now = new Date("2026-11-22T12:00:00Z");
@@ -74,5 +75,27 @@ describe("choices", () => {
       0, 3600, 86400, 604800, 2592000,
     ]);
     expect(DEFAULT_OVERLAP).toBe(86400);
+  });
+});
+
+describe("expiryText", () => {
+  const at = (ms: number) => new Date(now.getTime() + ms).toISOString();
+
+  it("says Never without an expiry", () => {
+    expect(expiryText(null, now)).toBe("Never");
+  });
+
+  it("rounds to months and years for long periods", () => {
+    expect(expiryText(at(90 * DAY - 60_000), now)).toBe("Expires in 3 months");
+    expect(expiryText(at(365 * DAY), now)).toBe("Expires in 1 year");
+  });
+
+  it("uses days and hours when it is closer", () => {
+    expect(expiryText(at(5 * DAY), now)).toBe("Expires in 5 days");
+    expect(expiryText(at(3 * 3_600_000), now)).toBe("Expires in 3 hours");
+  });
+
+  it("says how long ago it expired", () => {
+    expect(expiryText(at(-2 * DAY), now)).toBe("Expired 2 days ago");
   });
 });

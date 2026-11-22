@@ -28,6 +28,8 @@ export function ScopePicker({
   levels = ALL_LEVELS,
   lockedProject,
   idPrefix,
+  label = "Level",
+  levelText = LEVEL_TEXT,
 }: {
   value: ScopeValue;
   onChange: (value: ScopeValue) => void;
@@ -36,6 +38,10 @@ export function ScopePicker({
   lockedProject?: string;
   /** Makes the field ids unique when several pickers share a page. */
   idPrefix: string;
+  /** The level select's label, such as "Where it works". */
+  label?: string;
+  /** Each level's option text and help, when the roles' wording doesn't fit. */
+  levelText?: Record<Level, { label: string; where: string }>;
 }) {
   const projects = useProjectKeys();
   const project = lockedProject ?? value.project;
@@ -47,7 +53,7 @@ export function ScopePicker({
   return (
     <div className="grid gap-3 md:grid-cols-3">
       <div className="flex min-w-0 flex-col gap-2">
-        <Label htmlFor={id("level")}>Level</Label>
+        <Label htmlFor={id("level")}>{label}</Label>
         <NativeSelect
           id={id("level")}
           value={value.scope}
@@ -63,12 +69,12 @@ export function ScopePicker({
         >
           {levels.map((level) => (
             <option key={level} value={level}>
-              {LEVEL_TEXT[level].label}
+              {levelText[level].label}
             </option>
           ))}
         </NativeSelect>
         <p id={id("level-help")} className="text-sm text-muted-foreground">
-          {LEVEL_TEXT[value.scope].where}
+          {levelText[value.scope].where}
         </p>
       </div>
       {value.scope !== "org" && (

@@ -46,6 +46,30 @@ export function expiryError(v: ExpiryValue, now: Date): string | undefined {
   return undefined;
 }
 
+const HOUR = 3_600_000;
+const relative = new Intl.RelativeTimeFormat("en", { numeric: "always" });
+
+/** "in 3 months": rounded to the largest unit of years, months, days or hours that fits. */
+function distanceText(ms: number): string {
+  const sign = Math.sign(ms) || 1;
+  const abs = Math.abs(ms);
+  if (abs >= 365 * DAY)
+    return relative.format(sign * Math.round(abs / (365 * DAY)), "year");
+  if (abs >= 60 * DAY)
+    return relative.format(sign * Math.round(abs / (30 * DAY)), "month");
+  if (abs >= DAY) return relative.format(sign * Math.round(abs / DAY), "day");
+  return relative.format(sign * Math.max(1, Math.round(abs / HOUR)), "hour");
+}
+
+/** "Expires in 3 months", "Expired 2 days ago" or "Never". */
+export function expiryText(expires: string | null, now: Date): string {
+  if (expires === null) return "Never";
+  const left = new Date(expires).getTime() - now.getTime();
+  return left > 0
+    ? `Expires ${distanceText(left)}`
+    : `Expired ${distanceText(left)}`;
+}
+
 /** How long the old SDK key keeps working after a rotation. */
 export const OVERLAP_CHOICES: { seconds: number; label: string }[] = [
   { seconds: 0, label: "Revoke the old one now" },
