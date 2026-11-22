@@ -5,6 +5,8 @@ export type ApiFailure = {
   message: string;
   /** Where in the request the problem is, such as "rules[0].clauses[1].values[0]". */
   path: string | null;
+  /** The body's `details`, such as `{ permissions: [...] }`; null when it has none. */
+  details?: unknown;
 };
 
 type Obj = Record<string, unknown>;
@@ -31,9 +33,15 @@ export function toFailure(status: number, body: unknown): ApiFailure {
     typeof body.code !== "string" ||
     typeof body.message !== "string"
   ) {
-    return { status, code: "unknown", message: `HTTP ${status}`, path: null };
+    return {
+      status,
+      code: "unknown",
+      message: `HTTP ${status}`,
+      path: null,
+      details: null,
+    };
   }
-  const { details } = body;
+  const details = body.details ?? null;
   if (Array.isArray(details) && isObj(details[0])) {
     const first = details[0];
     return {
@@ -41,16 +49,30 @@ export function toFailure(status: number, body: unknown): ApiFailure {
       code: body.code,
       message: typeof first.msg === "string" ? first.msg : body.message,
       path: locPath(first.loc),
+      details,
     };
   }
   const path =
     isObj(details) && typeof details.path === "string" ? details.path : null;
-  return { status, code: body.code, message: body.message, path };
+  return { status, code: body.code, message: body.message, path, details };
 }
 
 /** A short sentence for a failure. */
 export function failureText(f: ApiFailure): string {
   if (f.code === "approval_required") return "Needs approval";
+  if (f.code === "last_admin")
+    return "This would leave the organization without an admin.";
+  if (f.code === "key_inactive") return "This key is no longer active";
+  if (f.code === "self_approval")
+    return "You can't review your own change request";
+  if (f.code === "public_url_required")
+    return "Set MEGOOFLAGS_PUBLIC_URL first";
+  if (f.code === "exceeds_owner_rights") {
+    const held = isObj(f.details) ? f.details.permissions : null;
+    if (Array.isArray(held) && held.length > 0)
+      return `${f.message}: ${held.join(", ")}`;
+    return f.message;
+  }
   if (f.status === 403) return "You don't have permission";
   if (f.code === "version_conflict") return "Someone saved a newer version";
   if (f.status === 404) return "Not found";
