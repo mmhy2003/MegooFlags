@@ -7,6 +7,7 @@ import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
 import { MembersTab } from "@/components/settings/members-tab";
 import { RolesTab } from "@/components/settings/roles-tab";
 import { SecurityTab } from "@/components/settings/security-tab";
+import { SsoTab } from "@/components/settings/sso-tab";
 import { TeamsTab } from "@/components/settings/teams-tab";
 import { ServiceTokenList } from "@/components/tokens/service-token-list";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -31,12 +32,12 @@ function Panel({ tab, org }: { tab: SettingsTab; org: readonly Permission[] }) {
       return <RolesTab canManage={org.includes("role.manage")} />;
     case "tokens":
       return <ServiceTokenList />;
+    case "sso":
+      return <SsoTab />;
     case "security":
       return <SecurityTab />;
     case "audit":
       return <AuditLog scope={{ kind: "org" }} />;
-    default:
-      return null;
   }
 }
 

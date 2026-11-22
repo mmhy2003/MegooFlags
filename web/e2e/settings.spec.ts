@@ -7,6 +7,7 @@ const SETTINGS = "/settings";
 const MEMBERS = `${SETTINGS}?tab=members`;
 const TEAMS = `${SETTINGS}?tab=teams`;
 const ROLES = `${SETTINGS}?tab=roles`;
+const SSO = `${SETTINGS}?tab=sso`;
 // Every user this run invites has an email starting with it, so afterAll disables exactly those.
 const RUN = `e2e-${Date.now().toString(36)}`;
 
@@ -99,6 +100,19 @@ function roleRow(page: Page, key: string): Locator {
     .filter({ has: page.getByText(key, { exact: true }) });
 }
 
+function providerRow(page: Page, key: string): Locator {
+  return page
+    .getByRole("table", { name: "SSO providers" })
+    .getByRole("row")
+    .filter({ has: page.getByText(key, { exact: true }) });
+}
+
+/** Picks an item of a provider's actions menu. */
+async function providerAction(page: Page, row: Locator, item: string) {
+  await row.getByRole("button", { name: /^Actions for / }).click();
+  await page.getByRole("menuitem", { name: item }).click();
+}
+
 /** Closes a dialog; the page behind it is hidden from the accessibility tree while it is open. */
 async function closeDialog(dialog: Locator) {
   await dialog.getByRole("button", { name: "Close" }).click();
@@ -144,6 +158,19 @@ test.afterAll(async () => {
       await ok(
         await api.delete(`/api/roles/${role.key}`),
         `delete ${role.key}`,
+      );
+    }
+    const providers = await ok(
+      await api.get("/api/sso/providers", { params: { limit: 500 } }),
+      "list the SSO providers",
+    );
+    for (const provider of (
+      (await providers.json()) as { items: { key: string }[] }
+    ).items) {
+      if (!provider.key.startsWith(RUN)) continue;
+      await ok(
+        await api.delete(`/api/sso/providers/${provider.key}`),
+        `delete ${provider.key}`,
       );
     }
   } finally {
@@ -712,6 +739,112 @@ test.describe("roles", () => {
     await expect(dialog.getByRole("checkbox")).toHaveCount(0);
     for (const name of ["Save", "Delete role"])
       await expect(dialog.getByRole("button", { name })).toHaveCount(0);
+  });
+});
+
+test.describe("sso", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("add, edit, disable and delete an OIDC provider", async ({ page }) => {
+    const key = `${RUN}-oidc`;
+    const name = `${RUN} Okta`;
+    const renamed = `${RUN} Okta SSO`;
+    await page.goto(SSO);
+    await page.getByRole("button", { name: "Add provider" }).click();
+    const create = page.getByRole("dialog", { name: "Add SSO provider" });
+    await create.getByRole("radio", { name: "OIDC" }).check();
+    await create.getByLabel("Name", { exact: true }).fill(name);
+    await create.getByLabel("Key", { exact: true }).fill(key);
+    await create.getByLabel("Issuer").fill("https://idp.example.test");
+    await create.getByLabel("Client ID").fill("megooflags");
+    await create.getByLabel("Client secret").fill("e2e-client-secret");
+    await expect(
+      create.getByRole("switch", { name: "Create users on first sign-in" }),
+    ).toBeChecked();
+    await create.getByLabel("Default role").selectOption("viewer");
+    await create.getByRole("button", { name: "Add provider" }).click();
+    await expect(create).toHaveCount(0);
+
+    const row = providerRow(page, key);
+    await expect(row).toContainText(name);
+    await expect(row).toContainText("OIDC");
+    await expect(row).toContainText("Enabled");
+    await expect(row).toContainText("New users join as viewer");
+
+    await providerAction(page, row, "Edit");
+    const edit = page.getByRole("dialog", { name: `Edit ${name}` });
+    const secret = edit.getByLabel("Client secret");
+    await expect(secret).toHaveValue("");
+    await expect(secret).toHaveAttribute(
+      "placeholder",
+      "Saved — leave empty to keep it",
+    );
+    await edit.getByLabel("Name", { exact: true }).fill(renamed);
+    await edit.getByRole("button", { name: "Save" }).click();
+    await expect(edit).toHaveCount(0);
+    await expect(row).toContainText(renamed);
+    const api = await adminApi();
+    try {
+      const read = await ok(
+        await api.get(`/api/sso/providers/${key}`),
+        "read the provider",
+      );
+      expect(await read.json()).toMatchObject({
+        name: renamed,
+        has_client_secret: true,
+        oidc: { issuer: "https://idp.example.test", client_id: "megooflags" },
+      });
+    } finally {
+      await api.dispose();
+    }
+
+    await providerAction(page, row, "Disable");
+    await expect(row).toContainText("Disabled");
+
+    await providerAction(page, row, "Delete");
+    await page
+      .getByRole("alertdialog", { name: `Delete ${renamed}?` })
+      .getByRole("button", { name: "Delete provider" })
+      .click();
+    await expect(providerRow(page, key)).toHaveCount(0);
+  });
+
+  test("SAML fields", async ({ page }) => {
+    await page.goto(SSO);
+    await page.getByRole("button", { name: "Add provider" }).click();
+    const dialog = page.getByRole("dialog", { name: "Add SSO provider" });
+    await dialog.getByRole("radio", { name: "SAML" }).check();
+    await expect(dialog.getByLabel("Issuer")).toHaveCount(0);
+    await expect(dialog.getByLabel("Client secret")).toHaveCount(0);
+
+    await expect(
+      dialog.getByRole("radio", { name: "From a URL" }),
+    ).toBeChecked();
+    await dialog.getByRole("radio", { name: "Paste the XML" }).check();
+    await expect(dialog.getByLabel("Metadata XML")).toBeVisible();
+    await expect(dialog.getByLabel("Metadata URL")).toHaveCount(0);
+    await dialog.getByRole("radio", { name: "From a URL" }).check();
+    for (const label of [
+      "SP entity ID",
+      "Email attribute",
+      "Name attribute",
+      "Groups attribute",
+      "SP private key",
+      "SP certificate",
+    ])
+      await expect(dialog.getByLabel(label)).toBeVisible();
+
+    await dialog.getByLabel("Name", { exact: true }).fill(`${RUN} SAML`);
+    await dialog.getByLabel("Key", { exact: true }).fill(`${RUN}-saml`);
+    const url = dialog.getByLabel("Metadata URL");
+    await url.fill("https://127.0.0.1:9/metadata");
+    await dialog.getByRole("button", { name: "Add provider" }).click();
+    await expect(url).toHaveAttribute("aria-invalid", "true");
+    await expect(
+      dialog.getByText(
+        "cannot fetch SAML IdP metadata from https://127.0.0.1:9/metadata",
+      ),
+    ).toBeVisible();
   });
 });
 
