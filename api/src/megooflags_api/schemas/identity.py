@@ -101,6 +101,14 @@ class RoleOut(ApiModel):
     permissions: list[Permission]
 
 
+class PermissionOut(ApiModel):
+    """A permission and the most specific scope it can be granted at. Granted below that scope it
+    does nothing."""
+
+    permission: Permission
+    level: ScopeKind
+
+
 def check_scope_fields(scope: ScopeKind, project: str | None, env: str | None) -> None:
     """ValueError unless `project` and `env` are given exactly when `scope` needs them."""
     needs_project = scope != ScopeKind.ORG

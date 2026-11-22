@@ -3853,6 +3853,24 @@
         "title": "Permission",
         "type": "string"
       },
+      "PermissionOut": {
+        "additionalProperties": false,
+        "description": "A permission and the most specific scope it can be granted at. Granted below that scope it\ndoes nothing.",
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/ScopeKind"
+          },
+          "permission": {
+            "$ref": "#/components/schemas/Permission"
+          }
+        },
+        "required": [
+          "permission",
+          "level"
+        ],
+        "title": "PermissionOut",
+        "type": "object"
+      },
       "PersonalTokenCreate": {
         "additionalProperties": false,
         "description": "A token acting as you, limited to `permissions` within `project` (and `env`), and never\nmore than you hold at the time of each request.",
@@ -11146,6 +11164,82 @@
         "summary": "Rotate Node Token",
         "tags": [
           "nodes"
+        ]
+      }
+    },
+    "/api/permissions": {
+      "get": {
+        "description": "Every permission with the level where it works, in catalogue order.",
+        "operationId": "list_permissions_api_permissions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PermissionOut"
+                  },
+                  "title": "Response List Permissions Api Permissions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Permissions",
+        "tags": [
+          "roles"
         ]
       }
     },

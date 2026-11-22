@@ -1,4 +1,5 @@
-"""Roles (`/roles`), role bindings (`/bindings`) and the org settings (`/settings`)."""
+"""Permissions (`/permissions`), roles (`/roles`), role bindings (`/bindings`) and the org
+settings (`/settings`)."""
 
 import uuid
 from typing import Annotated
@@ -6,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import or_
 
-from megooflags_api.auth.rbac import Permission, own_bindings
+from megooflags_api.auth.rbac import PERMISSION_LEVEL, Permission, own_bindings
 from megooflags_api.auth.require import Authz, authenticated, require
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES
@@ -14,7 +15,14 @@ from megooflags_api.models import RoleBinding
 from megooflags_api.models.enums import ScopeKind, SubjectKind
 from megooflags_api.schemas.auth import OrgSettingsIn, OrgSettingsOut
 from megooflags_api.schemas.common import Page
-from megooflags_api.schemas.identity import BindingIn, BindingOut, RoleIn, RoleOut, RoleUpdate
+from megooflags_api.schemas.identity import (
+    BindingIn,
+    BindingOut,
+    PermissionOut,
+    RoleIn,
+    RoleOut,
+    RoleUpdate,
+)
 from megooflags_api.services import bindings, org_settings, roles
 from megooflags_api.services.audit import AuditDep, snapshot
 from megooflags_api.services.lookup import get_project
@@ -30,6 +38,12 @@ MANAGED_BY: dict[SubjectKind, Permission] = {
     SubjectKind.TEAM: Permission.MEMBER_MANAGE,
     SubjectKind.SERVICE_TOKEN: Permission.TOKEN_MANAGE,
 }
+
+
+@router.get("/permissions", tags=["roles"])
+async def list_permissions(authz: Authenticated) -> list[PermissionOut]:
+    """Every permission with the level where it works, in catalogue order."""
+    return [PermissionOut(permission=p, level=PERMISSION_LEVEL[p]) for p in Permission]
 
 
 @router.get("/roles", tags=["roles"])

@@ -835,6 +835,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Permissions
+         * @description Every permission with the level where it works, in catalogue order.
+         */
+        get: operations["list_permissions_api_permissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -3683,6 +3703,15 @@ export interface components {
          * @enum {string}
          */
         Permission: "org.manage" | "member.manage" | "role.manage" | "token.manage" | "project.create" | "audit.read" | "project.read" | "project.manage" | "environment.manage" | "flag.create" | "flag.update" | "flag.archive" | "segment.write" | "flag.config.write" | "flag.toggle" | "change.approve" | "evaluate" | "sdk_key.read" | "sdk_key.manage";
+        /**
+         * PermissionOut
+         * @description A permission and the most specific scope it can be granted at. Granted below that scope it
+         *     does nothing.
+         */
+        PermissionOut: {
+            level: components["schemas"]["ScopeKind"];
+            permission: components["schemas"]["Permission"];
+        };
         /**
          * PersonalTokenCreate
          * @description A token acting as you, limited to `permissions` within `project` (and `env`), and never
@@ -7827,6 +7856,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NodeCreated"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_permissions_api_permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionOut"][];
                 };
             };
             /** @description Unauthorized */

@@ -14,10 +14,11 @@ from helpers import (
     seed_binding,
     seed_service_token,
     seed_user,
+    sign_in,
 )
 from sqlalchemy import update
 
-from megooflags_api.auth.rbac import Permission
+from megooflags_api.auth.rbac import PERMISSION_LEVEL, Permission
 from megooflags_api.models import Team, TeamMember, User
 from megooflags_api.models.enums import SubjectKind, UserStatus
 
@@ -166,6 +167,28 @@ async def test_viewer_cannot_write_roles(app: FastAPI, admin: httpx.AsyncClient)
 async def test_roles_need_credentials(anon: httpx.AsyncClient) -> None:
     assert_error(await anon.get("/api/roles"), 401, "unauthorized")
     assert_error(await anon.get("/api/bindings"), 401, "unauthorized")
+
+
+# Permissions
+
+
+async def test_permissions_list_the_catalogue_with_levels(
+    app: FastAPI, anon: httpx.AsyncClient
+) -> None:
+    await seed_user(app, "viewer@example.com", role="viewer")
+    assert (await sign_in(anon, "viewer@example.com")).status_code == 200
+    r = await anon.get("/api/permissions")
+    assert r.status_code == 200
+    body = r.json()
+    assert body == [{"permission": p.value, "level": PERMISSION_LEVEL[p].value} for p in Permission]
+    levels = {item["permission"]: item["level"] for item in body}
+    assert levels["org.manage"] == "org"
+    assert levels["audit.read"] == "project"
+    assert levels["change.approve"] == "environment"
+
+
+async def test_permissions_need_a_sign_in(anon: httpx.AsyncClient) -> None:
+    assert_error(await anon.get("/api/permissions"), 401, "unauthorized")
 
 
 # Bindings
