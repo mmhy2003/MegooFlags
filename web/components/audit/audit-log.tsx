@@ -248,7 +248,11 @@ export function AuditLog({ scope }: { scope: AuditScope }) {
           <AuditFilters scope={scope} value={filters} onChange={update} />
         </div>
         <div className="mb-4">
-          <ExportDialog filters={filters} scope={scope} />
+          <ExportDialog
+            filters={filters}
+            scope={scope}
+            unavailable={list.failure !== null}
+          />
         </div>
       </div>
       {body}

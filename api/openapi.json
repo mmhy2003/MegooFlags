@@ -391,7 +391,7 @@
       },
       "ChangeRequestOut": {
         "additionalProperties": false,
-        "description": "`current` (the live config) and `proposed` are set for config change requests only.\n\n`can_approve` is true when the request is open, the caller holds `change.approve` in its\nenvironment, is not its author and has not reviewed it yet; `can_cancel` when it is open\nand the caller is its author or holds `project.manage`.",
+        "description": "`current` (the live config) and `proposed` are set for config change requests only.\n\n`can_approve` is true when the request is open, the caller holds `change.approve` in its\nenvironment, is not its author and has not reviewed it yet; `can_cancel` when it is open\nand the caller is its author or holds `project.manage`. `is_author` is true when the caller\nwrote it (by id, not by `author`, which is only a label).",
         "properties": {
           "approvals": {
             "title": "Approvals",
@@ -479,6 +479,10 @@
             "title": "Id",
             "type": "string"
           },
+          "is_author": {
+            "title": "Is Author",
+            "type": "boolean"
+          },
           "kind": {
             "$ref": "#/components/schemas/ChangeRequestKind"
           },
@@ -535,7 +539,8 @@
           "current",
           "proposed",
           "can_approve",
-          "can_cancel"
+          "can_cancel",
+          "is_author"
         ],
         "title": "ChangeRequestOut",
         "type": "object"

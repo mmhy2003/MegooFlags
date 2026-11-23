@@ -22,6 +22,7 @@ import {
 } from "@/lib/access/bindings";
 import type { Level } from "@/lib/access/permissions";
 import { api } from "@/lib/api/client";
+import { allPages } from "@/lib/api/pages";
 import type { components } from "@/lib/api/schema";
 import { ApiError, must } from "@/lib/flags/errors";
 
@@ -64,17 +65,20 @@ export function AccessEditor({
   const formId = useId();
   const roles = useRoles();
   const list = useApiData(`${subjectKind}:${subjectId}`, () =>
-    must(
-      api.GET("/api/bindings", {
-        params: {
-          query: {
-            subject_kind: subjectKind,
-            subject_id: subjectId,
-            limit: 500,
+    allPages((cursor) =>
+      must(
+        api.GET("/api/bindings", {
+          params: {
+            query: {
+              subject_kind: subjectKind,
+              subject_id: subjectId,
+              limit: 500,
+              cursor,
+            },
           },
-        },
-      }),
-    ).then((page) => page.items),
+        }),
+      ),
+    ),
   );
   const emptyScope: ScopeValue = lockedProject
     ? { scope: "project", project: lockedProject, env: null }

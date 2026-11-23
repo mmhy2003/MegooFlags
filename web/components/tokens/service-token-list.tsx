@@ -127,16 +127,15 @@ function columns(
               <Shield aria-hidden />
               Access
             </Button>
-            {kind === "active" && (
-              <Button
-                variant="outline"
-                className="min-h-11"
-                onClick={() => actions.onRotate(t)}
-              >
-                <RefreshCw aria-hidden />
-                Rotate
-              </Button>
-            )}
+            {/* Any live token rotates, one with an end date too: the new one keeps that date. */}
+            <Button
+              variant="outline"
+              className="min-h-11"
+              onClick={() => actions.onRotate(t)}
+            >
+              <RefreshCw aria-hidden />
+              Rotate
+            </Button>
             <Button
               variant="outline"
               className="min-h-11"

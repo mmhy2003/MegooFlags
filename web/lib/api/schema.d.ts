@@ -2470,7 +2470,8 @@ export interface components {
          *
          *     `can_approve` is true when the request is open, the caller holds `change.approve` in its
          *     environment, is not its author and has not reviewed it yet; `can_cancel` when it is open
-         *     and the caller is its author or holds `project.manage`.
+         *     and the caller is its author or holds `project.manage`. `is_author` is true when the caller
+         *     wrote it (by id, not by `author`, which is only a label).
          */
         ChangeRequestOut: {
             /** Approvals */
@@ -2508,6 +2509,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Author */
+            is_author: boolean;
             kind: components["schemas"]["ChangeRequestKind"];
             /** Payload */
             payload: {

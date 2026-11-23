@@ -297,6 +297,31 @@ test.describe("Service tokens", () => {
     await expect(rows(section, name)).toHaveCount(0);
   });
 
+  test("a token with an expiry can be rotated", async ({ page }) => {
+    const name = `${RUN} yearly`;
+    const year = new Date(Date.now() + 365 * 24 * 3_600_000).toISOString();
+    await ok(
+      await api.post("/api/tokens", {
+        data: {
+          name,
+          expires_at: year,
+          bindings: [{ role: "viewer", scope: "project", project: SHOP }],
+        },
+      }),
+      "create the expiring token",
+    );
+    await page.goto(KEYS);
+    const section = tokens(page);
+    await expect(rows(section, name)).toContainText("Expires");
+    await rows(section, name).getByRole("button", { name: "Rotate" }).click();
+    const dialog = page.getByRole("dialog", { name: `Rotate ${name}` });
+    await dialog.getByRole("radio", { name: "Revoke the old one now" }).check();
+    await dialog.getByRole("button", { name: "Rotate token" }).click();
+    await readToken(page);
+    await expect(rows(section, name)).toHaveCount(1);
+    await expect(rows(section, name)).toContainText("Expires");
+  });
+
   test("org-wide tokens are marked", async ({ page }) => {
     await page.goto(KEYS);
     const row = rows(tokens(page), `${RUN} org`);

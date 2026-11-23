@@ -174,6 +174,22 @@ test.describe("audit log", () => {
     for (const line of lines)
       expect(JSON.parse(line)).toMatchObject({ resource_key: flag });
   });
+
+  test("no download while the list fails", async ({ page }) => {
+    // The export would fail the same way, and the browser would save the error as the file.
+    await page.route("**/api/audit?*", (r) => r.fulfill({ status: 500 }));
+    await page.goto(`${AUDIT}?resource_key=${flag}`);
+    await expect(page.getByText("Couldn't load the audit log")).toBeVisible();
+    await page.getByRole("button", { name: "Export" }).click();
+    const dialog = page.getByRole("dialog", { name: "Export audit log" });
+    await expect(dialog.getByRole("link", { name: "Download" })).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button", { name: "Download" }),
+    ).toBeDisabled();
+    await expect(dialog).toContainText(
+      "The audit log couldn't load, so there is nothing to export yet.",
+    );
+  });
 });
 
 test("cards under 768 px", async ({ page }) => {

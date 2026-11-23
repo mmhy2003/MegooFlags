@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { useApiData } from "@/hooks/use-api-data";
 import { formFailureText } from "@/lib/access/bindings";
 import { api } from "@/lib/api/client";
+import { allPages } from "@/lib/api/pages";
 import type { components } from "@/lib/api/schema";
 import { ApiError, type ApiFailure, must } from "@/lib/flags/errors";
 import { KEY_PATTERN, slugifyKey } from "@/lib/flags/flag-form";
@@ -391,11 +392,13 @@ function Members({
   onChanged: () => void;
 }) {
   const list = useApiData(`team-members:${team.key}`, () =>
-    must(
-      api.GET("/api/teams/{key}/members", {
-        params: { path: { key: team.key }, query: { limit: 500 } },
-      }),
-    ).then((page) => page.items),
+    allPages((cursor) =>
+      must(
+        api.GET("/api/teams/{key}/members", {
+          params: { path: { key: team.key }, query: { limit: 500, cursor } },
+        }),
+      ),
+    ),
   );
   const [error, setError] = useState<string | null>(null);
   // The member stays set while the dialog closes, so its text doesn't change mid-animation.

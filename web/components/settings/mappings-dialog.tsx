@@ -15,14 +15,15 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { useApiData } from "@/hooks/use-api-data";
 import {
-  bindingText,
   formFailureText,
   scopeBody,
   type ScopeValue,
 } from "@/lib/access/bindings";
 import { api } from "@/lib/api/client";
+import { allPages } from "@/lib/api/pages";
 import type { components } from "@/lib/api/schema";
 import { ApiError, must } from "@/lib/flags/errors";
+import { mappingText, sortMappings } from "@/lib/settings/mappings";
 
 type Provider = components["schemas"]["SsoProviderOut"];
 type Mapping = components["schemas"]["SsoMappingOut"];
@@ -34,17 +35,6 @@ function failureMessage(error: unknown, what: string): string {
   if (error instanceof ApiError) return formFailureText(error.failure);
   console.error(what, error);
   return "Couldn't reach the server";
-}
-
-/** "devs → team web" or "ops → viewer · Project shop". */
-function mappingText(m: Mapping): string {
-  if (m.team !== null) return `${m.group} → team ${m.team}`;
-  return `${m.group} → ${bindingText({
-    role: m.role ?? "",
-    scope: m.scope ?? "org",
-    project: m.project,
-    env: m.env,
-  })}`;
 }
 
 /** Whether the scope names everything its level needs. */
@@ -91,11 +81,13 @@ function Mappings({ providerKey }: { providerKey: string }) {
     ),
   ).data;
   const list = useApiData(`sso-mappings:${providerKey}`, () =>
-    must(
-      api.GET("/api/sso/providers/{key}/mappings", {
-        params: { path: { key: providerKey }, query: { limit: 500 } },
-      }),
-    ).then((page) => page.items),
+    allPages((cursor) =>
+      must(
+        api.GET("/api/sso/providers/{key}/mappings", {
+          params: { path: { key: providerKey }, query: { limit: 500, cursor } },
+        }),
+      ),
+    ).then(sortMappings),
   );
   const [group, setGroup] = useState("");
   const [target, setTarget] = useState<Target>("team");

@@ -362,6 +362,7 @@ async def out(session: AsyncSession, cr: ChangeRequest, viewer: Viewer) -> Chang
         and not is_author
         and not any(r.reviewer_id == viewer.actor_id for r in reviews),
         can_cancel=is_open and (is_author or viewer.may_manage),
+        is_author=is_author,
     )
 
 

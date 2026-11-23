@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useApiData } from "@/hooks/use-api-data";
 import { api } from "@/lib/api/client";
+import { allPages } from "@/lib/api/pages";
 import type { components } from "@/lib/api/schema";
 import { ApiError, failureText, must } from "@/lib/flags/errors";
 import { memberPill, memberState } from "@/lib/settings/members";
@@ -38,13 +39,17 @@ function When({ at }: { at: string }) {
 
 /** Each user's organization roles, by user id. */
 async function orgRoles(): Promise<Map<string, string[]>> {
-  const page = await must(
-    api.GET("/api/bindings", {
-      params: { query: { subject_kind: "user", scope: "org", limit: 500 } },
-    }),
+  const bindings = await allPages((cursor) =>
+    must(
+      api.GET("/api/bindings", {
+        params: {
+          query: { subject_kind: "user", scope: "org", limit: 500, cursor },
+        },
+      }),
+    ),
   );
   const roles = new Map<string, string[]>();
-  for (const b of page.items) {
+  for (const b of bindings) {
     roles.set(b.subject_id, [...(roles.get(b.subject_id) ?? []), b.role]);
   }
   return roles;

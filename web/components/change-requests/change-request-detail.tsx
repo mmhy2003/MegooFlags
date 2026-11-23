@@ -124,7 +124,6 @@ export function ChangeRequestDetail({
         }),
       ),
   );
-  const me = useApiData("me", () => must(api.GET("/api/auth/me")));
   const perms = useProjectPermissions(project, null, null);
 
   if (cr.failure?.status === 404) notFound();
@@ -152,10 +151,9 @@ export function ChangeRequestDetail({
     request.kind === "config"
       ? (request.current?.version ?? null)
       : (config.data?.version ?? null);
-  const isAuthor = me.data?.label === request.author;
   const showCommentBox =
     request.status === "open" &&
-    canComment(perms, request.environment, isAuthor);
+    canComment(perms, request.environment, request.is_author);
 
   return (
     <>

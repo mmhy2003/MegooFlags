@@ -72,7 +72,8 @@ class ChangeRequestOut(ChangeRequestSummary):
 
     `can_approve` is true when the request is open, the caller holds `change.approve` in its
     environment, is not its author and has not reviewed it yet; `can_cancel` when it is open
-    and the caller is its author or holds `project.manage`.
+    and the caller is its author or holds `project.manage`. `is_author` is true when the caller
+    wrote it (by id, not by `author`, which is only a label).
     """
 
     description: str
@@ -85,3 +86,4 @@ class ChangeRequestOut(ChangeRequestSummary):
     proposed: FlagConfigIn | None
     can_approve: bool
     can_cancel: bool
+    is_author: bool
