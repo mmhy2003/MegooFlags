@@ -575,3 +575,55 @@ async def test_reviewing_needs_change_approve(app: FastAPI, api: httpx.AsyncClie
             r = await approve(client, cr)
             assert r.status_code == 200, r.text
     assert (await api.get(f"{C}/{cr['id']}")).json()["approvals"] == 2
+
+
+def may(body: dict[str, Any]) -> tuple[bool, bool]:
+    return body["can_approve"], body["can_cancel"]
+
+
+async def test_can_approve_and_can_cancel_follow_the_caller(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await color_flag(api)
+    await protect(api, approvals=2)
+    cr = await created(api)
+    url = f"{C}/{cr['id']}"
+
+    assert may((await api.get(url)).json()) == (False, True)
+    async with reviewer(app) as client:
+        assert may((await client.get(url)).json()) == (True, True)
+    async with token_client(app, "viewer", "project") as client:
+        assert may((await client.get(url)).json()) == (False, False)
+
+    async with reviewer(app) as client:
+        assert (await approve(client, cr)).status_code == 200
+        assert (await client.get(url)).json()["can_approve"] is False
+    async with reviewer(app, name="second") as client:
+        assert (await client.get(url)).json()["can_approve"] is True
+
+
+async def test_is_author_follows_the_caller_id(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await color_flag(api)
+    await protect(api)
+    cr = await created(api)
+    url = f"{C}/{cr['id']}"
+
+    assert (await api.get(url)).json()["is_author"] is True
+    # Another caller with the author's label is still not the author.
+    async with reviewer(app, name=cr["author"]) as client:
+        assert (await client.get(url)).json()["is_author"] is False
+
+
+async def test_closed_requests_cannot_be_approved_or_cancelled(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await color_flag(api)
+    await protect(api)
+    cr = await created(api)
+
+    r = await api.post(f"{C}/{cr['id']}/cancel")
+
+    assert r.status_code == 200, r.text
+    assert may(r.json()) == (False, False)
+    async with reviewer(app) as client:
+        assert may((await client.get(f"{C}/{cr['id']}")).json()) == (False, False)

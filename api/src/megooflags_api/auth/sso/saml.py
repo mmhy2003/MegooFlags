@@ -75,16 +75,22 @@ def _sp_key(provider: SsoProvider, box: SecretBox) -> dict[str, str] | None:
         raise _failed("cannot decrypt the SP key") from None
 
 
+def sp_urls(key: str, sp_entity_id: str | None, public_url: str) -> tuple[str, str, str]:
+    """This SP's (ACS URL, entity ID, metadata URL); the entity ID defaults to the metadata URL."""
+    metadata_url = public_url + _path(key, "metadata")
+    return public_url + _path(key, "acs"), sp_entity_id or metadata_url, metadata_url
+
+
 def _sp_settings(provider: SsoProvider, public_url: str, box: SecretBox) -> dict[str, Any]:
-    config = _config(provider)
+    acs_url, entity_id, _ = sp_urls(provider.key, _config(provider).sp_entity_id, public_url)
     key = _sp_key(provider, box)
     return {
         "strict": True,
         "debug": False,
         "sp": {
-            "entityId": config.sp_entity_id or public_url + _path(provider.key, "metadata"),
+            "entityId": entity_id,
             "assertionConsumerService": {
-                "url": public_url + _path(provider.key, "acs"),
+                "url": acs_url,
                 "binding": OneLogin_Saml2_Constants.BINDING_HTTP_POST,
             },
             "NameIDFormat": NAMEID_EMAIL,

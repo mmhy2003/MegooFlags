@@ -10,6 +10,7 @@ import {
   type E2EUser,
   PASSWORD,
   PREFS,
+  REVIEWER,
   USERS,
   VIEWER,
 } from "./support/users";
@@ -396,6 +397,183 @@ async function ensureUser(
   );
 }
 
+/** The user's id; ensureUser has created them. */
+async function userId(
+  admin: APIRequestContext,
+  user: E2EUser,
+): Promise<string> {
+  const found = await ok(
+    await admin.get("/api/users", { params: { q: user.email } }),
+    "list users",
+  );
+  const { items } = (await found.json()) as {
+    items: { id: string; email: string }[];
+  };
+  const match = items.find((u) => u.email === user.email);
+  if (!match) throw new Error(`no user ${user.email}`);
+  return match.id;
+}
+
+/**
+ * The governance data the visual matrix shows: project gov with two change requests (one open, one
+ * rejected), two SDK keys, and the gov-token, gov-team, gov-role and gov-oidc org items. Each item
+ * is created only when missing and never changed after that, so the pages look the same on every
+ * run. No spec touches them.
+ */
+async function seedGov(
+  admin: APIRequestContext,
+  reviewer: APIRequestContext,
+): Promise<void> {
+  const project = "/api/projects/gov";
+  const fresh = (await admin.get(project)).status() === 404;
+  await ensure(admin, project, "/api/projects", {
+    key: "gov",
+    name: "Gov",
+    environments: [
+      { key: "development", name: "Development" },
+      { key: "production", name: "Production" },
+    ],
+  });
+  if (fresh)
+    await ok(
+      await admin.patch(`${project}/environments/production`, {
+        data: { approvals_required: 1 },
+      }),
+      "require approvals in gov production",
+    );
+  const flags = `${project}/flags`;
+  await ensure(admin, `${flags}/gov-flag`, flags, {
+    key: "gov-flag",
+    name: "Gov flag",
+    type: "boolean",
+  });
+
+  const requests = `${project}/change-requests`;
+  const listed = await ok(
+    // Without a status, every request.
+    await admin.get(requests, { params: { limit: 1 } }),
+    "list gov change requests",
+  );
+  if (((await listed.json()) as { items: unknown[] }).items.length === 0) {
+    const config = await ok(
+      await admin.get(`${flags}/gov-flag/environments/production`),
+      "GET gov-flag in production",
+    );
+    const { version } = (await config.json()) as { version: number };
+    await ok(
+      await admin.post(requests, {
+        data: {
+          environment: "production",
+          flag: "gov-flag",
+          kind: "config",
+          title: "Turn on targeting",
+          payload: {
+            version,
+            enabled: true,
+            fallthrough: { variation: "false" },
+          },
+        },
+      }),
+      "open Turn on targeting",
+    );
+    const toggle = await ok(
+      await admin.post(requests, {
+        data: {
+          environment: "production",
+          flag: "gov-flag",
+          kind: "toggle",
+          title: "Turn it on",
+          payload: { enabled: true },
+        },
+      }),
+      "open Turn it on",
+    );
+    const { id } = (await toggle.json()) as { id: string };
+    await ok(
+      await reviewer.post(`${requests}/${id}/reject`, {
+        data: { comment: "Not now" },
+      }),
+      "reject Turn it on",
+    );
+  }
+
+  const keys = `${project}/environments/development/sdk-keys`;
+  const keyList = await ok(await admin.get(keys), "list gov SDK keys");
+  const keyNames = ((await keyList.json()) as { name: string }[]).map(
+    (k) => k.name,
+  );
+  for (const [name, kind] of [
+    ["gov server", "server"],
+    ["gov client", "client"],
+  ])
+    if (!keyNames.includes(name))
+      await ok(
+        await admin.post(keys, { data: { name, kind } }),
+        `create ${name}`,
+      );
+
+  const tokens = await ok(
+    await admin.get("/api/tokens", { params: { project: "gov", limit: 500 } }),
+    "list gov tokens",
+  );
+  const { items: tokenItems } = (await tokens.json()) as {
+    items: { name: string }[];
+  };
+  if (!tokenItems.some((t) => t.name === "gov-token"))
+    await ok(
+      await admin.post("/api/tokens", {
+        data: {
+          name: "gov-token",
+          bindings: [{ role: "viewer", scope: "project", project: "gov" }],
+        },
+      }),
+      "create gov-token",
+    );
+
+  if ((await admin.get("/api/teams/gov-team")).status() === 404) {
+    const team = await ok(
+      await admin.post("/api/teams", {
+        data: { key: "gov-team", name: "Gov team" },
+      }),
+      "create gov-team",
+    );
+    const { id } = (await team.json()) as { id: string };
+    await ok(
+      await admin.post("/api/teams/gov-team/members", {
+        data: { user_id: await userId(admin, VIEWER) },
+      }),
+      "add the viewer to gov-team",
+    );
+    await ok(
+      await admin.post("/api/bindings", {
+        data: {
+          subject_kind: "team",
+          subject_id: id,
+          role: "viewer",
+          scope: "project",
+          project: "gov",
+        },
+      }),
+      "bind gov-team",
+    );
+  }
+
+  await ensure(admin, "/api/roles/gov-role", "/api/roles", {
+    key: "gov-role",
+    name: "Gov role",
+    permissions: ["project.read", "flag.toggle"],
+  });
+
+  await ensure(admin, "/api/sso/providers/gov-oidc", "/api/sso/providers", {
+    key: "gov-oidc",
+    name: "Gov OIDC",
+    protocol: "oidc",
+    enabled: false,
+    oidc: { issuer: "https://idp.example.test", client_id: "megooflags" },
+    client_secret: "e2e-secret",
+  });
+}
+
 /** Idempotent: safe to run against a database that an earlier run already seeded. */
 export default async function globalSetup(): Promise<void> {
   await waitForApi();
@@ -419,6 +597,14 @@ export default async function globalSetup(): Promise<void> {
     await seedNodes(admin);
     await ensureUser(admin, VIEWER);
     await ensureUser(admin, PREFS);
+    await ensureUser(admin, REVIEWER);
+    const reviewer = await appContext();
+    try {
+      await signIn(reviewer, REVIEWER.email);
+      await seedGov(admin, reviewer);
+    } finally {
+      await reviewer.dispose();
+    }
   } finally {
     await admin.dispose();
   }

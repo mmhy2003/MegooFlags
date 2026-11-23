@@ -76,6 +76,55 @@ test.describe("desktop", () => {
     }
   });
 
+  test("the scope picker shows deeper fields by level and resets them", async ({
+    page,
+  }) => {
+    await page.goto("/dev/kit");
+    const picker = page
+      .getByRole("region", { name: "Access" })
+      .getByRole("group", { name: "Scope", exact: true });
+    const level = picker.getByLabel("Level");
+    await expect(level).toHaveValue("org");
+    await expect(
+      picker.getByText("Works only when granted for the whole organization."),
+    ).toBeVisible();
+    await expect(picker.getByLabel("Project")).toHaveCount(0);
+
+    await level.selectOption("environment");
+    const project = picker.getByLabel("Project");
+    const env = picker.getByLabel("Environment", { exact: true });
+    await expect(project).toHaveValue("");
+    await project.selectOption("shop");
+    await env.selectOption("production");
+    await expect(env).toHaveValue("production");
+
+    await level.selectOption("project");
+    await expect(env).toHaveCount(0);
+    await expect(project).toHaveValue("");
+    await expect(
+      picker.getByText("Works for the whole organization or for one project."),
+    ).toBeVisible();
+  });
+
+  test("access rows add and remove a role at a scope", async ({ page }) => {
+    await page.goto("/dev/kit");
+    const section = page.getByRole("region", { name: "Access" });
+    const first = section.getByRole("group", { name: "Access 1" });
+    await expect(first.getByLabel("Role")).toHaveValue("viewer");
+    await expect(first.getByLabel("Level")).toHaveValue("org");
+
+    await section.getByRole("button", { name: "Add access" }).click();
+    const second = section.getByRole("group", { name: "Access 2" });
+    await expect(second).toBeVisible();
+    const remove = section.getByRole("button", { name: "Remove access 2" });
+    const box = await remove.boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+    await remove.click();
+    await expect(second).toHaveCount(0);
+    await expect(first).toBeVisible();
+  });
+
   test("the rollout input and slider stay in step", async ({ page }) => {
     await page.goto("/dev/kit");
     const input = page.getByRole("spinbutton", { name: "Rollout percentage" });

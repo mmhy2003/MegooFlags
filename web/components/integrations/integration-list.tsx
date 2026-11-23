@@ -16,11 +16,11 @@ import { toast } from "sonner";
 
 import { DeliveryLog } from "@/components/integrations/delivery-log";
 import { IntegrationForm } from "@/components/integrations/integration-form";
-import { SecretReveal } from "@/components/integrations/secret-reveal";
 import { ConfirmDialog } from "@/components/patterns/confirm-dialog";
 import { type Column, DataList } from "@/components/patterns/data-list";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { PageHeader } from "@/components/patterns/page-header";
+import { SecretReveal } from "@/components/patterns/secret-reveal";
 import { StatusPill } from "@/components/patterns/status-pill";
 import { useProjectPermissions } from "@/components/shell/use-project-permissions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -324,7 +324,12 @@ export function IntegrationList({ project }: { project: string }) {
           list.reload();
         }}
       />
-      <SecretReveal secret={secret} onClose={() => setSecret(null)} />
+      <SecretReveal
+        secret={secret}
+        title="Signing secret"
+        copyLabel="Copy secret"
+        onClose={() => setSecret(null)}
+      />
       <DeliveryLog
         project={project}
         integration={log.integration}

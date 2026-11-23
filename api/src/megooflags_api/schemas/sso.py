@@ -128,6 +128,12 @@ class SsoProviderOut(ApiModel):
     default_role: str | None
     created_at: datetime
     updated_at: datetime
+    # Set-up URLs to copy into the identity provider: `redirect_uri` for OIDC, and `acs_url`,
+    # `entity_id` and `metadata_url` for SAML. Null without MEGOOFLAGS_PUBLIC_URL.
+    redirect_uri: str | None = None
+    acs_url: str | None = None
+    entity_id: str | None = None
+    metadata_url: str | None = None
 
 
 class SsoMappingIn(ApiModel):

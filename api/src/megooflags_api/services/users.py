@@ -2,6 +2,8 @@
 disabling."""
 
 import uuid
+from collections.abc import Sequence
+from datetime import datetime
 
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from megooflags_api.auth.passwords import check_password_policy, hash_password
 from megooflags_api.auth.sessions import end_sessions
 from megooflags_api.errors import key_conflict, not_found
-from megooflags_api.models import User
-from megooflags_api.models.enums import UserStatus
+from megooflags_api.models import Invitation, User
+from megooflags_api.models.enums import InvitationPurpose, UserStatus
 from megooflags_api.schemas.identity import UserOut
 from megooflags_api.services.bindings import active_org_admin_ids, guard_last_admin
 from megooflags_api.services.pagination import decode_cursor, page_slice
@@ -45,7 +47,7 @@ async def list_users(
         query = query.where(sort_key > decode_cursor(cursor))
     rows = list(await session.scalars(query))
     page, next_cursor = page_slice(rows, limit, lambda u: u.email.lower())
-    return [user_out(u) for u in page], next_cursor
+    return await users_out(session, page), next_cursor
 
 
 async def create_user(session: AsyncSession, email: str, name: str, password: str | None) -> User:
@@ -85,7 +87,7 @@ async def enable_user(session: AsyncSession, user: User) -> None:
     await session.flush()
 
 
-def user_out(user: User) -> UserOut:
+def user_out(user: User, invitation_expires_at: datetime | None = None) -> UserOut:
     return UserOut(
         id=user.id,
         email=user.email,
@@ -94,4 +96,34 @@ def user_out(user: User) -> UserOut:
         has_password=user.password_hash is not None,
         created_at=user.created_at,
         last_login_at=user.last_login_at,
+        invitation_expires_at=invitation_expires_at,
     )
+
+
+async def invitation_expiry(
+    session: AsyncSession, user_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, datetime]:
+    """When each user's unused invitation link expires; users without one are left out."""
+    if not user_ids:
+        return {}
+    rows = await session.execute(
+        select(Invitation.user_id, func.max(Invitation.expires_at))
+        .where(
+            Invitation.purpose == InvitationPurpose.INVITE,
+            Invitation.used_at.is_(None),
+            Invitation.user_id.in_(user_ids),
+        )
+        .group_by(Invitation.user_id)
+    )
+    return {user_id: expires_at for user_id, expires_at in rows}
+
+
+async def users_out(session: AsyncSession, users: Sequence[User]) -> list[UserOut]:
+    """The users with their invitation expiry, in one query."""
+    expiry = await invitation_expiry(session, [u.id for u in users])
+    return [user_out(u, expiry.get(u.id)) for u in users]
+
+
+async def full_user_out(session: AsyncSession, user: User) -> UserOut:
+    [out] = await users_out(session, [user])
+    return out

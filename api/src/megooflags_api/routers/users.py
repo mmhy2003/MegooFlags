@@ -63,7 +63,7 @@ async def create_user(
     """Create a user without a password; they set one through the returned invite link."""
     user = await users.create_user(session, body.email, body.name, None)
     invitation, token = await invitations.issue(session, user, InvitationPurpose.INVITE)
-    out = users.user_out(user)
+    out = await users.full_user_out(session, user)
     await audit.record("user.create", "user", user.email, after=snapshot(out))
     await session.commit()
     return UserCreated(user=out, invite=invite_link(request, invitation, token))
@@ -71,7 +71,7 @@ async def create_user(
 
 @router.get("/{id}")
 async def read_user(session: SessionDep, authz: ManageMembers, id: uuid.UUID) -> UserOut:
-    return users.user_out(await users.get_user(session, id))
+    return await users.full_user_out(session, await users.get_user(session, id))
 
 
 @router.patch("/{id}")
@@ -79,11 +79,11 @@ async def update_user(
     session: SessionDep, authz: ManageMembers, audit: AuditDep, id: uuid.UUID, body: UserUpdate
 ) -> UserOut:
     user = await users.get_user(session, id)
-    before = users.user_out(user)
+    before = await users.full_user_out(session, user)
     if body.name is not None:
         user.name = body.name
         await session.flush()
-    out = users.user_out(user)
+    out = await users.full_user_out(session, user)
     await audit.record(
         "user.update", "user", user.email, before=snapshot(before), after=snapshot(out)
     )
@@ -97,9 +97,9 @@ async def disable_user(
 ) -> UserOut:
     """Disable the user and end all of their sessions; 409 last_admin for the last org admin."""
     user = await users.get_user(session, id)
-    before = users.user_out(user)
+    before = await users.full_user_out(session, user)
     await users.disable_user(session, user)
-    out = users.user_out(user)
+    out = await users.full_user_out(session, user)
     await audit.record(
         "user.disable", "user", user.email, before=snapshot(before), after=snapshot(out)
     )
@@ -112,9 +112,9 @@ async def enable_user(
     session: SessionDep, authz: ManageMembers, audit: AuditDep, id: uuid.UUID
 ) -> UserOut:
     user = await users.get_user(session, id)
-    before = users.user_out(user)
+    before = await users.full_user_out(session, user)
     await users.enable_user(session, user)
-    out = users.user_out(user)
+    out = await users.full_user_out(session, user)
     await audit.record(
         "user.enable", "user", user.email, before=snapshot(before), after=snapshot(out)
     )
@@ -126,10 +126,13 @@ async def enable_user(
 async def reset_link(
     session: SessionDep, request: Request, authz: ManageMembers, audit: AuditDep, id: uuid.UUID
 ) -> InviteLink:
-    """A password reset link for the user; older links stop working."""
+    """An invitation link for someone who has no password and never signed in, otherwise a
+    password reset link; older links stop working."""
     user = await users.get_user(session, id)
     out = users.user_out(user)
-    invitation, token = await invitations.issue(session, user, InvitationPurpose.RESET)
+    never_joined = user.password_hash is None and user.last_login_at is None
+    purpose = InvitationPurpose.INVITE if never_joined else InvitationPurpose.RESET
+    invitation, token = await invitations.issue(session, user, purpose)
     await audit.record(
         "user.reset_link", "user", user.email, before=snapshot(out), after=snapshot(out)
     )

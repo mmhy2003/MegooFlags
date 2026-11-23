@@ -1,19 +1,13 @@
 import { Suspense } from "react";
 
-import { PlaceholderPage } from "@/components/patterns/placeholder-page";
-import { projectTrail } from "@/lib/routes";
+import { KeysPage } from "@/components/keys/keys-page";
 
 async function Content({ params }: { params: Promise<{ project: string }> }) {
-  const { project } = await params;
-  return (
-    <PlaceholderPage
-      title="API & SDK keys"
-      trail={projectTrail(decodeURIComponent(project))}
-    />
-  );
+  const project = decodeURIComponent((await params).project);
+  return <KeysPage project={project} />;
 }
 
-export default function KeysPage({
+export default function ProjectKeysPage({
   params,
 }: {
   params: Promise<{ project: string }>;

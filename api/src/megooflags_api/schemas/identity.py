@@ -18,6 +18,9 @@ class UserOut(ApiModel):
     has_password: bool
     created_at: datetime
     last_login_at: datetime | None
+    # When the user's unused invitation link expires, also once that has passed; null when the
+    # invitation was accepted or the user never had one.
+    invitation_expires_at: datetime | None = None
 
 
 class UserCreate(ApiModel):
@@ -99,6 +102,14 @@ class RoleOut(ApiModel):
     description: str
     builtin: bool
     permissions: list[Permission]
+
+
+class PermissionOut(ApiModel):
+    """A permission and the most specific scope it can be granted at. Granted below that scope it
+    does nothing."""
+
+    permission: Permission
+    level: ScopeKind
 
 
 def check_scope_fields(scope: ScopeKind, project: str | None, env: str | None) -> None:

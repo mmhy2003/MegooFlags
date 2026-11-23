@@ -12,7 +12,7 @@ from megooflags_api.models.enums import SubjectKind
 from megooflags_api.schemas.identity import TeamMemberOut, TeamOut
 from megooflags_api.services.bindings import active_org_admin_ids, guard_last_admin
 from megooflags_api.services.pagination import decode_cursor, page_slice
-from megooflags_api.services.users import get_user, user_out
+from megooflags_api.services.users import get_user, invitation_expiry, user_out
 
 
 def _member_count() -> ScalarSelect[int]:
@@ -105,7 +105,10 @@ async def list_members(
         query = query.where(sort_key > decode_cursor(cursor))
     rows = list((await session.execute(query)).all())
     page, next_cursor = page_slice(rows, limit, lambda row: row[0].email.lower())
-    return [TeamMemberOut(user=user_out(u), source=source) for u, source in page], next_cursor
+    expiry = await invitation_expiry(session, [u.id for u, _ in page])
+    return [
+        TeamMemberOut(user=user_out(u, expiry.get(u.id)), source=source) for u, source in page
+    ], next_cursor
 
 
 async def get_member(session: AsyncSession, team: Team, user_id: uuid.UUID) -> TeamMemberOut:
@@ -120,7 +123,8 @@ async def get_member(session: AsyncSession, team: Team, user_id: uuid.UUID) -> T
     if row is None:
         raise not_found("team member", str(user_id))
     user, source = row
-    return TeamMemberOut(user=user_out(user), source=source)
+    expiry = await invitation_expiry(session, [user.id])
+    return TeamMemberOut(user=user_out(user, expiry.get(user.id)), source=source)
 
 
 async def add_member(
@@ -128,7 +132,8 @@ async def add_member(
 ) -> TeamMemberOut:
     """404 for an unknown user; 409 when the user is already a member."""
     user = await get_user(session, user_id)
-    out = TeamMemberOut(user=user_out(user), source=source)
+    expiry = await invitation_expiry(session, [user.id])
+    out = TeamMemberOut(user=user_out(user, expiry.get(user.id)), source=source)
     # A failed flush expires the loaded rows, so the message is built before it.
     label = f"{user.email} in {team.key}"
     session.add(TeamMember(team_id=team.id, user_id=user.id, source=source))

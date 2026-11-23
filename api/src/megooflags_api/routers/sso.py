@@ -55,10 +55,13 @@ ManageOrg = Annotated[Authz, Depends(require(Permission.ORG_MANAGE))]
 async def list_providers(
     session: SessionDep,
     authz: ManageOrg,
+    request: Request,
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=500),
 ) -> Page[SsoProviderOut]:
     items, next_cursor = await sso_providers.list_providers(session, cursor, limit)
+    base = _setup_base(request)
+    items = [sso_providers.with_setup_urls(item, base) for item in items]
     return Page[SsoProviderOut](items=items, next_cursor=next_cursor)
 
 
@@ -80,13 +83,16 @@ async def create_provider(
     out = sso_providers.provider_out(provider, body.default_role)
     await audit.record("sso_provider.create", "sso_provider", out.key, after=snapshot(out))
     await session.commit()
-    return out
+    return sso_providers.with_setup_urls(out, _setup_base(request))
 
 
 @admin_router.get("/{key}")
-async def read_provider(session: SessionDep, authz: ManageOrg, key: str) -> SsoProviderOut:
+async def read_provider(
+    session: SessionDep, authz: ManageOrg, request: Request, key: str
+) -> SsoProviderOut:
     provider = await sso_providers.get_by_key(session, key)
-    return await sso_providers.read_provider(session, provider)
+    out = await sso_providers.read_provider(session, provider)
+    return sso_providers.with_setup_urls(out, _setup_base(request))
 
 
 @admin_router.patch("/{key}")
@@ -109,7 +115,7 @@ async def update_provider(
         "sso_provider.update", "sso_provider", key, before=snapshot(before), after=snapshot(out)
     )
     await session.commit()
-    return out
+    return sso_providers.with_setup_urls(out, _setup_base(request))
 
 
 @admin_router.delete("/{key}", status_code=204)
@@ -232,8 +238,14 @@ def _base_url(request: Request) -> str:
     return public_base_url(request)
 
 
+def _setup_base(request: Request) -> str | None:
+    """The public base URL for the set-up URLs; None without MEGOOFLAGS_PUBLIC_URL."""
+    settings: Settings = request.app.state.settings
+    return None if settings.public_url is None else public_base_url(request)
+
+
 def _callback_url(request: Request, key: str) -> str:
-    return f"{_base_url(request)}/api/auth/sso/{key}/callback"
+    return sso_providers.callback_url(_base_url(request), key)
 
 
 async def _enabled_provider(session: AsyncSession, key: str) -> SsoProvider | None:

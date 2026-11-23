@@ -15,7 +15,16 @@ describe("toFailure", () => {
       code: "approval_required",
       message: "environment 'prod' requires approval; open a change request",
       path: null,
+      details: { environment: "prod" },
     });
+  });
+
+  it("keeps object details", () => {
+    const details = { used_by: [{ kind: "binding", id: "b1" }] };
+    expect(
+      toFailure(409, { code: "role_in_use", message: "in use", details })
+        .details,
+    ).toEqual(details);
   });
 
   it("keeps details.path", () => {
@@ -46,6 +55,13 @@ describe("toFailure", () => {
       code: "validation_error",
       message: "Input should be a valid string",
       path: "rules[0].clauses[1].values[0]",
+      details: [
+        {
+          loc: ["body", "rules", 0, "clauses", 1, "values", 0],
+          msg: "Input should be a valid string",
+          type: "string_type",
+        },
+      ],
     });
   });
 
@@ -65,6 +81,7 @@ describe("toFailure", () => {
       code: "unknown",
       message: "HTTP 500",
       path: null,
+      details: null,
     });
     expect(toFailure(502, null).message).toBe("HTTP 502");
   });
@@ -85,6 +102,35 @@ describe("failureText", () => {
     );
     expect(failureText({ ...base, status: 404, code: "not_found" })).toBe(
       "Not found",
+    );
+  });
+
+  it("explains the governance failures", () => {
+    expect(failureText({ ...base, code: "last_admin" })).toBe(
+      "This would leave the organization without an admin.",
+    );
+    expect(failureText({ ...base, code: "key_inactive" })).toBe(
+      "This key is no longer active",
+    );
+    expect(failureText({ ...base, status: 403, code: "self_approval" })).toBe(
+      "You can't review your own change request",
+    );
+    expect(failureText({ ...base, code: "public_url_required" })).toBe(
+      "Set MEGOOFLAGS_PUBLIC_URL first",
+    );
+  });
+
+  it("lists the permissions a token can't hold", () => {
+    expect(
+      failureText({
+        ...base,
+        status: 422,
+        code: "exceeds_owner_rights",
+        message: "a personal token cannot hold permissions you do not hold",
+        details: { permissions: ["flag.toggle", "change.approve"] },
+      }),
+    ).toBe(
+      "a personal token cannot hold permissions you do not hold: flag.toggle, change.approve",
     );
   });
 
@@ -115,6 +161,7 @@ describe("must", () => {
         code: "version_conflict",
         message: "changed",
         path: null,
+        details: null,
       },
     });
   });

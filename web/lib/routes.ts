@@ -23,6 +23,11 @@ export function flagPath(project: string, flag: string): string {
   return `${projectPath(project, "flags")}/${encodeURIComponent(flag)}`;
 }
 
+/** A change request's own page inside a project. */
+export function changeRequestPath(project: string, id: string): string {
+  return `${projectPath(project, "change-requests")}/${encodeURIComponent(id)}`;
+}
+
 /** The New flag page of a project. */
 export function newFlagPath(project: string): string {
   return `${projectPath(project, "flags")}/new`;

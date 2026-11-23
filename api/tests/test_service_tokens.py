@@ -132,6 +132,53 @@ async def test_list_pages(admin: httpx.AsyncClient) -> None:
     assert sorted(seen) == ["a", "b", "c", "tests"]
 
 
+async def list_names(client: httpx.AsyncClient, **params: Any) -> list[str]:
+    r = await client.get("/api/tokens", params=params)
+    assert r.status_code == 200, r.text
+    return [t["name"] for t in r.json()["items"]]
+
+
+async def test_tokens_are_listed_newest_first(admin: httpx.AsyncClient) -> None:
+    for name in ("a", "b", "c"):
+        await create_token(admin, name)
+    assert await list_names(admin) == ["c", "b", "a", "tests"]
+
+    seen: list[str] = []
+    params: dict[str, Any] = {"limit": 1}
+    while True:
+        r = await admin.get("/api/tokens", params=params)
+        assert r.status_code == 200, r.text
+        seen += [t["name"] for t in r.json()["items"]]
+        if r.json()["next_cursor"] is None:
+            break
+        params["cursor"] = r.json()["next_cursor"]
+    assert seen == ["c", "b", "a", "tests"]
+
+
+async def test_tokens_filter_by_project(admin: httpx.AsyncClient) -> None:
+    await create_project(admin)
+    await create_project(admin, "other")
+    viewer = {"role": "viewer"}
+    await create_token(admin, "org", bindings=[{**viewer, "scope": "org"}])
+    await create_token(admin, "proj", bindings=[{**viewer, "scope": "project", "project": "demo"}])
+    await create_token(
+        admin,
+        "env",
+        bindings=[{**viewer, "scope": "environment", "project": "demo", "env": "production"}],
+    )
+    await create_token(
+        admin, "elsewhere", bindings=[{**viewer, "scope": "project", "project": "other"}]
+    )
+    await create_token(admin, "none")
+
+    assert await list_names(admin, project="demo") == ["env", "proj", "org", "tests"]
+
+
+async def test_tokens_filter_by_unknown_project(admin: httpx.AsyncClient) -> None:
+    r = await admin.get("/api/tokens", params={"project": "nope"})
+    assert_error(r, 404, "not_found")
+
+
 async def test_a_personal_token_or_unknown_id_is_404(
     app: FastAPI, admin: httpx.AsyncClient
 ) -> None:

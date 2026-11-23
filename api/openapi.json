@@ -391,7 +391,7 @@
       },
       "ChangeRequestOut": {
         "additionalProperties": false,
-        "description": "`current` (the live config) and `proposed` are set for config change requests only.",
+        "description": "`current` (the live config) and `proposed` are set for config change requests only.\n\n`can_approve` is true when the request is open, the caller holds `change.approve` in its\nenvironment, is not its author and has not reviewed it yet; `can_cancel` when it is open\nand the caller is its author or holds `project.manage`. `is_author` is true when the caller\nwrote it (by id, not by `author`, which is only a label).",
         "properties": {
           "approvals": {
             "title": "Approvals",
@@ -408,6 +408,14 @@
           "base_version": {
             "title": "Base Version",
             "type": "integer"
+          },
+          "can_approve": {
+            "title": "Can Approve",
+            "type": "boolean"
+          },
+          "can_cancel": {
+            "title": "Can Cancel",
+            "type": "boolean"
           },
           "closed_at": {
             "anyOf": [
@@ -471,6 +479,10 @@
             "title": "Id",
             "type": "string"
           },
+          "is_author": {
+            "title": "Is Author",
+            "type": "boolean"
+          },
           "kind": {
             "$ref": "#/components/schemas/ChangeRequestKind"
           },
@@ -525,7 +537,10 @@
           "reviews",
           "comments",
           "current",
-          "proposed"
+          "proposed",
+          "can_approve",
+          "can_cancel",
+          "is_author"
         ],
         "title": "ChangeRequestOut",
         "type": "object"
@@ -3843,6 +3858,24 @@
         "title": "Permission",
         "type": "string"
       },
+      "PermissionOut": {
+        "additionalProperties": false,
+        "description": "A permission and the most specific scope it can be granted at. Granted below that scope it\ndoes nothing.",
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/ScopeKind"
+          },
+          "permission": {
+            "$ref": "#/components/schemas/Permission"
+          }
+        },
+        "required": [
+          "permission",
+          "level"
+        ],
+        "title": "PermissionOut",
+        "type": "object"
+      },
       "PersonalTokenCreate": {
         "additionalProperties": false,
         "description": "A token acting as you, limited to `permissions` within `project` (and `env`), and never\nmore than you hold at the time of each request.",
@@ -6205,6 +6238,17 @@
       "SsoProviderOut": {
         "additionalProperties": false,
         "properties": {
+          "acs_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acs Url"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -6224,6 +6268,17 @@
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
           },
           "has_client_secret": {
             "title": "Has Client Secret",
@@ -6250,6 +6305,17 @@
             "title": "Link By Verified Email",
             "type": "boolean"
           },
+          "metadata_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata Url"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -6266,6 +6332,17 @@
           },
           "protocol": {
             "$ref": "#/components/schemas/SsoProtocol"
+          },
+          "redirect_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redirect Uri"
           },
           "saml": {
             "anyOf": [
@@ -6938,6 +7015,18 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "invitation_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invitation Expires At"
           },
           "last_login_at": {
             "anyOf": [
@@ -11136,6 +11225,82 @@
         "summary": "Rotate Node Token",
         "tags": [
           "nodes"
+        ]
+      }
+    },
+    "/api/permissions": {
+      "get": {
+        "description": "Every permission with the level where it works, in catalogue order.",
+        "operationId": "list_permissions_api_permissions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PermissionOut"
+                  },
+                  "title": "Response List Permissions Api Permissions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Permissions",
+        "tags": [
+          "roles"
         ]
       }
     },
@@ -19776,6 +19941,7 @@
     },
     "/api/tokens": {
       "get": {
+        "description": "Service tokens, newest first.",
         "operationId": "list_tokens_api_tokens_get",
         "parameters": [
           {
@@ -19804,6 +19970,24 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "A project key: tokens with a binding in it, in one of its environments, or at org scope.",
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A project key: tokens with a binding in it, in one of its environments, or at org scope.",
+              "title": "Project"
             }
           }
         ],
@@ -20824,7 +21008,7 @@
     },
     "/api/users/{id}/reset-link": {
       "post": {
-        "description": "A password reset link for the user; older links stop working.",
+        "description": "An invitation link for someone who has no password and never signed in, otherwise a\npassword reset link; older links stop working.",
         "operationId": "reset_link_api_users__id__reset_link_post",
         "parameters": [
           {

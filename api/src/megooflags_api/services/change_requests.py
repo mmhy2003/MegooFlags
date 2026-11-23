@@ -1,6 +1,7 @@
 """Change requests: a flag change in one environment that waits for approvals."""
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -304,14 +305,26 @@ def _comment_out(row: ChangeRequestComment) -> CommentOut:
     return CommentOut(id=row.id, author=row.author_label, body=row.body, created_at=row.created_at)
 
 
-async def out(session: AsyncSession, cr: ChangeRequest) -> ChangeRequestOut:
-    """`cr` with its reviews and comments, oldest first, and for config the current and
-    proposed config."""
-    reviews = await session.scalars(
-        select(ChangeRequestReview)
-        .where(ChangeRequestReview.change_request_id == cr.id)
-        .order_by(ChangeRequestReview.created_at, ChangeRequestReview.id)
-    )
+@dataclass(frozen=True)
+class Viewer:
+    """Who reads a change request: `may_approve` if they hold `change.approve` in its
+    environment, `may_manage` if they hold `project.manage`."""
+
+    actor_id: uuid.UUID
+    may_approve: bool
+    may_manage: bool
+
+
+async def out(session: AsyncSession, cr: ChangeRequest, viewer: Viewer) -> ChangeRequestOut:
+    """`cr` with its reviews and comments, oldest first, for config the current and proposed
+    config, and what `viewer` may do with it."""
+    reviews = (
+        await session.scalars(
+            select(ChangeRequestReview)
+            .where(ChangeRequestReview.change_request_id == cr.id)
+            .order_by(ChangeRequestReview.created_at, ChangeRequestReview.id)
+        )
+    ).all()
     comments = await session.scalars(
         select(ChangeRequestComment)
         .where(ChangeRequestComment.change_request_id == cr.id)
@@ -324,6 +337,8 @@ async def out(session: AsyncSession, cr: ChangeRequest) -> ChangeRequestOut:
         fe = await get_flag_environment(session, flag, env)
         current = await targeting.load_config(session, flag, fe, env.key)
         proposed = FlagConfigIn.model_validate(cr.payload)
+    is_open = cr.status == ChangeRequestStatus.OPEN
+    is_author = viewer.actor_id == cr.author_id
     return ChangeRequestOut(
         **(await summary(session, cr)).model_dump(),
         description=cr.description,
@@ -337,11 +352,17 @@ async def out(session: AsyncSession, cr: ChangeRequest) -> ChangeRequestOut:
                 comment=r.comment,
                 created_at=r.created_at,
             )
-            for r in reviews.all()
+            for r in reviews
         ],
         comments=[_comment_out(c) for c in comments.all()],
         current=current,
         proposed=proposed,
+        can_approve=is_open
+        and viewer.may_approve
+        and not is_author
+        and not any(r.reviewer_id == viewer.actor_id for r in reviews),
+        can_cancel=is_open and (is_author or viewer.may_manage),
+        is_author=is_author,
     )
 
 

@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.auth.sso.provisioning import source_of
-from megooflags_api.auth.sso.saml import is_idp_metadata
+from megooflags_api.auth.sso.saml import is_idp_metadata, sp_urls
 from megooflags_api.crypto import SecretBox
 from megooflags_api.errors import key_conflict, not_found, validation_error
 from megooflags_api.models import (
@@ -77,6 +77,24 @@ def provider_out(provider: SsoProvider, default_role: str | None) -> SsoProvider
         default_role=default_role,
         created_at=provider.created_at,
         updated_at=provider.updated_at,
+    )
+
+
+def callback_url(public_url: str, key: str) -> str:
+    """The OIDC redirect URI of provider `key`."""
+    return f"{public_url}/api/auth/sso/{key}/callback"
+
+
+def with_setup_urls(out: SsoProviderOut, public_url: str | None) -> SsoProviderOut:
+    """`out` with the URLs to enter at the IdP; unchanged (all null) without a public URL."""
+    if public_url is None:
+        return out
+    if out.protocol == SsoProtocol.OIDC:
+        return out.model_copy(update={"redirect_uri": callback_url(public_url, out.key)})
+    assert out.saml is not None
+    acs_url, entity_id, metadata_url = sp_urls(out.key, out.saml.sp_entity_id, public_url)
+    return out.model_copy(
+        update={"acs_url": acs_url, "entity_id": entity_id, "metadata_url": metadata_url}
     )
 
 

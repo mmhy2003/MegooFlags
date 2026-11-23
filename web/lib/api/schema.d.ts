@@ -835,6 +835,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Permissions
+         * @description Every permission with the level where it works, in catalogue order.
+         */
+        get: operations["list_permissions_api_permissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -1968,7 +1988,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Tokens */
+        /**
+         * List Tokens
+         * @description Service tokens, newest first.
+         */
         get: operations["list_tokens_api_tokens_get"];
         put?: never;
         /**
@@ -2134,7 +2157,8 @@ export interface paths {
         put?: never;
         /**
          * Reset Link
-         * @description A password reset link for the user; older links stop working.
+         * @description An invitation link for someone who has no password and never signed in, otherwise a
+         *     password reset link; older links stop working.
          */
         post: operations["reset_link_api_users__id__reset_link_post"];
         delete?: never;
@@ -2443,6 +2467,11 @@ export interface components {
         /**
          * ChangeRequestOut
          * @description `current` (the live config) and `proposed` are set for config change requests only.
+         *
+         *     `can_approve` is true when the request is open, the caller holds `change.approve` in its
+         *     environment, is not its author and has not reviewed it yet; `can_cancel` when it is open
+         *     and the caller is its author or holds `project.manage`. `is_author` is true when the caller
+         *     wrote it (by id, not by `author`, which is only a label).
          */
         ChangeRequestOut: {
             /** Approvals */
@@ -2453,6 +2482,10 @@ export interface components {
             author: string;
             /** Base Version */
             base_version: number;
+            /** Can Approve */
+            can_approve: boolean;
+            /** Can Cancel */
+            can_cancel: boolean;
             /** Closed At */
             closed_at: string | null;
             /** Comments */
@@ -2476,6 +2509,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Author */
+            is_author: boolean;
             kind: components["schemas"]["ChangeRequestKind"];
             /** Payload */
             payload: {
@@ -3673,6 +3708,15 @@ export interface components {
          */
         Permission: "org.manage" | "member.manage" | "role.manage" | "token.manage" | "project.create" | "audit.read" | "project.read" | "project.manage" | "environment.manage" | "flag.create" | "flag.update" | "flag.archive" | "segment.write" | "flag.config.write" | "flag.toggle" | "change.approve" | "evaluate" | "sdk_key.read" | "sdk_key.manage";
         /**
+         * PermissionOut
+         * @description A permission and the most specific scope it can be granted at. Granted below that scope it
+         *     does nothing.
+         */
+        PermissionOut: {
+            level: components["schemas"]["ScopeKind"];
+            permission: components["schemas"]["Permission"];
+        };
+        /**
          * PersonalTokenCreate
          * @description A token acting as you, limited to `permissions` within `project` (and `env`), and never
          *     more than you hold at the time of each request.
@@ -4524,6 +4568,8 @@ export interface components {
         };
         /** SsoProviderOut */
         SsoProviderOut: {
+            /** Acs Url */
+            acs_url?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -4533,6 +4579,8 @@ export interface components {
             default_role: string | null;
             /** Enabled */
             enabled: boolean;
+            /** Entity Id */
+            entity_id?: string | null;
             /** Has Client Secret */
             has_client_secret: boolean;
             /** Has Sp Key */
@@ -4548,10 +4596,14 @@ export interface components {
             key: string;
             /** Link By Verified Email */
             link_by_verified_email: boolean;
+            /** Metadata Url */
+            metadata_url?: string | null;
             /** Name */
             name: string;
             oidc: components["schemas"]["OidcConfig"] | null;
             protocol: components["schemas"]["SsoProtocol"];
+            /** Redirect Uri */
+            redirect_uri?: string | null;
             saml: components["schemas"]["SamlConfigOut"] | null;
             /**
              * Updated At
@@ -4775,6 +4827,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Invitation Expires At */
+            invitation_expires_at?: string | null;
             /** Last Login At */
             last_login_at: string | null;
             /** Name */
@@ -7816,6 +7870,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NodeCreated"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_permissions_api_permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionOut"][];
                 };
             };
             /** @description Unauthorized */
@@ -14072,6 +14191,8 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number;
+                /** @description A project key: tokens with a binding in it, in one of its environments, or at org scope. */
+                project?: string | null;
             };
             header?: never;
             path?: never;
