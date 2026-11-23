@@ -15,6 +15,8 @@ const FLAG = "/projects/demo/flags/new-checkout?env=development";
 const FIXED_TIME = "2026-12-28T12:28:28Z";
 // `mask` hides <time> elements, whose relative text changes from run to run. demo is never
 // changed and has no evaluations, so the flag pages (Insights too) are stable.
+// Only visible elements are masked: Playwright masks hidden ones too, and their boxes follow
+// text that is not on the page (a <time> inside a closed "More" below 1024 px).
 const PAGES: {
   name: string;
   path: string;
@@ -193,7 +195,7 @@ for (const theme of THEMES) {
               page.getByTestId("app-version"),
               ...(mask ? [page.locator("time")] : []),
               ...maskText.map((text) => page.getByText(text)),
-            ],
+            ].map((locator) => locator.filter({ visible: true })),
           });
         });
       }
