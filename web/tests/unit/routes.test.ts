@@ -8,6 +8,7 @@ import {
   projectFromPath,
   projectPath,
   projectTrail,
+  segmentPath,
   switchProjectPath,
 } from "@/lib/routes";
 
@@ -36,6 +37,14 @@ describe("changeRequestPath", () => {
   it("points at a change request inside the project and encodes both parts", () => {
     expect(changeRequestPath("my shop", "abc")).toBe(
       "/projects/my%20shop/change-requests/abc",
+    );
+  });
+});
+
+describe("segmentPath", () => {
+  it("points at a segment inside the project and encodes both parts", () => {
+    expect(segmentPath("my shop", "beta testers")).toBe(
+      "/projects/my%20shop/segments/beta%20testers",
     );
   });
 });
