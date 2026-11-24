@@ -4,12 +4,10 @@ import Link from "next/link";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 
+import { RequestFields } from "@/components/flags/request-fields";
 import { ResponsiveDialog } from "@/components/patterns/responsive-dialog";
 import { Button } from "@/components/ui/button";
 import { DialogClose } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api/client";
 import { ApiError, failureText, must } from "@/lib/flags/errors";
 import { projectPath } from "@/lib/routes";
@@ -81,23 +79,12 @@ function RequestForm({
 
   return (
     <form id={`${id}-form`} onSubmit={submit} className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`${id}-title`}>Title</Label>
-        <Input
-          id={`${id}-title`}
-          value={title}
-          maxLength={200}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`${id}-description`}>Description</Label>
-        <Textarea
-          id={`${id}-description`}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-      </div>
+      <RequestFields
+        title={title}
+        onTitle={setTitle}
+        description={description}
+        onDescription={setDescription}
+      />
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <DialogClose render={<Button type="button" variant="outline" />}>
           Cancel
