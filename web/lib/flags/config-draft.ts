@@ -35,7 +35,8 @@ export type ConfigDraft = {
 export type DraftProblem = { path: string; message: string };
 
 let lastId = 0;
-function newId(): string {
+/** A fresh client-side id for a draft row. */
+export function newId(): string {
   lastId += 1;
   return `d${lastId}`;
 }
@@ -61,7 +62,8 @@ function fromServe(s: ServeDraft): S["Serve"] {
     : { variation: s.variation };
 }
 
-function newClause(): ClauseDraft {
+/** An empty `key in` clause, with a fresh id. */
+export function newClause(): ClauseDraft {
   return {
     id: newId(),
     attribute: "key",
