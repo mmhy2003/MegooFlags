@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
-import { PageHeader } from "@/components/patterns/page-header";
+import { SegmentDetail } from "@/components/segments/segment-detail";
 import { serverApi } from "@/lib/api/server";
-import { projectPath, projectTrail, segmentPath } from "@/lib/routes";
 
 async function Content({
   params,
@@ -13,24 +12,14 @@ async function Content({
   const { project: rawProject, segment: rawSegment } = await params;
   const project = decodeURIComponent(rawProject);
   const segment = decodeURIComponent(rawSegment);
+  // Checked here so an unknown key gets the not-found page; the page loads the segment itself.
   const api = await serverApi();
-  const { data, response } = await api.GET(
+  const { response } = await api.GET(
     "/api/projects/{project}/segments/{segment}",
     { params: { path: { project, segment } } },
   );
   if (response.status === 404) notFound();
-  const name = data?.name ?? segment;
-  return (
-    <PageHeader
-      title={name}
-      description={<code className="break-all">{segment}</code>}
-      trail={[
-        ...projectTrail(project),
-        { label: "Segments", href: projectPath(project, "segments") },
-        { label: name, href: segmentPath(project, segment) },
-      ]}
-    />
-  );
+  return <SegmentDetail project={project} segment={segment} />;
 }
 
 /** One segment of a project. */
