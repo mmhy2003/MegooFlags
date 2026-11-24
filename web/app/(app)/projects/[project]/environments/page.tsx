@@ -1,18 +1,13 @@
 import { Suspense } from "react";
 
-import { PlaceholderPage } from "@/components/patterns/placeholder-page";
-import { projectTrail } from "@/lib/routes";
+import { EnvironmentList } from "@/components/environments/environment-list";
 
 async function Content({ params }: { params: Promise<{ project: string }> }) {
-  const { project } = await params;
-  return (
-    <PlaceholderPage
-      title="Environments"
-      trail={projectTrail(decodeURIComponent(project))}
-    />
-  );
+  const project = decodeURIComponent((await params).project);
+  return <EnvironmentList project={project} />;
 }
 
+/** The project's environments in order, with how changes are made in each. */
 export default function EnvironmentsPage({
   params,
 }: {

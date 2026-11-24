@@ -36,13 +36,17 @@ const STATUSES: Record<
 export function StatusPill({
   status,
   label,
+  icon,
   className,
 }: {
   status: Status;
   label?: string;
+  /** Replaces the status's own icon. */
+  icon?: LucideIcon;
   className?: string;
 }) {
-  const { icon: Icon, tone, label: fallback } = STATUSES[status];
+  const { icon: fallbackIcon, tone, label: fallback } = STATUSES[status];
+  const Icon = icon ?? fallbackIcon;
   return (
     <span
       className={cn(
