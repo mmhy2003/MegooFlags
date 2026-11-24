@@ -7,6 +7,36 @@ import { usageByFlag } from "@/lib/segments/segment-draft";
 type SegmentUsage = components["schemas"]["SegmentUsage"];
 
 /** The flags whose rules use a segment, each a link with the environments it is used in. */
+export function UsedByList({
+  project,
+  usedBy,
+}: {
+  project: string;
+  usedBy: SegmentUsage[];
+}) {
+  return (
+    <ul className="flex min-w-0 flex-col divide-y">
+      {usageByFlag(usedBy).map(({ flag, environments }) => (
+        <li
+          key={flag}
+          className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 py-1"
+        >
+          <Link
+            href={flagPath(project, flag)}
+            className="inline-flex min-h-11 items-center font-mono break-all hover:underline"
+          >
+            {flag}
+          </Link>
+          <span className="text-sm break-words text-muted-foreground">
+            {environments.join(", ")}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The "Used by" section's content: the list with what a saved change means, or that none does. */
 export function UsedBy({
   project,
   usedBy,
@@ -22,24 +52,7 @@ export function UsedBy({
         A saved change applies to these flags at once, in every environment
         listed, protected ones too.
       </p>
-      <ul className="flex min-w-0 flex-col divide-y">
-        {usageByFlag(usedBy).map(({ flag, environments }) => (
-          <li
-            key={flag}
-            className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 py-1"
-          >
-            <Link
-              href={flagPath(project, flag)}
-              className="inline-flex min-h-11 items-center font-mono break-all hover:underline"
-            >
-              {flag}
-            </Link>
-            <span className="text-sm break-words text-muted-foreground">
-              {environments.join(", ")}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <UsedByList project={project} usedBy={usedBy} />
     </>
   );
 }

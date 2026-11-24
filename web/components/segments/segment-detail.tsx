@@ -1,15 +1,17 @@
 "use client";
 
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { DANGER_TRIGGER } from "@/components/flags/delete-flag-dialog";
 import { KeyListField } from "@/components/flags/key-list-field";
 import { UnsavedBar } from "@/components/flags/unsaved-bar";
 import { useUnsavedGuard } from "@/components/flags/use-unsaved-guard";
 import { ConfirmDialog } from "@/components/patterns/confirm-dialog";
 import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
 import { PageHeader } from "@/components/patterns/page-header";
+import { DeleteSegmentDialog } from "@/components/segments/delete-segment-dialog";
 import { SegmentDetailsDialog } from "@/components/segments/segment-details-dialog";
 import { SegmentRules } from "@/components/segments/segment-rules";
 import { UsedBy } from "@/components/segments/used-by";
@@ -120,6 +122,7 @@ export function SegmentDetail({
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const problems = [
     ...(checked && draft ? validateDraft(draft) : []),
@@ -197,10 +200,20 @@ export function SegmentDetail({
       ]}
       actions={
         canWrite && current ? (
-          <Button variant="outline" onClick={() => setEditingDetails(true)}>
-            <Pencil aria-hidden />
-            Edit details
-          </Button>
+          <>
+            <Button variant="outline" onClick={() => setEditingDetails(true)}>
+              <Pencil aria-hidden />
+              Edit details
+            </Button>
+            <Button
+              variant="destructive"
+              className={DANGER_TRIGGER}
+              onClick={() => setDeleting(true)}
+            >
+              <Trash2 aria-hidden />
+              Delete
+            </Button>
+          </>
         ) : undefined
       }
     />
@@ -313,6 +326,16 @@ export function SegmentDetail({
           open={editingDetails}
           onOpenChange={setEditingDetails}
           onSaved={(out) => setSaved(out)}
+        />
+      )}
+      {canWrite && (
+        <DeleteSegmentDialog
+          project={project}
+          segment={segment}
+          name={name}
+          usedBy={usedBy ?? []}
+          open={deleting}
+          onOpenChange={setDeleting}
         />
       )}
     </>

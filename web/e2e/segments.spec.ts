@@ -313,6 +313,90 @@ test.describe("a segment's page", () => {
     await expect(page.getByText("Renamed in a test")).toBeVisible();
   });
 
+  test("delete is blocked while a flag uses it", async ({ page }) => {
+    const key = `${RUN}-inuse`;
+    const name = `${RUN} inuse`;
+    await createSegment(key, name);
+    const flag = await createUsingFlag(key);
+    await page.goto(segmentPath(SHOP, key));
+    await expect(section(page, "Used by")).toContainText(flag);
+
+    await page.getByRole("button", { name: "Delete" }).click();
+    const dialog = page.getByRole("dialog", {
+      name: `${name} is used by these flags`,
+    });
+    await expect(dialog.getByRole("link", { name: flag })).toHaveAttribute(
+      "href",
+      flagPath(SHOP, flag),
+    );
+    await expect(dialog).toContainText(ENV);
+    await expect(
+      dialog.getByRole("button", { name: "Delete segment" }),
+    ).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Close" }).first().click();
+    await expect(dialog).toBeHidden();
+    await expect(page).toHaveURL(segmentPath(SHOP, key));
+  });
+
+  test("delete once no flag uses it", async ({ page }) => {
+    const key = `${RUN}-gone`;
+    const name = `${RUN} gone`;
+    await createSegment(key, name);
+    const flag = await createUsingFlag(key);
+    await putConfig(api, flag, ENV, (config) => {
+      config.rules = [];
+    });
+    await page.goto(segmentPath(SHOP, key));
+    await expect(section(page, "Used by")).toContainText(
+      "No flag uses this segment.",
+    );
+
+    await page.getByRole("button", { name: "Delete" }).click();
+    const dialog = page.getByRole("alertdialog", { name: `Delete ${name}?` });
+    await dialog.getByRole("button", { name: "Delete segment" }).click();
+    await expect(page).toHaveURL(LIST);
+    await expect(page.getByText("Segment deleted")).toBeVisible();
+
+    await page.goto(`${LIST}?q=${key}`);
+    await expect(page.getByText("No segments match")).toBeVisible();
+  });
+
+  test("a 409 on delete shows the API's list", async ({ page }) => {
+    const key = await open(page, "race");
+    const name = `${RUN} race`;
+    await expect(section(page, "Used by")).toContainText(
+      "No flag uses this segment.",
+    );
+    await page.route(`**/api/projects/${SHOP}/segments/${key}`, (route) =>
+      route.request().method() === "DELETE"
+        ? route.fulfill({
+            status: 409,
+            json: {
+              code: "in_use",
+              message: `segment '${key}' is used by flag rules`,
+              details: {
+                used_by: [{ flag: "hidden-flag", environment: "production" }],
+              },
+            },
+          })
+        : route.fallback(),
+    );
+
+    await page.getByRole("button", { name: "Delete" }).click();
+    await page
+      .getByRole("alertdialog", { name: `Delete ${name}?` })
+      .getByRole("button", { name: "Delete segment" })
+      .click();
+    const blocked = page.getByRole("dialog", {
+      name: `${name} is used by these flags`,
+    });
+    await expect(
+      blocked.getByRole("link", { name: "hidden-flag" }),
+    ).toBeVisible();
+    await expect(blocked).toContainText("production");
+    await expect(page).toHaveURL(segmentPath(SHOP, key));
+  });
+
   test("an unknown segment is not found", async ({ page }) => {
     await page.goto(segmentPath(SHOP, "nope"));
     await expect(
@@ -335,7 +419,7 @@ test.describe("as a viewer", () => {
     await expect(
       page.getByRole("textbox", { name: "Excluded keys" }),
     ).toHaveAttribute("readonly", "");
-    for (const name of ["Add rule", "Save", "Edit details"])
+    for (const name of ["Add rule", "Save", "Edit details", "Delete"])
       await expect(page.getByRole("button", { name })).toHaveCount(0);
   });
 
