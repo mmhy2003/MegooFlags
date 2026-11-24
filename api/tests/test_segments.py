@@ -2,7 +2,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI
-from helpers import assert_error, create_flag, create_project
+from helpers import assert_error, count_statements, create_flag, create_project
 from sqlalchemy import text
 
 SEGMENTS = "/api/projects/demo/segments"
@@ -49,7 +49,14 @@ async def test_list_paginated(api: httpx.AsyncClient) -> None:
     second = (await api.get(SEGMENTS, params={"limit": 2, "cursor": first["next_cursor"]})).json()
 
     assert [s["key"] for s in first["items"]] == ["a-seg", "b-seg"]
-    assert set(first["items"][0]) == {"key", "name", "description", "created_at", "updated_at"}
+    assert set(first["items"][0]) == {
+        "key",
+        "name",
+        "description",
+        "created_at",
+        "updated_at",
+        "flag_count",
+    }
     assert [s["key"] for s in second["items"]] == ["c-seg"]
     assert second["next_cursor"] is None
 
@@ -270,3 +277,32 @@ async def test_usage_unknown_segment_404(api: httpx.AsyncClient) -> None:
     await create_project(api)
 
     assert_error(await api.get(f"{BETA}/usage"), 404, "not_found")
+
+
+async def test_list_flag_count(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_segment(api, "beta")
+    await create_segment(api, "unused")
+    await create_flag(api, key="new-ui")
+    await create_flag(api, key="other-ui")
+    await use_segment(api, "new-ui", "staging")
+    await use_segment(api, "new-ui", "production")
+    await use_segment(api, "other-ui", "production")
+
+    r = await api.get(SEGMENTS)
+
+    assert r.status_code == 200, r.text
+    assert {s["key"]: s["flag_count"] for s in r.json()["items"]} == {"beta": 2, "unused": 0}
+
+
+async def test_list_flag_count_is_one_query(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    for key in ("a-seg", "b-seg", "c-seg"):
+        await create_segment(api, key)
+
+    with count_statements(app.state.engine) as statements:
+        r = await api.get(SEGMENTS)
+
+    assert r.status_code == 200, r.text
+    assert len(r.json()["items"]) == 3
+    assert len([s for s in statements if "clause_segment" in s]) == 1

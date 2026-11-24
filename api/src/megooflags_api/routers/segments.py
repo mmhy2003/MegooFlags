@@ -11,8 +11,8 @@ from megooflags_api.schemas.common import Page
 from megooflags_api.schemas.segments import (
     SegmentConfigIn,
     SegmentCreate,
+    SegmentListItem,
     SegmentOut,
-    SegmentSummary,
     SegmentUpdate,
     SegmentUsage,
     SegmentUsageOut,
@@ -42,11 +42,17 @@ async def list_segments(
     q: str | None = Query(None, description="Case-insensitive substring of the key or name."),
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=500),
-) -> Page[SegmentSummary]:
+) -> Page[SegmentListItem]:
+    row = _project(authz)
     items, next_cursor = await segments.list_segments(
-        session, _project(authz), q=q, cursor=cursor, limit=limit
+        session,
+        row,
+        q=q,
+        cursor=cursor,
+        limit=limit,
+        visible=authz.authorizer.visible_environment_ids(row.id),
     )
-    return Page[SegmentSummary](items=items, next_cursor=next_cursor)
+    return Page[SegmentListItem](items=items, next_cursor=next_cursor)
 
 
 @router.post("/projects/{project}/segments", status_code=201)

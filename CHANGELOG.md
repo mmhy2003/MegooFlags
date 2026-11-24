@@ -94,6 +94,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - API tokens page for personal tokens limited to a project or environment.
 - Settings: members and invitations, teams, custom roles, service tokens, SSO providers with set-up URLs and group mappings, and the require two-factor setting.
 - `GET /api/projects/{project}/segments/{segment}/usage` lists the flags and environments whose rules use a segment.
+- Segment list items have `flag_count`: how many flags use the segment in the environments you can see.
 
 ## [0.1.0]
 

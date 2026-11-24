@@ -3606,10 +3606,10 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
-        /** Page[SegmentSummary] */
-        Page_SegmentSummary_: {
+        /** Page[SegmentListItem] */
+        Page_SegmentListItem_: {
             /** Items */
-            items: components["schemas"]["SegmentSummary"][];
+            items: components["schemas"]["SegmentListItem"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -4352,6 +4352,30 @@ export interface components {
             name: string;
         };
         /**
+         * SegmentListItem
+         * @description `flag_count`: flags whose rules use the segment, in the environments the caller can see.
+         */
+        SegmentListItem: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Flag Count */
+            flag_count: number;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
          * SegmentOut
          * @description `included` and `excluded` are sorted; `rules` keep their order.
          */
@@ -4395,25 +4419,6 @@ export interface components {
             clauses: components["schemas"]["ClauseOut"][];
             /** Description */
             description: string;
-        };
-        /** SegmentSummary */
-        SegmentSummary: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Description */
-            description: string;
-            /** Key */
-            key: string;
-            /** Name */
-            name: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
         };
         /** SegmentUpdate */
         SegmentUpdate: {
@@ -12106,7 +12111,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Page_SegmentSummary_"];
+                    "application/json": components["schemas"]["Page_SegmentListItem_"];
                 };
             };
             /** @description Unauthorized */

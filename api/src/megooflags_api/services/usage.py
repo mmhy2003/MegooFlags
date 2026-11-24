@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from megooflags_api.models import (
@@ -131,3 +131,25 @@ async def segment_dependents(
         query = query.where(Environment.id.in_(visible))
     rows = await session.execute(query.distinct().order_by(Flag.key, Environment.key))
     return [{"flag": flag, "environment": env} for flag, env in rows]
+
+
+async def segment_flag_counts(
+    session: AsyncSession, segment_ids: list[uuid.UUID], visible: set[uuid.UUID] | None
+) -> dict[uuid.UUID, int]:
+    """How many flags use each segment in their rules, in one query; unused segments are absent.
+
+    `visible` limits the count to those environments; None means all of them.
+    """
+    if not segment_ids:
+        return {}
+    query = (
+        select(ClauseSegment.segment_id, func.count(distinct(FlagEnvironment.flag_id)))
+        .join(Clause, Clause.id == ClauseSegment.clause_id)
+        .join(FlagRule, FlagRule.id == Clause.flag_rule_id)
+        .join(FlagEnvironment, FlagEnvironment.id == FlagRule.flag_environment_id)
+        .where(ClauseSegment.segment_id.in_(segment_ids))
+        .group_by(ClauseSegment.segment_id)
+    )
+    if visible is not None:
+        query = query.where(FlagEnvironment.environment_id.in_(visible))
+    return {segment_id: count for segment_id, count in await session.execute(query)}

@@ -3468,12 +3468,12 @@
         "title": "Page[RoleOut]",
         "type": "object"
       },
-      "Page_SegmentSummary_": {
+      "Page_SegmentListItem_": {
         "additionalProperties": false,
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/SegmentSummary"
+              "$ref": "#/components/schemas/SegmentListItem"
             },
             "title": "Items",
             "type": "array"
@@ -3494,7 +3494,7 @@
           "items",
           "next_cursor"
         ],
-        "title": "Page[SegmentSummary]",
+        "title": "Page[SegmentListItem]",
         "type": "object"
       },
       "Page_SsoMappingOut_": {
@@ -5553,6 +5553,48 @@
         "title": "SegmentCreate",
         "type": "object"
       },
+      "SegmentListItem": {
+        "additionalProperties": false,
+        "description": "`flag_count`: flags whose rules use the segment, in the environments the caller can see.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "flag_count": {
+            "title": "Flag Count",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "description",
+          "created_at",
+          "updated_at",
+          "flag_count"
+        ],
+        "title": "SegmentListItem",
+        "type": "object"
+      },
       "SegmentOut": {
         "additionalProperties": false,
         "description": "`included` and `excluded` are sorted; `rules` keep their order.",
@@ -5658,42 +5700,6 @@
           "clauses"
         ],
         "title": "SegmentRuleOut",
-        "type": "object"
-      },
-      "SegmentSummary": {
-        "additionalProperties": false,
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "description": {
-            "title": "Description",
-            "type": "string"
-          },
-          "key": {
-            "title": "Key",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "key",
-          "name",
-          "description",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "SegmentSummary",
         "type": "object"
       },
       "SegmentUpdate": {
@@ -17286,7 +17292,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Page_SegmentSummary_"
+                  "$ref": "#/components/schemas/Page_SegmentListItem_"
                 }
               }
             },
