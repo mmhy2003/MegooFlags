@@ -99,7 +99,11 @@ export function AppShell({
           >
             <Brand />
           </Link>
-          <ProjectSwitcher projects={shell.projects} current={project} />
+          <ProjectSwitcher
+            projects={shell.projects}
+            current={project}
+            canCreate={!!permissions?.org.includes("project.create")}
+          />
         </SidebarHeader>
         <SidebarContent>
           <Nav items={items} />

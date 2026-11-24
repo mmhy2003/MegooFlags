@@ -2,10 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { DANGER_TRIGGER } from "@/components/flags/delete-flag-dialog";
 import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
 import { PageHeader } from "@/components/patterns/page-header";
+import { TypedDeleteDialog } from "@/components/patterns/typed-delete-dialog";
 import { useProjectPermissions } from "@/components/shell/use-project-permissions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +19,7 @@ import { useApiData } from "@/hooks/use-api-data";
 import { formFailureText } from "@/lib/access/bindings";
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { ApiError, must } from "@/lib/flags/errors";
+import { ApiError, failureText, must } from "@/lib/flags/errors";
 import { can } from "@/lib/flags/permissions";
 import { projectPath, projectTrail } from "@/lib/routes";
 
@@ -37,7 +40,10 @@ function staleDays(text: string): number | null {
   return n >= STALE_MIN && n <= STALE_MAX ? n : null;
 }
 
-/** The project's name, description and stale-flag threshold; read-only without project.manage. */
+/**
+ * The project's name, description and stale-flag threshold, and its deletion. Read-only, and
+ * without the danger zone, without project.manage.
+ */
 export function ProjectSettings({ project }: { project: string }) {
   const perms = useProjectPermissions(project, null, null);
   const canManage = can(perms, "project.manage");
@@ -98,6 +104,7 @@ export function ProjectSettings({ project }: { project: string }) {
           title="Stale flags"
           onSaved={setSaved}
         />
+        {canManage && <DangerZone project={current} />}
       </div>
     </>
   );
@@ -310,6 +317,72 @@ function SettingsForm({
             </div>
           )}
         </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Deletes the project, once its key is typed, then goes home. */
+function DangerZone({ project }: { project: Project }) {
+  const id = useId();
+  const router = useRouter();
+  const [deleting, setDeleting] = useState(false);
+
+  const remove = async () => {
+    try {
+      await must(
+        api.DELETE("/api/projects/{project}", {
+          params: { path: { project: project.key } },
+        }),
+      );
+    } catch (error) {
+      if (!(error instanceof ApiError))
+        console.error("deleting the project failed", error);
+      toast.error(
+        error instanceof ApiError
+          ? failureText(error.failure)
+          : "Couldn't reach the server",
+      );
+      throw error;
+    }
+    toast("Project deleted");
+    // Home opens another project the user can see; the switcher is loaded on the server.
+    router.push("/");
+    router.refresh();
+  };
+
+  return (
+    <Card
+      role="region"
+      aria-labelledby={`${id}-title`}
+      className="min-w-0 px-4"
+    >
+      <CardHeader className="px-0">
+        <CardTitle>
+          <h2 id={`${id}-title`}>Danger zone</h2>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col items-start gap-4 px-0">
+        <p className="text-sm text-muted-foreground">
+          Deleting a project deletes everything in it.
+        </p>
+        <Button
+          variant="destructive"
+          className={DANGER_TRIGGER}
+          onClick={() => setDeleting(true)}
+        >
+          <Trash2 aria-hidden />
+          Delete project
+        </Button>
+        <TypedDeleteDialog
+          open={deleting}
+          onOpenChange={setDeleting}
+          title={`Delete ${project.name}?`}
+          description={`This deletes ${project.name} with all its flags, segments, environments, SDK keys, change requests and history. It can't be undone.`}
+          typedKey={project.key}
+          confirmLabel="Delete project"
+          onDelete={remove}
+        />
       </CardContent>
     </Card>
   );
