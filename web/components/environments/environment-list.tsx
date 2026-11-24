@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Layers, Lock } from "lucide-react";
+import { ArrowDown, ArrowUp, Layers, Lock, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { EnvironmentDialog } from "@/components/environments/environment-dialog";
 import { type Column, DataList } from "@/components/patterns/data-list";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
@@ -27,6 +28,7 @@ function columns(
   canManage: boolean,
   rows: Environment[],
   onMove: (env: Environment, dir: Direction) => void,
+  onEdit: (env: Environment) => void,
 ): Column<Environment>[] {
   const move = (env: Environment, index: number, dir: Direction) => (
     <Button
@@ -94,6 +96,13 @@ function columns(
           <div className="flex flex-wrap gap-2">
             {move(e, index, "up")}
             {move(e, index, "down")}
+            <Button
+              variant="outline"
+              aria-label={`Edit ${e.name}`}
+              onClick={() => onEdit(e)}
+            >
+              Edit
+            </Button>
           </div>
         );
       },
@@ -123,6 +132,12 @@ export function EnvironmentList({ project }: { project: string }) {
     () => (moved && moved.base === list.data ? moved.rows : (list.data ?? [])),
     [moved, list.data],
   );
+  // The environment the dialog edits; null creates one.
+  const [dialog, setDialog] = useState<{
+    open: boolean;
+    environment: Environment | null;
+  }>({ open: false, environment: null });
+
   // A move waits for the one before it, so each PUT starts from the saved order.
   const [moving, setMoving] = useState(false);
 
@@ -203,7 +218,12 @@ export function EnvironmentList({ project }: { project: string }) {
     body = (
       <DataList
         caption="Environments"
-        columns={columns(canManage, rows, (env, dir) => void onMove(env, dir))}
+        columns={columns(
+          canManage,
+          rows,
+          (env, dir) => void onMove(env, dir),
+          (environment) => setDialog({ open: true, environment }),
+        )}
         rows={rows}
         rowKey={(e) => e.key}
       />
@@ -212,10 +232,35 @@ export function EnvironmentList({ project }: { project: string }) {
 
   return (
     <>
-      <PageHeader title="Environments" trail={projectTrail(project)} />
+      <PageHeader
+        title="Environments"
+        trail={projectTrail(project)}
+        actions={
+          canManage ? (
+            <Button
+              onClick={() => setDialog({ open: true, environment: null })}
+            >
+              <Plus aria-hidden />
+              New environment
+            </Button>
+          ) : undefined
+        }
+      />
       <div ref={container} className="flex flex-col gap-4">
         {body}
       </div>
+      {canManage && (
+        <EnvironmentDialog
+          project={project}
+          environment={dialog.environment}
+          open={dialog.open}
+          onOpenChange={(open) => setDialog((d) => ({ ...d, open }))}
+          onSaved={() => {
+            setMoved(null);
+            list.reload();
+          }}
+        />
+      )}
     </>
   );
 }

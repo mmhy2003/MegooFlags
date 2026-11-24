@@ -46,14 +46,30 @@ function rows(page: Page): Locator {
     .getByRole("row");
 }
 
-/** Puts the environments back in the default order, so each test starts from it. */
+const DEFAULT_ORDER = ["development", "staging", "production"];
+
+/** Puts the default environments back first, in their order, so each test starts from it. */
 async function resetOrder(): Promise<void> {
+  const res = await api.get(`/api/projects/${RUN}/environments`);
+  await ok(res, "list the environments");
+  const keys = ((await res.json()) as { key: string }[]).map((e) => e.key);
   await ok(
     await api.put(`/api/projects/${RUN}/environment-order`, {
-      data: { environments: ["development", "staging", "production"] },
+      data: {
+        environments: [
+          ...DEFAULT_ORDER,
+          ...keys.filter((k) => !DEFAULT_ORDER.includes(k)),
+        ],
+      },
     }),
     "reset the environment order",
   );
+}
+
+/** The dialog to edit an environment, opened from its row. */
+async function openEdit(page: Page, name: string): Promise<Locator> {
+  await page.getByRole("button", { name: `Edit ${name}` }).click();
+  return page.getByRole("dialog", { name: "Edit environment" });
 }
 
 test.describe("as an admin", () => {
@@ -150,11 +166,111 @@ test.describe("as an admin", () => {
     ]);
   });
 
+  test("create", async ({ page }) => {
+    // A retry starts without the environment the first try created.
+    await api.delete(`/api/projects/${RUN}/environments/qa`);
+    await page.goto(LIST);
+    await expect(rows(page)).toHaveCount(3);
+    await page.getByRole("button", { name: "New environment" }).click();
+    const dialog = page.getByRole("dialog", { name: "New environment" });
+    await dialog.getByLabel("Name").fill("QA");
+    await expect(dialog.getByLabel("Key")).toHaveValue("qa");
+    await expect(dialog).toContainText(
+      "Every flag gets this environment, turned off.",
+    );
+    await expect(dialog).toContainText("It's added last.");
+    await dialog.getByLabel("Description").fill("Manual testing");
+    await dialog.getByRole("button", { name: "Create environment" }).click();
+
+    await expect(dialog).toBeHidden();
+    await expect(rows(page)).toHaveText([
+      /Development/,
+      /Staging/,
+      /Production/,
+      /QA/,
+    ]);
+    const res = await api.get(`/api/projects/${RUN}/flags/f1/environments/qa`);
+    await ok(res, "read f1 in qa");
+    expect(((await res.json()) as { enabled: boolean }).enabled).toBe(false);
+  });
+
+  test("duplicate key", async ({ page }) => {
+    // Present whether or not "create" ran first.
+    await api.post(`/api/projects/${RUN}/environments`, {
+      data: { key: "qa", name: "QA" },
+    });
+    await page.goto(LIST);
+    await page.getByRole("button", { name: "New environment" }).click();
+    const dialog = page.getByRole("dialog", { name: "New environment" });
+    await dialog.getByLabel("Name").fill("Another QA");
+    await dialog.getByLabel("Key").fill("qa");
+    await dialog.getByRole("button", { name: "Create environment" }).click();
+    await expect(dialog.getByLabel("Key")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    await expect(dialog).toContainText("environment 'qa' already exists");
+  });
+
+  test("set and clear approvals", async ({ page }) => {
+    await ok(
+      await api.patch(`/api/projects/${RUN}/environments/staging`, {
+        data: { approvals_required: 0 },
+      }),
+      "unprotect staging",
+    );
+    await page.goto(LIST);
+    let dialog = await openEdit(page, "Staging");
+    await expect(dialog.getByLabel("Key")).toHaveValue("staging");
+    await expect(dialog.getByLabel("Key")).toHaveAttribute("readonly", "");
+    await expect(dialog.getByLabel("Approvals needed")).toBeHidden();
+    await dialog.getByLabel("Changes need approval").check();
+    await dialog.getByLabel("Approvals needed").fill("2");
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(rows(page).nth(1)).toContainText("Needs 2 approvals");
+
+    await page.goto(flagPath(RUN, "f1"));
+    await expect(
+      page
+        .getByRole("region", { name: "Environments" })
+        .getByRole("group", { name: "Staging" }),
+    ).toContainText("Needs approval");
+
+    await page.goto(LIST);
+    dialog = await openEdit(page, "Staging");
+    await expect(dialog.getByLabel("Changes need approval")).toBeChecked();
+    await expect(dialog.getByLabel("Approvals needed")).toHaveValue("2");
+    const note = "Open change requests stay open and still need one approval.";
+    await expect(dialog.getByText(note)).toBeHidden();
+    await dialog.getByLabel("Changes need approval").uncheck();
+    await expect(dialog.getByText(note)).toBeVisible();
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(rows(page).nth(1)).toContainText("Direct changes");
+  });
+
+  test("approvals range", async ({ page }) => {
+    await page.goto(LIST);
+    const dialog = await openEdit(page, "Development");
+    await dialog.getByLabel("Changes need approval").check();
+    await dialog.getByLabel("Approvals needed").fill("11");
+    await expect(dialog.getByLabel("Approvals needed")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    await expect(dialog).toContainText("Enter 1 to 10");
+    await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
   test("cards under 768 px", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.goto(LIST);
+    const res = await api.get(`/api/projects/${RUN}/environments`);
+    await ok(res, "list the environments");
+    const count = ((await res.json()) as unknown[]).length;
     const list = page.getByRole("list", { name: "Environments" });
-    await expect(list.getByRole("article")).toHaveCount(3);
+    await expect(list.getByRole("article")).toHaveCount(count);
     await expect(page.getByRole("table")).toBeHidden();
     await expect(
       list.getByRole("button", { name: "Move Staging down" }),
