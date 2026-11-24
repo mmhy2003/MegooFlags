@@ -11,6 +11,7 @@ import {
   ScrollText,
   Server,
   Settings,
+  SlidersHorizontal,
   Target,
   type LucideIcon,
 } from "lucide-react";
@@ -32,6 +33,7 @@ export const NAV_ICONS: Record<NavKey, LucideIcon> = {
   audit: ScrollText,
   keys: KeyRound,
   integrations: Plug,
+  "project-settings": SlidersHorizontal,
   nodes: Server,
   settings: Settings,
 };

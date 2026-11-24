@@ -65,6 +65,12 @@ describe("switchProjectPath", () => {
     );
   });
 
+  it("keeps the project settings", () => {
+    expect(switchProjectPath("/projects/a/settings", "b")).toBe(
+      "/projects/b/settings",
+    );
+  });
+
   it("falls back to flags outside a project", () => {
     expect(switchProjectPath("/settings", "b")).toBe("/projects/b/flags");
   });

@@ -10,6 +10,7 @@ const ADMIN_ITEMS = [
   "Audit log",
   "API & SDK keys",
   "Integrations",
+  "Project settings",
   // The e2e API runs as a control plane (AGENTS.md §9), so the admin manages its nodes.
   "Nodes",
   "Settings",
@@ -61,7 +62,9 @@ test.describe("viewer", () => {
     await page.goto("/projects/demo/flags");
     const nav = page.getByRole("navigation", { name: "Main" });
     await expect(nav.getByRole("link", { name: "Audit log" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Settings" })).toHaveCount(1);
+    await expect(
+      nav.getByRole("link", { name: "Settings", exact: true }),
+    ).toHaveCount(1);
     await expect(nav.getByRole("link", { name: "Integrations" })).toHaveCount(
       0,
     );

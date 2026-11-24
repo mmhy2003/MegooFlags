@@ -51,6 +51,7 @@ describe("navItems", () => {
       "audit",
       "keys",
       "integrations",
+      "project-settings",
       "settings",
     ]);
   });
@@ -66,6 +67,7 @@ describe("navItems", () => {
     expect(result).toContain("keys");
     expect(result).toContain("settings");
     expect(result).not.toContain("integrations");
+    expect(result).not.toContain("project-settings");
   });
 
   it("shows settings for org audit.read and hides it without org permissions", () => {
@@ -127,6 +129,7 @@ describe("navItems", () => {
       "audit",
       "keys",
       "integrations",
+      "project-settings",
       "nodes",
       "settings",
     ]);
@@ -156,10 +159,13 @@ describe("navItems", () => {
     expect(keys("demo", admin, null)).not.toContain("nodes");
   });
 
-  it("builds project, nodes and settings hrefs", () => {
+  it("builds project, project settings, nodes and settings hrefs", () => {
     const items = navItems("demo", admin, "control-plane");
     expect(items.find((item) => item.key === "audit")?.href).toBe(
       "/projects/demo/audit",
+    );
+    expect(items.find((item) => item.key === "project-settings")?.href).toBe(
+      "/projects/demo/settings",
     );
     expect(items.find((item) => item.key === "nodes")?.href).toBe("/nodes");
     expect(items.find((item) => item.key === "settings")?.href).toBe(

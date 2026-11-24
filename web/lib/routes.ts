@@ -6,6 +6,7 @@ export const PROJECT_SECTIONS = [
   "audit",
   "keys",
   "integrations",
+  "settings",
 ] as const;
 
 export type ProjectSection = (typeof PROJECT_SECTIONS)[number];
