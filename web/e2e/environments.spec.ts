@@ -263,6 +263,109 @@ test.describe("as an admin", () => {
     await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
+  test("delete with the typed key", async ({ page }) => {
+    // Present whether or not "create" ran first.
+    await api.post(`/api/projects/${RUN}/environments`, {
+      data: { key: "qa", name: "QA" },
+    });
+    await page.goto(LIST);
+    await expect(rows(page)).toHaveCount(4);
+    await page.getByRole("button", { name: "Delete QA" }).click();
+    const dialog = page.getByRole("alertdialog", { name: "Delete QA?" });
+    await expect(dialog).toContainText(
+      "This deletes QA and, with it, every flag's state, targeting, schedules and rollouts there, its SDK keys, change requests and role assignments. It can't be undone.",
+    );
+    const confirm = dialog.getByRole("button", { name: "Delete environment" });
+    await expect(confirm).toBeDisabled();
+    const typed = dialog.getByLabel("Type qa to confirm");
+    await expect(typed).toHaveAttribute("autocomplete", "off");
+    await typed.fill("q");
+    await expect(confirm).toBeDisabled();
+    await typed.fill("qa");
+    await confirm.click();
+
+    await expect(dialog).toBeHidden();
+    await expect(page.getByText("Environment deleted")).toBeVisible();
+    await expect(rows(page)).toHaveText([
+      /Development/,
+      /Staging/,
+      /Production/,
+    ]);
+
+    await page.goto(flagPath(RUN, "f1"));
+    const strip = page.getByRole("region", { name: "Environments" });
+    await expect(
+      strip.getByRole("group", { name: "Production" }),
+    ).toBeVisible();
+    await expect(strip.getByRole("group", { name: "QA" })).toHaveCount(0);
+  });
+
+  test("a failed delete keeps the dialog open", async ({ page }) => {
+    await api.post(`/api/projects/${RUN}/environments`, {
+      data: { key: "qa", name: "QA" },
+    });
+    await page.route(`**/api/projects/${RUN}/environments/qa`, (route) =>
+      route.request().method() === "DELETE"
+        ? route.fulfill({
+            status: 409,
+            json: {
+              code: "conflict",
+              message: "the environment is busy",
+              details: null,
+            },
+          })
+        : route.fallback(),
+    );
+    await page.goto(LIST);
+    await page.getByRole("button", { name: "Delete QA" }).click();
+    const dialog = page.getByRole("alertdialog", { name: "Delete QA?" });
+    await dialog.getByLabel("Type qa to confirm").fill("qa");
+    const confirm = dialog.getByRole("button", { name: "Delete environment" });
+    await confirm.click();
+    await expect(page.getByText("the environment is busy")).toBeVisible();
+    await expect(dialog).toBeVisible();
+    await expect(confirm).toBeEnabled();
+
+    // Closing resets what was typed.
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toBeHidden();
+    await page.getByRole("button", { name: "Delete QA" }).click();
+    await expect(dialog.getByLabel("Type qa to confirm")).toHaveValue("");
+    await expect(confirm).toBeDisabled();
+  });
+
+  test("the last environment", async ({ page }) => {
+    const single = `${RUN}-one`;
+    await ok(
+      await api.post("/api/projects", { data: { key: single, name: single } }),
+      `create project ${single}`,
+    );
+    try {
+      for (const env of ["staging", "production"])
+        await ok(
+          await api.delete(`/api/projects/${single}/environments/${env}`),
+          `delete ${env}`,
+        );
+      await page.goto(projectPath(single, "environments"));
+      await expect(rows(page)).toHaveCount(1);
+      const remove = page
+        .getByRole("table", { name: "Environments" })
+        .getByRole("button", { name: "Delete Development" });
+      await expect(remove).toBeDisabled();
+      await expect(remove).toHaveAccessibleDescription(
+        "A project needs at least one environment.",
+      );
+      await expect(
+        page.getByText("A project needs at least one environment."),
+      ).toBeVisible();
+    } finally {
+      await ok(
+        await api.delete(`/api/projects/${single}`),
+        `delete project ${single}`,
+      );
+    }
+  });
+
   test("cards under 768 px", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.goto(LIST);

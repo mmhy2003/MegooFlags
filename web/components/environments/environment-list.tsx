@@ -1,10 +1,12 @@
 "use client";
 
 import { ArrowDown, ArrowUp, Layers, Lock, Plus } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { DeleteEnvironmentDialog } from "@/components/environments/delete-environment-dialog";
 import { EnvironmentDialog } from "@/components/environments/environment-dialog";
+import { DANGER_TRIGGER } from "@/components/flags/delete-flag-dialog";
 import { type Column, DataList } from "@/components/patterns/data-list";
 import { EmptyState } from "@/components/patterns/empty-state";
 import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
@@ -29,6 +31,8 @@ function columns(
   rows: Environment[],
   onMove: (env: Environment, dir: Direction) => void,
   onEdit: (env: Environment) => void,
+  onDelete: (env: Environment) => void,
+  lastNoteId: string,
 ): Column<Environment>[] {
   const move = (env: Environment, index: number, dir: Direction) => (
     <Button
@@ -103,6 +107,16 @@ function columns(
             >
               Edit
             </Button>
+            <Button
+              variant="destructive"
+              className={DANGER_TRIGGER}
+              aria-label={`Delete ${e.name}`}
+              disabled={rows.length === 1}
+              aria-describedby={rows.length === 1 ? lastNoteId : undefined}
+              onClick={() => onDelete(e)}
+            >
+              Delete
+            </Button>
           </div>
         );
       },
@@ -137,6 +151,13 @@ export function EnvironmentList({ project }: { project: string }) {
     open: boolean;
     environment: Environment | null;
   }>({ open: false, environment: null });
+  // The environment the delete dialog is for; kept while it closes.
+  const [deleting, setDeleting] = useState<{
+    open: boolean;
+    environment: Environment | null;
+  }>({ open: false, environment: null });
+  // The table and the cards both point at this one sentence.
+  const lastNoteId = useId();
 
   // A move waits for the one before it, so each PUT starts from the saved order.
   const [moving, setMoving] = useState(false);
@@ -223,11 +244,22 @@ export function EnvironmentList({ project }: { project: string }) {
           rows,
           (env, dir) => void onMove(env, dir),
           (environment) => setDialog({ open: true, environment }),
+          (environment) => setDeleting({ open: true, environment }),
+          lastNoteId,
         )}
         rows={rows}
         rowKey={(e) => e.key}
       />
     );
+    if (canManage && rows.length === 1)
+      body = (
+        <>
+          {body}
+          <p id={lastNoteId} className="text-sm text-muted-foreground">
+            A project needs at least one environment.
+          </p>
+        </>
+      );
   }
 
   return (
@@ -256,6 +288,18 @@ export function EnvironmentList({ project }: { project: string }) {
           open={dialog.open}
           onOpenChange={(open) => setDialog((d) => ({ ...d, open }))}
           onSaved={() => {
+            setMoved(null);
+            list.reload();
+          }}
+        />
+      )}
+      {canManage && deleting.environment && (
+        <DeleteEnvironmentDialog
+          project={project}
+          environment={deleting.environment}
+          open={deleting.open}
+          onOpenChange={(open) => setDeleting((d) => ({ ...d, open }))}
+          onDeleted={() => {
             setMoved(null);
             list.reload();
           }}
