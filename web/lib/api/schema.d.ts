@@ -1019,6 +1019,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project}/environment-order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder Environments
+         * @description Reorders every environment of the project at once; the list must name each exactly once.
+         */
+        put: operations["reorder_environments_api_projects__project__environment_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project}/environments": {
         parameters: {
             query?: never;
@@ -2745,6 +2765,14 @@ export interface components {
             name: string;
             /** Sort Order */
             sort_order?: number | null;
+        };
+        /**
+         * EnvironmentOrderIn
+         * @description Every environment of the project exactly once, in the new order.
+         */
+        EnvironmentOrderIn: {
+            /** Environments */
+            environments: string[];
         };
         /** EnvironmentOut */
         EnvironmentOut: {
@@ -8810,6 +8838,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChangeRequestOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reorder_environments_api_projects__project__environment_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnvironmentOrderIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvironmentOut"][];
                 };
             };
             /** @description Unauthorized */

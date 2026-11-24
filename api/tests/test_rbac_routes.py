@@ -102,6 +102,15 @@ async def test_org_viewer_reads_but_cannot_write(client_as: ClientAs) -> None:
         assert_error(r, 403, "forbidden")
 
 
+async def test_reorder_needs_environment_manage(client_as: ClientAs) -> None:
+    async with client_as(("viewer", None, None)) as viewer:
+        r = await viewer.put(
+            "/api/projects/demo/environment-order",
+            json={"environments": ["production", "staging", "development"]},
+        )
+        assert_error(r, 403, "forbidden")
+
+
 async def test_production_editor_sees_and_changes_only_production(client_as: ClientAs) -> None:
     async with client_as(("editor", "demo", "production")) as editor:
         r = await editor.post(TOGGLE.format(env="production"), json={"enabled": True})

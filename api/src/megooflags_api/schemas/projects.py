@@ -26,6 +26,12 @@ class EnvironmentUpdate(ApiModel):
     )
 
 
+class EnvironmentOrderIn(ApiModel):
+    """Every environment of the project exactly once, in the new order."""
+
+    environments: list[Key] = Field(min_length=1)
+
+
 class EnvironmentOut(ApiModel):
     key: str
     name: str

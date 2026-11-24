@@ -6,7 +6,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from megooflags_api.errors import key_conflict
+from megooflags_api.errors import key_conflict, validation_error
 from megooflags_api.models import Environment, Project
 from megooflags_api.schemas.projects import EnvironmentCreate, EnvironmentUpdate
 
@@ -65,6 +65,26 @@ async def list_environments(
     if visible is not None:
         query = query.where(Environment.id.in_(visible))
     return list(await session.scalars(query))
+
+
+async def reorder_environments(
+    session: AsyncSession, project: Project, keys: list[str]
+) -> tuple[list[str], list[Environment]]:
+    """Sets sort_order to each key's index. Returns the old key order and the rows in the new."""
+    # Serialises with create_environment, so the key set checked here is the one written.
+    await session.execute(select(Project.id).where(Project.id == project.id).with_for_update())
+    rows = await list_environments(session, project)
+    if len(set(keys)) != len(keys) or set(keys) != {e.key for e in rows}:
+        raise validation_error(
+            "environments must list every environment of the project exactly once",
+            "environments",
+        )
+    old_keys = [e.key for e in rows]
+    position = {key: index for index, key in enumerate(keys)}
+    for environment in rows:
+        environment.sort_order = position[environment.key]
+    await session.flush()
+    return old_keys, sorted(rows, key=lambda e: e.sort_order)
 
 
 async def update_environment(

@@ -207,3 +207,53 @@ async def test_patch_approvals_required_out_of_range_is_422(
     )
 
     assert_error(r, 422, "validation_error")
+
+
+ORDER = "/api/projects/demo/environment-order"
+
+
+async def test_reorder_sets_sort_order(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+
+    r = await api.put(ORDER, json={"environments": ["production", "development", "staging"]})
+
+    assert r.status_code == 200, r.text
+    assert [(e["key"], e["sort_order"]) for e in r.json()] == [
+        ("production", 0),
+        ("development", 1),
+        ("staging", 2),
+    ]
+    listed = (await api.get("/api/projects/demo/environments")).json()
+    assert [e["key"] for e in listed] == ["production", "development", "staging"]
+
+
+@pytest.mark.parametrize(
+    "keys",
+    [
+        ["production", "staging"],
+        ["production", "staging", "development", "qa"],
+        ["production", "staging", "staging"],
+        [],
+    ],
+    ids=["missing", "unknown", "repeated", "empty"],
+)
+async def test_reorder_refuses_a_wrong_list(api: httpx.AsyncClient, keys: list[str]) -> None:
+    await create_project(api)
+
+    r = await api.put(ORDER, json={"environments": keys})
+
+    assert_error(r, 422, "validation_error")
+    listed = (await api.get("/api/projects/demo/environments")).json()
+    assert [e["key"] for e in listed] == ["development", "staging", "production"]
+
+
+async def test_reorder_writes_one_audit_entry(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await create_project(api)
+
+    r = await api.put(ORDER, json={"environments": ["production", "staging", "development"]})
+
+    assert r.status_code == 200, r.text
+    [entry] = await audit_entries(app, "environment.reorder")
+    assert (entry["resource_type"], entry["resource_key"]) == ("project", "demo")
+    assert entry["before"] == {"environments": ["development", "staging", "production"]}
+    assert entry["after"] == {"environments": ["production", "staging", "development"]}

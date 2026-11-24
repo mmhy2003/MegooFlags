@@ -95,6 +95,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - Settings: members and invitations, teams, custom roles, service tokens, SSO providers with set-up URLs and group mappings, and the require two-factor setting.
 - `GET /api/projects/{project}/segments/{segment}/usage` lists the flags and environments whose rules use a segment.
 - Segment list items have `flag_count`: how many flags use the segment in the environments you can see.
+- `PUT /api/projects/{project}/environment-order` reorders all environments of a project in one call.
 
 ## [0.1.0]
 

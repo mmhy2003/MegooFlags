@@ -1066,6 +1066,26 @@
         "title": "EnvironmentCreate",
         "type": "object"
       },
+      "EnvironmentOrderIn": {
+        "additionalProperties": false,
+        "description": "Every environment of the project exactly once, in the new order.",
+        "properties": {
+          "environments": {
+            "items": {
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Environments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "environments"
+        ],
+        "title": "EnvironmentOrderIn",
+        "type": "object"
+      },
       "EnvironmentOut": {
         "additionalProperties": false,
         "properties": {
@@ -12524,6 +12544,103 @@
         "summary": "Reject Change Request",
         "tags": [
           "change-requests"
+        ]
+      }
+    },
+    "/api/projects/{project}/environment-order": {
+      "put": {
+        "description": "Reorders every environment of the project at once; the list must name each exactly once.",
+        "operationId": "reorder_environments_api_projects__project__environment_order_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvironmentOrderIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EnvironmentOut"
+                  },
+                  "title": "Response Reorder Environments Api Projects  Project  Environment Order Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Reorder Environments",
+        "tags": [
+          "environments"
         ]
       }
     },
