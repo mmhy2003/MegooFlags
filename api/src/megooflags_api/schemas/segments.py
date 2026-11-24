@@ -49,3 +49,14 @@ class SegmentOut(SegmentSummary):
     included: list[str]
     excluded: list[str]
     rules: list[SegmentRuleOut]
+
+
+class SegmentUsage(ApiModel):
+    flag: str
+    environment: str
+
+
+class SegmentUsageOut(ApiModel):
+    """Ordered by flag, then environment; only environments the caller can see."""
+
+    used_by: list[SegmentUsage]

@@ -42,6 +42,7 @@ def test_spec_documents_management_api() -> None:
         f"{flag}/environments/{{env}}/evaluations",
         "/api/projects/{project}/segments",
         "/api/projects/{project}/segments/{segment}",
+        "/api/projects/{project}/segments/{segment}/usage",
     } <= spec["paths"].keys()
 
     schemas = spec["components"]["schemas"]

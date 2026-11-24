@@ -154,6 +154,31 @@ async def test_flag_reads_show_only_visible_environments(client_as: ClientAs) ->
         assert envs == ["development", "production", "staging"]
 
 
+async def test_segment_usage_shows_only_visible_environments(
+    api: httpx.AsyncClient, client_as: ClientAs
+) -> None:
+    for env in ("staging", "production"):
+        url = f"/api/projects/demo/flags/new-ui/environments/{env}"
+        version = (await api.get(url)).json()["version"]
+        rule = {"clauses": [{"operator": "in_segment", "values": ["beta"]}], "variation": "true"}
+        r = await api.put(
+            url,
+            json={
+                "version": version,
+                "enabled": False,
+                "rules": [rule],
+                "fallthrough": {"variation": "false"},
+            },
+        )
+        assert r.status_code == 200, r.text
+
+    async with client_as(("editor", "demo", "production")) as editor:
+        r = await editor.get("/api/projects/demo/segments/beta/usage")
+
+    assert r.status_code == 200, r.text
+    assert r.json() == {"used_by": [{"flag": "new-ui", "environment": "production"}]}
+
+
 async def test_list_flags_by_hidden_environment_is_404(client_as: ClientAs) -> None:
     async with client_as(("editor", "demo", "production")) as editor:
         r = await editor.get("/api/projects/demo/flags?env=staging&enabled=true")

@@ -93,6 +93,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - API & SDK keys page: create, rotate (with an overlap) and revoke SDK keys, and manage the service tokens that can act in the project.
 - API tokens page for personal tokens limited to a project or environment.
 - Settings: members and invitations, teams, custom roles, service tokens, SSO providers with set-up URLs and group mappings, and the require two-factor setting.
+- `GET /api/projects/{project}/segments/{segment}/usage` lists the flags and environments whose rules use a segment.
 
 ## [0.1.0]
 

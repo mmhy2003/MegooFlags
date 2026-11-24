@@ -5728,6 +5728,43 @@
         "title": "SegmentUpdate",
         "type": "object"
       },
+      "SegmentUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
+          "flag": {
+            "title": "Flag",
+            "type": "string"
+          }
+        },
+        "required": [
+          "flag",
+          "environment"
+        ],
+        "title": "SegmentUsage",
+        "type": "object"
+      },
+      "SegmentUsageOut": {
+        "additionalProperties": false,
+        "description": "Ordered by flag, then environment; only environments the caller can see.",
+        "properties": {
+          "used_by": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentUsage"
+            },
+            "title": "Used By",
+            "type": "array"
+          }
+        },
+        "required": [
+          "used_by"
+        ],
+        "title": "SegmentUsageOut",
+        "type": "object"
+      },
       "Serve": {
         "additionalProperties": false,
         "description": "What a rule or the fallthrough serves: exactly one of a fixed variation or a rollout.",
@@ -17768,6 +17805,97 @@
           }
         },
         "summary": "Replace Segment Config",
+        "tags": [
+          "segments"
+        ]
+      }
+    },
+    "/api/projects/{project}/segments/{segment}/usage": {
+      "get": {
+        "operationId": "read_segment_usage_api_projects__project__segments__segment__usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "segment",
+            "required": true,
+            "schema": {
+              "title": "Segment",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentUsageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Read Segment Usage",
         "tags": [
           "segments"
         ]

@@ -1703,6 +1703,23 @@ export interface paths {
         patch: operations["update_segment_api_projects__project__segments__segment__patch"];
         trace?: never;
     };
+    "/api/projects/{project}/segments/{segment}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Segment Usage */
+        get: operations["read_segment_usage_api_projects__project__segments__segment__usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/roles": {
         parameters: {
             query?: never;
@@ -4404,6 +4421,21 @@ export interface components {
             description?: string | null;
             /** Name */
             name?: string | null;
+        };
+        /** SegmentUsage */
+        SegmentUsage: {
+            /** Environment */
+            environment: string;
+            /** Flag */
+            flag: string;
+        };
+        /**
+         * SegmentUsageOut
+         * @description Ordered by flag, then environment; only environments the caller can see.
+         */
+        SegmentUsageOut: {
+            /** Used By */
+            used_by: components["schemas"]["SegmentUsage"][];
         };
         /**
          * Serve
@@ -12424,6 +12456,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SegmentOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_segment_usage_api_projects__project__segments__segment__usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                segment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SegmentUsageOut"];
                 };
             };
             /** @description Unauthorized */

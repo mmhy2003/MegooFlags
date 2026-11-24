@@ -110,9 +110,14 @@ async def variation_usage(
     return used_by
 
 
-async def segment_dependents(session: AsyncSession, segment_id: uuid.UUID) -> list[dict[str, str]]:
-    """The flag and environment of every config whose rules use the segment (in_segment)."""
-    rows = await session.execute(
+async def segment_dependents(
+    session: AsyncSession, segment_id: uuid.UUID, visible: set[uuid.UUID] | None = None
+) -> list[dict[str, str]]:
+    """The flag and environment of every config whose rules use the segment (in_segment).
+
+    `visible` limits the result to those environments; None means all of them.
+    """
+    query = (
         select(Flag.key, Environment.key)
         .select_from(ClauseSegment)
         .join(Clause, Clause.id == ClauseSegment.clause_id)
@@ -121,7 +126,8 @@ async def segment_dependents(session: AsyncSession, segment_id: uuid.UUID) -> li
         .join(Flag, Flag.id == FlagEnvironment.flag_id)
         .join(Environment, Environment.id == FlagEnvironment.environment_id)
         .where(ClauseSegment.segment_id == segment_id)
-        .distinct()
-        .order_by(Flag.key, Environment.key)
     )
+    if visible is not None:
+        query = query.where(Environment.id.in_(visible))
+    rows = await session.execute(query.distinct().order_by(Flag.key, Environment.key))
     return [{"flag": flag, "environment": env} for flag, env in rows]

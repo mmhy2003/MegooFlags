@@ -14,11 +14,14 @@ from megooflags_api.schemas.segments import (
     SegmentOut,
     SegmentSummary,
     SegmentUpdate,
+    SegmentUsage,
+    SegmentUsageOut,
 )
 from megooflags_api.services import segments
 from megooflags_api.services.audit import AuditDep, snapshot
 from megooflags_api.services.changes import ChangesDep
 from megooflags_api.services.lookup import get_segment
+from megooflags_api.services.usage import segment_dependents
 
 router = APIRouter(tags=["segments"], responses=ERROR_RESPONSES)
 
@@ -71,6 +74,16 @@ async def read_segment(
 ) -> SegmentOut:
     row = await get_segment(session, _project(authz), segment)
     return await segments.segment_out(session, row)
+
+
+@router.get("/projects/{project}/segments/{segment}/usage")
+async def read_segment_usage(
+    session: SessionDep, authz: ReadProject, project: str, segment: str
+) -> SegmentUsageOut:
+    row = await get_segment(session, _project(authz), segment)
+    visible = authz.authorizer.visible_environment_ids(row.project_id)
+    used_by = await segment_dependents(session, row.id, visible)
+    return SegmentUsageOut(used_by=[SegmentUsage(**u) for u in used_by])
 
 
 @router.put("/projects/{project}/segments/{segment}")

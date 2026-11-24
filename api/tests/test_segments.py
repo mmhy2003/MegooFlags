@@ -215,3 +215,58 @@ async def test_delete_in_use_409(app: FastAPI, api: httpx.AsyncClient) -> None:
 
     assert body["details"] == {"used_by": [{"flag": "new-ui", "environment": "production"}]}
     assert (await api.get(BETA)).status_code == 200
+
+
+async def use_segment(api: httpx.AsyncClient, flag: str, env: str, segment: str = "beta") -> None:
+    """Give `flag` in `env` one rule that serves true to the segment."""
+    url = f"/api/projects/demo/flags/{flag}/environments/{env}"
+    version = (await api.get(url)).json()["version"]
+    r = await api.put(
+        url,
+        json={
+            "version": version,
+            "enabled": False,
+            "rules": [
+                {"clauses": [{"operator": "in_segment", "values": [segment]}], "variation": "true"}
+            ],
+            "fallthrough": {"variation": "false"},
+        },
+    )
+    assert r.status_code == 200, r.text
+
+
+async def test_usage_lists_flags_and_environments_in_order(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_segment(api)
+    await create_flag(api, key="b-flag")
+    await create_flag(api, key="a-flag")
+    await use_segment(api, "b-flag", "production")
+    await use_segment(api, "b-flag", "development")
+    await use_segment(api, "a-flag", "staging")
+
+    r = await api.get(f"{BETA}/usage")
+
+    assert r.status_code == 200, r.text
+    assert r.json() == {
+        "used_by": [
+            {"flag": "a-flag", "environment": "staging"},
+            {"flag": "b-flag", "environment": "development"},
+            {"flag": "b-flag", "environment": "production"},
+        ]
+    }
+
+
+async def test_usage_unused_is_empty(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+    await create_segment(api)
+
+    r = await api.get(f"{BETA}/usage")
+
+    assert r.status_code == 200, r.text
+    assert r.json() == {"used_by": []}
+
+
+async def test_usage_unknown_segment_404(api: httpx.AsyncClient) -> None:
+    await create_project(api)
+
+    assert_error(await api.get(f"{BETA}/usage"), 404, "not_found")
