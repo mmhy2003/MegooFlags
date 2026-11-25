@@ -1,7 +1,16 @@
 "use client";
 
+import { OctagonX, Pause, Play } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+
+import { DANGER_TRIGGER } from "@/components/flags/delete-flag-dialog";
+import { ConfirmDialog } from "@/components/patterns/confirm-dialog";
 import { StatusPill } from "@/components/patterns/status-pill";
+import { Button } from "@/components/ui/button";
+import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { ApiError, failureText, must } from "@/lib/flags/errors";
 import {
   currentPercent,
   durationText,
@@ -115,18 +124,146 @@ function Recent({ rollouts }: { rollouts: Rollout[] }) {
   );
 }
 
+type Action = "pause" | "resume" | "abort";
+
+const DONE: Record<Action, string> = {
+  pause: "Rollout paused",
+  resume: "Rollout resumed",
+  abort: "Rollout aborted",
+};
+
+function send(
+  action: Action,
+  path: { project: string; flag: string; env: string },
+) {
+  const params = { params: { path } };
+  if (action === "pause")
+    return api.POST(
+      "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/pause",
+      params,
+    );
+  if (action === "resume")
+    return api.POST(
+      "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/resume",
+      params,
+    );
+  return api.POST(
+    "/api/projects/{project}/flags/{flag}/environments/{env}/rollout/abort",
+    params,
+  );
+}
+
+/** The live rollout's actions: Pause or Resume, and Abort after a confirmation. */
+function Actions({
+  project,
+  flag,
+  env,
+  envName,
+  rollout,
+  onChanged,
+}: {
+  project: string;
+  flag: string;
+  env: string;
+  envName: string;
+  rollout: Rollout;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const act = async (action: Action) => {
+    setBusy(true);
+    try {
+      await must(send(action, { project, flag, env }));
+      toast.success(DONE[action]);
+      onChanged();
+    } catch (error) {
+      if (!(error instanceof ApiError)) {
+        console.error("rollout action failed", error);
+        toast.error("Couldn't reach the server");
+      } else if (error.failure.code === "invalid_state") {
+        // The rollout moved on meanwhile; show what it is now.
+        toast.error(error.failure.message);
+        onChanged();
+      } else {
+        toast.error(failureText(error.failure));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-wrap gap-2">
+      {rollout.status === "active" ? (
+        <Button
+          variant="outline"
+          className="min-h-11"
+          disabled={busy}
+          onClick={() => void act("pause")}
+        >
+          <Pause aria-hidden />
+          Pause
+        </Button>
+      ) : (
+        <Button
+          variant="outline"
+          className="min-h-11"
+          disabled={busy}
+          onClick={() => void act("resume")}
+        >
+          <Play aria-hidden />
+          Resume
+        </Button>
+      )}
+      <ConfirmDialog
+        destructive
+        title={`Abort the rollout in ${envName}?`}
+        description={`The default rule serves ${variationText(rollout.from_variation)} to everyone again. Pause keeps the current split instead.`}
+        confirmLabel="Abort rollout"
+        onConfirm={() => void act("abort")}
+        trigger={
+          <Button
+            variant="destructive"
+            className={DANGER_TRIGGER}
+            disabled={busy}
+          >
+            <OctagonX aria-hidden />
+            Abort
+          </Button>
+        }
+      />
+    </div>
+  );
+}
+
 /**
  * The environment's progressive rollout: the live one with its progress and steps, or a short
- * explanation when none runs, then the recent finished ones.
+ * explanation when none runs, then the recent finished ones. With `canWrite`, it offers Start
+ * (or Request, where the environment needs approval), Pause, Resume and Abort.
  */
 export function RolloutCard({
+  project,
+  flag,
+  env,
   rollout,
   envName,
   enabled,
+  canWrite,
+  needsApproval,
+  onStart,
+  onChanged,
 }: {
+  project: string;
+  flag: string;
+  env: string;
   rollout: RolloutView;
   envName: string;
   enabled: boolean;
+  /** `flag.config.write` in the environment, and the flag is not archived. */
+  canWrite: boolean;
+  needsApproval: boolean;
+  onStart: () => void;
+  /** After an action: reload the rollout and the flag. */
+  onChanged: () => void;
 }) {
   const live = isLive(rollout.current) ? rollout.current : null;
   const recent = rollout.recent.filter((r) => r.id !== live?.id);
@@ -141,6 +278,12 @@ export function RolloutCard({
             another in steps, on a timer.
           </p>
         </div>
+        {canWrite && (
+          <Button className="min-h-11 self-start" onClick={onStart}>
+            <Play aria-hidden />
+            {needsApproval ? "Request a rollout" : "Start a rollout"}
+          </Button>
+        )}
         <Recent rollouts={recent} />
       </div>
     );
@@ -181,6 +324,16 @@ export function RolloutCard({
         </div>
       </div>
       <Steps rollout={live} />
+      {canWrite && (
+        <Actions
+          project={project}
+          flag={flag}
+          env={env}
+          envName={envName}
+          rollout={live}
+          onChanged={onChanged}
+        />
+      )}
       <Recent rollouts={recent} />
     </div>
   );

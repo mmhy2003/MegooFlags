@@ -45,6 +45,7 @@ import { automationCount } from "@/lib/flags/schedules";
 
 type FlagConfigOut = components["schemas"]["FlagConfigOut"];
 type FlagOut = components["schemas"]["FlagOut"];
+type EnvironmentOut = components["schemas"]["EnvironmentOut"];
 
 const TABS = [
   { value: "targeting", label: "Targeting" },
@@ -159,7 +160,12 @@ export function FlagDetail({
     [segmentList.data],
   );
 
-  const envs = environments.data ?? [];
+  // The last loaded environments, kept while a reload after approval_required is in flight.
+  const [lastEnvs, setLastEnvs] = useState<EnvironmentOut[] | null>(null);
+  if (environments.data && environments.data !== lastEnvs)
+    setLastEnvs(environments.data);
+  const envList = environments.data ?? lastEnvs;
+  const envs = envList ?? [];
   const wanted = params.get("env");
   const env = envs.some((e) => e.key === wanted)
     ? (wanted as string)
@@ -217,7 +223,7 @@ export function FlagDetail({
 
   // A rollout step or a schedule that ran changed the flag: reload its states and, unless
   // the draft has edits (they keep the version-conflict flow), the config.
-  const automation = useFlagAutomation(project, flag, env, () => {
+  const onApplied = () => {
     setChanged((c) => {
       const next = { ...c };
       delete next[env];
@@ -225,7 +231,8 @@ export function FlagDetail({
     });
     flagData.reload();
     if (!dirty) config.reload();
-  });
+  };
+  const automation = useFlagAutomation(project, flag, env, onApplied);
   const liveRollout = automation.data.rollout?.current;
   const notice =
     liveRollout &&
@@ -344,7 +351,7 @@ export function FlagDetail({
         onRetry={environments.reload}
       />
     );
-  if (!flagOut || !environments.data) return <Loading what="flag" />;
+  if (!flagOut || !envList) return <Loading what="flag" />;
 
   const archived = flagOut.archived;
   const readOnly = archived || !can(perms, "flag.config.write", env);
@@ -494,9 +501,16 @@ export function FlagDetail({
         <TabsContent value="automation" className="pt-4">
           <AutomationPanel
             project={project}
+            flag={flagOut}
+            env={env}
             envName={envName}
             enabled={states[env]?.enabled ?? false}
+            perms={perms}
+            needsApproval={needsApproval}
+            fallthrough={config.data?.fallthrough ?? null}
             automation={automation}
+            onApplied={onApplied}
+            onApprovalRequired={environments.reload}
           />
         </TabsContent>
         <TabsContent value="test" className="pt-4">
