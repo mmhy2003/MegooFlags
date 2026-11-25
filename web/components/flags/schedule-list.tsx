@@ -1,11 +1,17 @@
 "use client";
 
+import { CalendarClock, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { toast } from "sonner";
 
+import { ConfirmDialog } from "@/components/patterns/confirm-dialog";
 import { StatusPill } from "@/components/patterns/status-pill";
+import { Button } from "@/components/ui/button";
 import { useVisibleInterval } from "@/hooks/use-visible-interval";
+import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { ApiError, failureText, must } from "@/lib/flags/errors";
 import {
   past,
   relativeText,
@@ -55,13 +61,94 @@ function PastList({ schedules }: { schedules: Schedule[] }) {
   );
 }
 
-/** The environment's scheduled changes: upcoming ones soonest first, then the past ones folded. */
-export function ScheduleList({
+/** Cancels a pending schedule after a confirmation. */
+function CancelButton({
   project,
-  schedules,
+  flag,
+  env,
+  envName,
+  schedule,
+  onChanged,
 }: {
   project: string;
+  flag: string;
+  env: string;
+  envName: string;
+  schedule: Schedule;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const cancel = async () => {
+    setBusy(true);
+    try {
+      await must(
+        api.DELETE(
+          "/api/projects/{project}/flags/{flag}/environments/{env}/schedules/{id}",
+          { params: { path: { project, flag, env, id: schedule.id } } },
+        ),
+      );
+      toast.success("Scheduled change cancelled");
+    } catch (error) {
+      if (error instanceof ApiError) toast.error(failureText(error.failure));
+      else {
+        console.error("cancel schedule failed", error);
+        toast.error("Couldn't reach the server");
+      }
+    } finally {
+      setBusy(false);
+      // Also after a failure: the change may have run or been cancelled meanwhile.
+      onChanged();
+    }
+  };
+  return (
+    <ConfirmDialog
+      destructive
+      title="Cancel this change?"
+      description={
+        <>
+          {scheduleText(schedule)} in {envName} on <At iso={schedule.run_at} />{" "}
+          won&apos;t happen.
+        </>
+      }
+      confirmLabel="Cancel change"
+      onConfirm={() => void cancel()}
+      trigger={
+        <Button variant="outline" className="min-h-11" disabled={busy}>
+          <X aria-hidden />
+          Cancel
+        </Button>
+      }
+    />
+  );
+}
+
+/**
+ * The environment's scheduled changes: upcoming ones soonest first, then the past ones folded.
+ * With `onSchedule`, it offers Schedule a change (or Request, where the environment needs
+ * approval); `canCancel` tells which upcoming changes offer Cancel.
+ */
+export function ScheduleList({
+  project,
+  flag,
+  env,
+  envName,
+  schedules,
+  needsApproval,
+  onSchedule,
+  canCancel,
+  onChanged,
+}: {
+  project: string;
+  flag: string;
+  env: string;
+  envName: string;
   schedules: Schedule[];
+  needsApproval: boolean;
+  /** Opens the schedule dialog; absent without the permission. */
+  onSchedule?: () => void;
+  canCancel: (s: Schedule) => boolean;
+  /** After a cancel: reload the schedules. */
+  onChanged: () => void;
 }) {
   const [now, setNow] = useState(() => new Date());
   useVisibleInterval(() => setNow(new Date()), 30_000);
@@ -70,6 +157,12 @@ export function ScheduleList({
 
   return (
     <div className="flex flex-col gap-4">
+      {onSchedule && (
+        <Button className="min-h-11 self-start" onClick={onSchedule}>
+          <CalendarClock aria-hidden />
+          {needsApproval ? "Request a schedule" : "Schedule a change"}
+        </Button>
+      )}
       <div className="flex flex-col gap-2">
         <h3 className="font-semibold">Upcoming</h3>
         {next.length === 0 ? (
@@ -100,6 +193,18 @@ export function ScheduleList({
                     </Link>
                   )}
                 </span>
+                {canCancel(s) && (
+                  <span className="self-start">
+                    <CancelButton
+                      project={project}
+                      flag={flag}
+                      env={env}
+                      envName={envName}
+                      schedule={s}
+                      onChanged={onChanged}
+                    />
+                  </span>
+                )}
               </li>
             ))}
           </ul>

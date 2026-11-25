@@ -4,15 +4,18 @@ import { useId, useState } from "react";
 
 import { RolloutCard } from "@/components/flags/rollout-card";
 import { RolloutDialog } from "@/components/flags/rollout-dialog";
+import { ScheduleDialog } from "@/components/flags/schedule-dialog";
 import { ScheduleList } from "@/components/flags/schedule-list";
 import type { useFlagAutomation } from "@/components/flags/use-flag-automation";
 import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
 import type { components } from "@/lib/api/schema";
 import { can } from "@/lib/flags/permissions";
+import { SCHEDULE_ACTIONS, schedulePermission } from "@/lib/flags/schedules";
 import type { MePermissions } from "@/lib/nav";
 
 type FlagOut = components["schemas"]["FlagOut"];
 type Serve = components["schemas"]["Serve"];
+type ScheduledAction = components["schemas"]["ScheduledAction"];
 
 function Section({
   title,
@@ -67,6 +70,7 @@ export function AutomationPanel({
 }) {
   const { data, failure, reload } = automation;
   const [starting, setStarting] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
   if (failure)
     return (
       <LoadFailed
@@ -82,6 +86,8 @@ export function AutomationPanel({
     void reload();
     onApplied();
   };
+  const mayChange = (action: ScheduledAction) =>
+    !flag.archived && can(perms, schedulePermission(action), env);
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <Section title="Progressive rollout">
@@ -114,7 +120,36 @@ export function AutomationPanel({
         />
       </Section>
       <Section title="Scheduled changes">
-        <ScheduleList project={project} schedules={data.schedules} />
+        <ScheduleList
+          project={project}
+          flag={flag.key}
+          env={env}
+          envName={envName}
+          schedules={data.schedules}
+          needsApproval={needsApproval}
+          onSchedule={
+            SCHEDULE_ACTIONS.some((a) => mayChange(a.value))
+              ? () => setScheduling(true)
+              : undefined
+          }
+          canCancel={(s) => mayChange(s.action)}
+          onChanged={() => void reload()}
+        />
+        <ScheduleDialog
+          project={project}
+          flag={flag}
+          env={env}
+          envName={envName}
+          needsApproval={needsApproval}
+          perms={perms}
+          open={scheduling}
+          onOpenChange={setScheduling}
+          onDone={() => {
+            setScheduling(false);
+            void reload();
+          }}
+          onApprovalRequired={onApprovalRequired}
+        />
       </Section>
     </div>
   );

@@ -25,8 +25,24 @@ function automation(flag: string, env = "development"): string {
   return `/projects/${SHOP}/flags/${flag}?env=${env}&tab=automation`;
 }
 
+const HOUR = 60 * 60 * 1000;
+
 function daysAhead(days: number): string {
-  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  return new Date(Date.now() + days * 24 * HOUR).toISOString();
+}
+
+/** A `datetime-local` value `ms` from now, in this machine's (and the browser's) time zone. */
+function localAhead(ms: number): string {
+  const at = new Date(Date.now() + ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}` +
+    `T${pad(at.getHours())}:${pad(at.getMinutes())}`
+  );
+}
+
+function utc(local: string): string {
+  return `${new Date(local).toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
 test.describe("flag automation", () => {
@@ -330,6 +346,177 @@ test.describe("flag automation", () => {
     await expect(
       dialog.getByRole("button", { name: "Request rollout" }),
     ).toBeEnabled();
+  });
+
+  test("schedule on and off", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await page.goto(automation(flag));
+    const schedules = page.getByRole("region", { name: "Scheduled changes" });
+    const upcoming = schedules.getByRole("list", { name: "Upcoming" });
+    const dialog = page.getByRole("dialog", {
+      name: "Schedule a change in Development",
+    });
+
+    const onAt = localAhead(48 * HOUR);
+    await schedules.getByRole("button", { name: "Schedule a change" }).click();
+    await dialog.getByRole("radio", { name: "Turn on" }).check();
+    await dialog.getByLabel("When").fill(onAt);
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    await expect(dialog).toContainText(`Your time zone: ${zone}`);
+    await expect(dialog).toContainText(utc(onAt));
+    await dialog.getByRole("button", { name: "Schedule", exact: true }).click();
+    await expect(
+      page.getByText("Change scheduled in Development"),
+    ).toBeVisible();
+    await expect(upcoming.getByRole("listitem")).toHaveText([/Turn on/]);
+
+    // Turn off is sooner, so it comes first.
+    await schedules.getByRole("button", { name: "Schedule a change" }).click();
+    await dialog.getByRole("radio", { name: "Turn off" }).check();
+    await dialog.getByLabel("When").fill(localAhead(24 * HOUR));
+    await dialog.getByRole("button", { name: "Schedule", exact: true }).click();
+    await expect(upcoming.getByRole("listitem")).toHaveText([
+      /Turn off/,
+      /Turn on/,
+    ]);
+    await expect(
+      page.getByRole("tab", { name: "Automation, 2 active" }),
+    ).toBeVisible();
+  });
+
+  test("schedule a rollout", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await page.goto(automation(flag));
+    const schedules = page.getByRole("region", { name: "Scheduled changes" });
+    await schedules.getByRole("button", { name: "Schedule a change" }).click();
+    const dialog = page.getByRole("dialog", {
+      name: "Schedule a change in Development",
+    });
+    await dialog
+      .getByRole("radio", { name: "Set the default rule to a rollout" })
+      .check();
+    const percent = dialog.getByRole("spinbutton", {
+      name: "Rollout percentage",
+    });
+    await percent.fill("25");
+    await percent.press("Tab");
+    await dialog.getByRole("button", { name: "Schedule", exact: true }).click();
+    await expect(
+      schedules
+        .getByRole("list", { name: "Upcoming" })
+        .getByText("Set the default rule to true 25 %, false 75 %"),
+    ).toBeVisible();
+  });
+
+  test("schedule a rollout of a string flag", async ({ page }) => {
+    const flag = await createTestFlag(api, { type: "string" });
+    await page.goto(automation(flag));
+    await page.getByRole("button", { name: "Schedule a change" }).click();
+    const dialog = page.getByRole("dialog", {
+      name: "Schedule a change in Development",
+    });
+    await dialog
+      .getByRole("radio", { name: "Set the default rule to a rollout" })
+      .check();
+    await expect(dialog).toContainText("Total: 100 %");
+    await dialog
+      .getByRole("spinbutton", { name: "Weight of a (%)" })
+      .fill("40");
+    await expect(dialog).toContainText("Total: 90 %");
+    await expect(
+      dialog.getByText("Weights must add up to 100 %"),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole("button", { name: "Schedule", exact: true }),
+    ).toBeDisabled();
+  });
+
+  test("past time", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await page.goto(automation(flag));
+    await page.getByRole("button", { name: "Schedule a change" }).click();
+    const dialog = page.getByRole("dialog", {
+      name: "Schedule a change in Development",
+    });
+    await dialog.getByLabel("When").fill(localAhead(-HOUR));
+    await expect(dialog.getByText("Pick a time in the future")).toBeVisible();
+    await expect(dialog.getByLabel("When")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    await expect(
+      dialog.getByRole("button", { name: "Schedule", exact: true }),
+    ).toBeDisabled();
+  });
+
+  test("cancel", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await scheduleChange(api, flag, "development", {
+      action: "enable",
+      run_at: daysAhead(1),
+    });
+    await page.goto(automation(flag));
+    const schedules = page.getByRole("region", { name: "Scheduled changes" });
+    await schedules
+      .getByRole("list", { name: "Upcoming" })
+      .getByRole("listitem")
+      .filter({ hasText: "Turn on" })
+      .getByRole("button", { name: "Cancel" })
+      .click();
+    const confirm = page.getByRole("alertdialog", {
+      name: "Cancel this change?",
+    });
+    await expect(confirm).toContainText("Turn on");
+    await confirm.getByRole("button", { name: "Cancel change" }).click();
+    await expect(page.getByText("Scheduled change cancelled")).toBeVisible();
+    await expect(schedules.getByText("No scheduled changes")).toBeVisible();
+    await schedules.getByText("Past changes").click();
+    const pastRow = schedules
+      .getByRole("list", { name: "Past changes" })
+      .getByRole("listitem")
+      .filter({ hasText: "Turn on" });
+    await expect(pastRow).toContainText("Cancelled");
+  });
+
+  test("protected production schedule", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await page.goto(automation(flag, "production"));
+    await page.getByRole("button", { name: "Request a schedule" }).click();
+    const dialog = page.getByRole("dialog", {
+      name: "Request a schedule in Production",
+    });
+    await expect(dialog).toContainText(
+      "If it is approved after this time, it fails.",
+    );
+    await dialog.getByRole("radio", { name: "Turn on" }).check();
+    await dialog.getByLabel("When").fill(localAhead(48 * HOUR));
+    await dialog
+      .getByRole("textbox", { name: "Title" })
+      .fill("Launch on Friday");
+    await dialog.getByRole("button", { name: "Request schedule" }).click();
+    await expect(page.getByText("Change request created")).toBeVisible();
+    await expect(
+      page
+        .getByRole("region", { name: "Scheduled changes" })
+        .getByText("No scheduled changes"),
+    ).toBeVisible();
+
+    const listed = await ok(
+      await api.get(`/api/projects/${SHOP}/change-requests`, {
+        params: { flag },
+      }),
+      "list change requests",
+    );
+    const { items } = (await listed.json()) as {
+      items: { kind: string; environment: string; title: string }[];
+    };
+    expect(items).toEqual([
+      expect.objectContaining({
+        kind: "schedule",
+        environment: "production",
+        title: "Launch on Friday",
+      }),
+    ]);
   });
 });
 
