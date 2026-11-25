@@ -5,7 +5,11 @@ export type MePermissions = components["schemas"]["MePermissions"];
 export type InstanceRole = components["schemas"]["InstanceRole"];
 type Permission = MePermissions["org"][number];
 
-export type NavKey = ProjectSection | "nodes" | "settings";
+export type NavKey =
+  | Exclude<ProjectSection, "settings">
+  | "project-settings"
+  | "nodes"
+  | "settings";
 export type NavItem = { key: NavKey; label: string; href: string };
 
 const SETTINGS_PERMISSIONS: Permission[] = [
@@ -16,22 +20,29 @@ const SETTINGS_PERMISSIONS: Permission[] = [
 ];
 
 const PROJECT_ITEMS: {
-  key: ProjectSection;
+  key: NavKey;
+  section: ProjectSection;
   label: string;
   /** Omitted for items everyone sees. */
   visible?: (perms: MePermissions) => boolean;
 }[] = [
-  { key: "flags", label: "Flags" },
-  { key: "segments", label: "Segments" },
-  { key: "environments", label: "Environments" },
-  { key: "change-requests", label: "Change requests" },
+  { key: "flags", section: "flags", label: "Flags" },
+  { key: "segments", section: "segments", label: "Segments" },
+  { key: "environments", section: "environments", label: "Environments" },
+  {
+    key: "change-requests",
+    section: "change-requests",
+    label: "Change requests",
+  },
   {
     key: "audit",
+    section: "audit",
     label: "Audit log",
     visible: (p) => !!p.project?.includes("audit.read"),
   },
   {
     key: "keys",
+    section: "keys",
     label: "API & SDK keys",
     visible: (p) =>
       Object.values(p.environments).some((env) =>
@@ -40,7 +51,14 @@ const PROJECT_ITEMS: {
   },
   {
     key: "integrations",
+    section: "integrations",
     label: "Integrations",
+    visible: (p) => !!p.project?.includes("project.manage"),
+  },
+  {
+    key: "project-settings",
+    section: "settings",
+    label: "Project settings",
     visible: (p) => !!p.project?.includes("project.manage"),
   },
 ];
@@ -58,7 +76,7 @@ export function navItems(
         items.push({
           key: item.key,
           label: item.label,
-          href: projectPath(project, item.key),
+          href: projectPath(project, item.section),
         });
       }
     }

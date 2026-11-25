@@ -28,7 +28,7 @@ the `web` job.
 | T-1 | Evaluation context with arbitrary attributes | done | `spec/evaluation.md`, `api/tests/test_evaluation_engine.py` |
 | T-2 | Individual targeting by key | done | `api/tests/test_evaluation_engine.py`, `api/tests/test_copy.py` |
 | T-3 | Operators: equals, in, contains, starts/ends with, regex, numeric, semver, date before/after | done | `api/src/megooflags_api/models/enums.py` (equals is `in` with one value), `api/tests/test_evaluation_operators.py`, `api/tests/test_evaluation_parse.py` |
-| T-4 | Reusable segments shared across flags | done | `api/tests/test_segments.py`; the web Segments page is a placeholder (see UI-14) |
+| T-4 | Reusable segments shared across flags | done | `api/tests/test_segments.py`, `web/e2e/segments.spec.ts` |
 | T-5 | Sticky, deterministic percentage rollouts with a configurable bucketing attribute | done | `api/tests/test_evaluation_bucketing.py`, `spec/conformance/bucketing.json` |
 
 ### SDKs and evaluation (PRD 6.3)
@@ -71,7 +71,7 @@ the `web` job.
 | UI-10 | Header with search and ⌘K/Ctrl+K, theme switcher and account menu; fixed on scroll | done | `web/e2e/palette.spec.ts`, `web/e2e/preferences.spec.ts` |
 | UI-12 | Responsive from 280 px with no horizontal page scrolling | done | `web/e2e/matrix.spec.ts` (280, 344, 390, 880, 1024 and 1440 px) |
 | UI-13 | Folding, unfolding or rotating keeps input, scroll and open dialogs | done | `web/e2e/kit.spec.ts`, `web/e2e/flags-mobile.spec.ts`, `web/e2e/flag-create.spec.ts` |
-| UI-14 | Tables (flags, segments, audit log, nodes) become cards on narrow screens | done | flags, audit log and nodes: `web/e2e/flags-mobile.spec.ts`, `web/e2e/audit.spec.ts` ("cards under 768 px"), `web/e2e/nodes.spec.ts`; the Segments page follows in MF-458 |
+| UI-14 | Tables (flags, segments, audit log, nodes) become cards on narrow screens | done | flags, audit log and nodes: `web/e2e/flags-mobile.spec.ts`, `web/e2e/audit.spec.ts` ("cards under 768 px"), `web/e2e/nodes.spec.ts`; segments: `web/e2e/segments.spec.ts` ("cards under 768 px") |
 | UI-15 | On 344 px: toggle a flag, kill switch, rollout, approve or reject a change request, search | done | toggle, kill switch, rollout and search: `web/e2e/flags-mobile.spec.ts`; approve and reject a change request: `web/e2e/change-requests.spec.ts` ("approve and reject at 344 px") |
 | UI-16 | 44 × 44 px touch targets, no hover-only controls, 16 px inputs | done | `web/components/ui/input.tsx`, `web/e2e/kit.spec.ts`, `web/e2e/flags-mobile.spec.ts` |
 | UI-19 | Playwright visual and accessibility checks at six widths in both themes | done | `web/e2e/matrix.spec.ts`, `web/e2e/matrix.spec.ts-snapshots` |
@@ -95,7 +95,7 @@ the `web` job.
 |---|---|---|
 | All P0 items | partial | the partial rows above |
 | Change requests | done | API: `api/tests/test_change_requests.py`, `api/tests/test_approvals_gate.py`; the web flag page opens requests (`web/e2e/flag-detail.spec.ts`) and the Change requests page reviews them (`web/e2e/change-requests.spec.ts`) |
-| Scheduled changes | done (API) | `api/src/megooflags_api/routers/schedules.py`, `api/tests/test_schedules.py`; the web app has no form to schedule a change |
+| Scheduled changes | done | `api/src/megooflags_api/routers/schedules.py`, `api/tests/test_schedules.py`, `web/e2e/flag-automation.spec.ts`; F-10 scheduled changes and T-6 progressive rollouts: `web/e2e/flag-automation.spec.ts` (also at 344 px with touch) |
 | CLI | done | `cli/README.md`, `cli/e2e/e2e_test.go` (`cli` job) |
 | Terraform provider | done | `terraform/main.go`, `terraform/examples` (`terraform` job) |
 | Multi-node deployment replacing the relay | done | HA rows above, `scripts/cluster_test.sh`, `scripts/cluster_failures.py` (`cluster` job) |
@@ -257,8 +257,5 @@ both SSO and RBAC in full for free. Flagsmith and GrowthBook narrowed the gap on
 3. **The single-node footprint** fails: p99 674.6 ms at 50 rps, and 230 of 12 000 updates missed.
 4. **100k streams per cluster ran reduced** (17 721 streams on 12 workers on this host). A full-size run on
    a larger host is still needed.
-5. **Placeholder web pages.** Segments and Environments are still placeholders
-   (`web/components/patterns/placeholder-page.tsx`); MF-458 replaces them. Until then segments and
-   environments are managed through the API or the CLI.
 
 No competitor matrix cell is unverified.

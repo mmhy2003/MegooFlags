@@ -6,7 +6,12 @@ from megooflags_api.auth.rbac import Permission
 from megooflags_api.auth.require import Authz, require
 from megooflags_api.db import SessionDep
 from megooflags_api.errors import ERROR_RESPONSES
-from megooflags_api.schemas.projects import EnvironmentCreate, EnvironmentOut, EnvironmentUpdate
+from megooflags_api.schemas.projects import (
+    EnvironmentCreate,
+    EnvironmentOrderIn,
+    EnvironmentOut,
+    EnvironmentUpdate,
+)
 from megooflags_api.services import environments
 from megooflags_api.services.audit import AuditDep, snapshot
 from megooflags_api.services.changes import ChangesDep
@@ -47,6 +52,34 @@ async def create_environment(
         environment_id=row.id,
         after=snapshot(out),
     )
+    await session.commit()
+    await bus.publish(authz.project.id)
+    return out
+
+
+@router.put("/projects/{project}/environment-order")
+async def reorder_environments(
+    session: SessionDep,
+    authz: ManageEnvironments,
+    audit: AuditDep,
+    bus: ChangesDep,
+    project: str,
+    body: EnvironmentOrderIn,
+) -> list[EnvironmentOut]:
+    """Reorders every environment of the project at once; the list must name each exactly once."""
+    assert authz.project is not None
+    old_keys, rows = await environments.reorder_environments(
+        session, authz.project, body.environments
+    )
+    await audit.record(
+        "environment.reorder",
+        "project",
+        authz.project.key,
+        project_id=authz.project.id,
+        before={"environments": old_keys},
+        after={"environments": [e.key for e in rows]},
+    )
+    out = [EnvironmentOut.model_validate(e, from_attributes=True) for e in rows]
     await session.commit()
     await bus.publish(authz.project.id)
     return out

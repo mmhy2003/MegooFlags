@@ -23,6 +23,7 @@ def test_spec_documents_management_api() -> None:
     assert {
         "/api/projects",
         "/api/projects/{project}",
+        "/api/projects/{project}/environment-order",
         "/api/projects/{project}/environments",
         "/api/projects/{project}/environments/{env}",
         "/api/projects/{project}/environments/{env}/evaluate",
@@ -42,6 +43,7 @@ def test_spec_documents_management_api() -> None:
         f"{flag}/environments/{{env}}/evaluations",
         "/api/projects/{project}/segments",
         "/api/projects/{project}/segments/{segment}",
+        "/api/projects/{project}/segments/{segment}/usage",
     } <= spec["paths"].keys()
 
     schemas = spec["components"]["schemas"]

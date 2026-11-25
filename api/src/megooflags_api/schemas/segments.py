@@ -43,9 +43,26 @@ class SegmentSummary(ApiModel):
     updated_at: datetime
 
 
+class SegmentListItem(SegmentSummary):
+    """`flag_count`: flags whose rules use the segment, in the environments the caller can see."""
+
+    flag_count: int
+
+
 class SegmentOut(SegmentSummary):
     """`included` and `excluded` are sorted; `rules` keep their order."""
 
     included: list[str]
     excluded: list[str]
     rules: list[SegmentRuleOut]
+
+
+class SegmentUsage(ApiModel):
+    flag: str
+    environment: str
+
+
+class SegmentUsageOut(ApiModel):
+    """Ordered by flag, then environment; only environments the caller can see."""
+
+    used_by: list[SegmentUsage]

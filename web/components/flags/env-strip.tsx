@@ -8,6 +8,7 @@ import {
   type ToggleRequest,
   ToggleRequestDialog,
 } from "@/components/flags/toggle-request-dialog";
+import { DANGER_TRIGGER } from "@/components/flags/delete-flag-dialog";
 import { ConfirmDialog } from "@/components/patterns/confirm-dialog";
 import { StatusPill } from "@/components/patterns/status-pill";
 import { Toggle } from "@/components/patterns/toggle";
@@ -157,7 +158,7 @@ export function EnvStrip({
                 trigger={
                   <Button
                     variant="destructive"
-                    className="min-h-11"
+                    className={DANGER_TRIGGER}
                     disabled={!mayToggle || !state.enabled}
                     aria-label={`Kill switch in ${env.name}`}
                   >

@@ -1,78 +1,16 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId } from "react";
 
-import { RolloutSlider } from "@/components/patterns/rollout-slider";
+import { WeightsEditor } from "@/components/flags/weights-editor";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import type { components } from "@/lib/api/schema";
 import type { ServeDraft } from "@/lib/flags/config-draft";
-import {
-  booleanWeights,
-  evenWeights,
-  fromPercent,
-  percentOf,
-  toPercent,
-  weightsSum,
-} from "@/lib/flags/weights";
+import { evenWeights } from "@/lib/flags/weights";
 
 type FlagType = components["schemas"]["FlagType"];
-
-/** A weight's percent input; it keeps what is typed and passes on each valid number. */
-function WeightInput({
-  id,
-  label,
-  weight,
-  disabled,
-  errorId,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  weight: number;
-  disabled: boolean;
-  /** The id of the weights' error, when there is one. */
-  errorId: string | undefined;
-  onChange: (weight: number) => void;
-}) {
-  const [text, setText] = useState(String(toPercent(weight)));
-  const [shown, setShown] = useState(weight);
-  // Show the new weight when it changes from outside the input.
-  if (shown !== weight) {
-    setShown(weight);
-    if (fromPercent(Number(text)) !== weight)
-      setText(String(toPercent(weight)));
-  }
-  return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <Label htmlFor={id}>{label}</Label>
-      <Input
-        id={id}
-        type="number"
-        inputMode="decimal"
-        step={0.1}
-        min={0}
-        max={100}
-        className="w-32 text-base"
-        value={text}
-        disabled={disabled}
-        aria-invalid={errorId ? true : undefined}
-        aria-describedby={errorId}
-        onChange={(e) => {
-          const value = e.currentTarget.value;
-          setText(value);
-          const n = Number(value);
-          if (value.trim() !== "" && Number.isFinite(n)) {
-            const next = fromPercent(n);
-            setShown(next);
-            onChange(next);
-          }
-        }}
-      />
-    </div>
-  );
-}
 
 /**
  * What a rule or the default rule serves: one variation, or a rollout. A boolean flag's rollout
@@ -96,7 +34,6 @@ export function ServeEditor({
   weightsError?: string;
 }) {
   const id = useId();
-  const errorId = `${id}-weights-error`;
 
   const setMode = (mode: ServeDraft["mode"]) => {
     if (mode === serve.mode) return;
@@ -154,47 +91,13 @@ export function ServeEditor({
         </div>
       ) : (
         <>
-          {type === "boolean" ? (
-            <RolloutSlider
-              label="Percentage serving true"
-              value={percentOf(serve.weights, "true")}
-              disabled={readOnly}
-              onValueChange={(p) =>
-                onChange({ ...serve, weights: booleanWeights(p) })
-              }
-            />
-          ) : (
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap gap-4">
-                {serve.weights.map((w, i) => (
-                  <WeightInput
-                    key={w.variation}
-                    id={`${id}-weight-${i}`}
-                    label={`Weight of ${w.variation} (%)`}
-                    weight={w.weight}
-                    disabled={readOnly}
-                    errorId={weightsError ? errorId : undefined}
-                    onChange={(weight) =>
-                      onChange({
-                        ...serve,
-                        weights: serve.weights.map((x, j) =>
-                          j === i ? { ...x, weight } : x,
-                        ),
-                      })
-                    }
-                  />
-                ))}
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Total: {toPercent(weightsSum(serve.weights))} %
-              </p>
-            </div>
-          )}
-          {weightsError && (
-            <p id={errorId} className="text-sm text-destructive">
-              {weightsError}
-            </p>
-          )}
+          <WeightsEditor
+            type={type}
+            weights={serve.weights}
+            readOnly={readOnly}
+            error={weightsError}
+            onChange={(weights) => onChange({ ...serve, weights })}
+          />
           <div className="flex min-w-0 flex-col gap-2 sm:max-w-xs">
             <Label htmlFor={`${id}-bucket`}>Bucket by</Label>
             <Input

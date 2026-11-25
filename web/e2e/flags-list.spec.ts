@@ -85,6 +85,8 @@ test.describe("flag list", () => {
     await expect.poll(() => seededKeys(page)).toEqual(["checkout-v2"]);
 
     await page.getByRole("button", { name: "Clear filters" }).click();
+    // Otherwise the lifecycle change can still see the owner filter.
+    await expect(page).toHaveURL(/\/flags$/);
     await openFilters(page);
     await page
       .getByRole("combobox", { name: "Lifecycle" })

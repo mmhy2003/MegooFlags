@@ -4,18 +4,22 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { AutomationPanel } from "@/components/flags/automation-panel";
 import { copyBlocked, CopyDialog } from "@/components/flags/copy-dialog";
 import { type EnvState, EnvStrip } from "@/components/flags/env-strip";
 import { FlagSettings } from "@/components/flags/flag-settings";
 import { HistoryList } from "@/components/flags/history-list";
 import { InsightsPanel } from "@/components/flags/insights-panel";
 import { ReviewDialog } from "@/components/flags/review-dialog";
+import { RolloutNotice } from "@/components/flags/rollout-notice";
 import { problemField, RulesEditor } from "@/components/flags/rules-editor";
 import { TestPanel } from "@/components/flags/test-panel";
 import { UnsavedBar } from "@/components/flags/unsaved-bar";
+import { useFlagAutomation } from "@/components/flags/use-flag-automation";
 import { useUnsavedGuard } from "@/components/flags/use-unsaved-guard";
 import { useProjectPermissions } from "@/components/shell/use-project-permissions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -37,12 +41,15 @@ import {
   must,
 } from "@/lib/flags/errors";
 import { can } from "@/lib/flags/permissions";
+import { automationCount } from "@/lib/flags/schedules";
 
 type FlagConfigOut = components["schemas"]["FlagConfigOut"];
 type FlagOut = components["schemas"]["FlagOut"];
+type EnvironmentOut = components["schemas"]["EnvironmentOut"];
 
 const TABS = [
   { value: "targeting", label: "Targeting" },
+  { value: "automation", label: "Automation" },
   { value: "test", label: "Test" },
   { value: "history", label: "History" },
   { value: "insights", label: "Insights" },
@@ -153,7 +160,12 @@ export function FlagDetail({
     [segmentList.data],
   );
 
-  const envs = environments.data ?? [];
+  // The last loaded environments, kept while a reload after approval_required is in flight.
+  const [lastEnvs, setLastEnvs] = useState<EnvironmentOut[] | null>(null);
+  if (environments.data && environments.data !== lastEnvs)
+    setLastEnvs(environments.data);
+  const envList = environments.data ?? lastEnvs;
+  const envs = envList ?? [];
   const wanted = params.get("env");
   const env = envs.some((e) => e.key === wanted)
     ? (wanted as string)
@@ -161,11 +173,14 @@ export function FlagDetail({
   const rawTab = params.get("tab");
   const tab: Tab = isTab(rawTab) ? rawTab : "targeting";
 
-  const setParam = (name: "env" | "tab", value: string) => {
+  const withParam = (name: "env" | "tab", value: string) => {
     const next = new URLSearchParams(params);
     next.set(name, value);
-    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+    return `${pathname}?${next.toString()}`;
   };
+  const setParam = (name: "env" | "tab", value: string) =>
+    router.replace(withParam(name, value), { scroll: false });
+  const tabHref = (value: Tab) => withParam("tab", value);
 
   const configKey = env ? `config:${project}/${flag}/${env}` : null;
   const config = useApiData(configKey, () =>
@@ -205,6 +220,26 @@ export function FlagDetail({
   const { base, draft } = edit;
   const dirty = !!base && !!draft && isDirty(base, draft);
   useUnsavedGuard(dirty);
+
+  // A rollout step or a schedule that ran changed the flag: reload its states and, unless
+  // the draft has edits (they keep the version-conflict flow), the config.
+  const onApplied = () => {
+    setChanged((c) => {
+      const next = { ...c };
+      delete next[env];
+      return next;
+    });
+    flagData.reload();
+    if (!dirty) config.reload();
+  };
+  const automation = useFlagAutomation(project, flag, env, onApplied);
+  const liveRollout = automation.data.rollout?.current;
+  const notice =
+    liveRollout &&
+    (liveRollout.status === "active" || liveRollout.status === "paused")
+      ? liveRollout
+      : null;
+  const active = automationCount(automation.data);
 
   // Client checks show once Review was pressed; an API 422 shows until the next edit.
   const [checked, setChecked] = useState(false);
@@ -316,7 +351,7 @@ export function FlagDetail({
         onRetry={environments.reload}
       />
     );
-  if (!flagOut || !environments.data) return <Loading what="flag" />;
+  if (!flagOut || !envList) return <Loading what="flag" />;
 
   const archived = flagOut.archived;
   const readOnly = archived || !can(perms, "flag.config.write", env);
@@ -337,6 +372,9 @@ export function FlagDetail({
   else
     targeting = (
       <div className="flex min-w-0 flex-col gap-4">
+        {notice && (
+          <RolloutNotice rollout={notice} href={tabHref("automation")} />
+        )}
         {problems.length > 0 && (
           <Alert variant="destructive">
             <AlertTitle>Fix these before review</AlertTitle>
@@ -435,19 +473,45 @@ export function FlagDetail({
       >
         <div className="max-w-full overflow-x-auto">
           <TabsList className="group-data-horizontal/tabs:h-auto">
-            {TABS.map((t) => (
-              <TabsTrigger
-                key={t.value}
-                value={t.value}
-                className="min-h-11 px-3"
-              >
-                {t.label}
-              </TabsTrigger>
-            ))}
+            {TABS.map((t) => {
+              const count = t.value === "automation" ? active : 0;
+              return (
+                <TabsTrigger
+                  key={t.value}
+                  value={t.value}
+                  className="min-h-11 px-3"
+                  aria-label={
+                    count > 0 ? `${t.label}, ${count} active` : undefined
+                  }
+                >
+                  {t.label}
+                  {count > 0 && (
+                    <Badge variant="secondary" aria-hidden>
+                      {count}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              );
+            })}
           </TabsList>
         </div>
         <TabsContent value="targeting" className="pt-4">
           {targeting}
+        </TabsContent>
+        <TabsContent value="automation" className="pt-4">
+          <AutomationPanel
+            project={project}
+            flag={flagOut}
+            env={env}
+            envName={envName}
+            enabled={states[env]?.enabled ?? false}
+            perms={perms}
+            needsApproval={needsApproval}
+            fallthrough={config.data?.fallthrough ?? null}
+            automation={automation}
+            onApplied={onApplied}
+            onApprovalRequired={environments.reload}
+          />
         </TabsContent>
         <TabsContent value="test" className="pt-4">
           <TestPanel

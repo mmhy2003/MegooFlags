@@ -1066,6 +1066,26 @@
         "title": "EnvironmentCreate",
         "type": "object"
       },
+      "EnvironmentOrderIn": {
+        "additionalProperties": false,
+        "description": "Every environment of the project exactly once, in the new order.",
+        "properties": {
+          "environments": {
+            "items": {
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,99}$",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Environments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "environments"
+        ],
+        "title": "EnvironmentOrderIn",
+        "type": "object"
+      },
       "EnvironmentOut": {
         "additionalProperties": false,
         "properties": {
@@ -3468,12 +3488,12 @@
         "title": "Page[RoleOut]",
         "type": "object"
       },
-      "Page_SegmentSummary_": {
+      "Page_SegmentListItem_": {
         "additionalProperties": false,
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/SegmentSummary"
+              "$ref": "#/components/schemas/SegmentListItem"
             },
             "title": "Items",
             "type": "array"
@@ -3494,7 +3514,7 @@
           "items",
           "next_cursor"
         ],
-        "title": "Page[SegmentSummary]",
+        "title": "Page[SegmentListItem]",
         "type": "object"
       },
       "Page_SsoMappingOut_": {
@@ -5553,6 +5573,48 @@
         "title": "SegmentCreate",
         "type": "object"
       },
+      "SegmentListItem": {
+        "additionalProperties": false,
+        "description": "`flag_count`: flags whose rules use the segment, in the environments the caller can see.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "flag_count": {
+            "title": "Flag Count",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "description",
+          "created_at",
+          "updated_at",
+          "flag_count"
+        ],
+        "title": "SegmentListItem",
+        "type": "object"
+      },
       "SegmentOut": {
         "additionalProperties": false,
         "description": "`included` and `excluded` are sorted; `rules` keep their order.",
@@ -5660,42 +5722,6 @@
         "title": "SegmentRuleOut",
         "type": "object"
       },
-      "SegmentSummary": {
-        "additionalProperties": false,
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "description": {
-            "title": "Description",
-            "type": "string"
-          },
-          "key": {
-            "title": "Key",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "key",
-          "name",
-          "description",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "SegmentSummary",
-        "type": "object"
-      },
       "SegmentUpdate": {
         "additionalProperties": false,
         "properties": {
@@ -5726,6 +5752,43 @@
           }
         },
         "title": "SegmentUpdate",
+        "type": "object"
+      },
+      "SegmentUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
+          "flag": {
+            "title": "Flag",
+            "type": "string"
+          }
+        },
+        "required": [
+          "flag",
+          "environment"
+        ],
+        "title": "SegmentUsage",
+        "type": "object"
+      },
+      "SegmentUsageOut": {
+        "additionalProperties": false,
+        "description": "Ordered by flag, then environment; only environments the caller can see.",
+        "properties": {
+          "used_by": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentUsage"
+            },
+            "title": "Used By",
+            "type": "array"
+          }
+        },
+        "required": [
+          "used_by"
+        ],
+        "title": "SegmentUsageOut",
         "type": "object"
       },
       "Serve": {
@@ -12484,6 +12547,103 @@
         ]
       }
     },
+    "/api/projects/{project}/environment-order": {
+      "put": {
+        "description": "Reorders every environment of the project at once; the list must name each exactly once.",
+        "operationId": "reorder_environments_api_projects__project__environment_order_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvironmentOrderIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EnvironmentOut"
+                  },
+                  "title": "Response Reorder Environments Api Projects  Project  Environment Order Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Reorder Environments",
+        "tags": [
+          "environments"
+        ]
+      }
+    },
     "/api/projects/{project}/environments": {
       "get": {
         "operationId": "list_environments_api_projects__project__environments_get",
@@ -17249,7 +17409,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Page_SegmentSummary_"
+                  "$ref": "#/components/schemas/Page_SegmentListItem_"
                 }
               }
             },
@@ -17768,6 +17928,97 @@
           }
         },
         "summary": "Replace Segment Config",
+        "tags": [
+          "segments"
+        ]
+      }
+    },
+    "/api/projects/{project}/segments/{segment}/usage": {
+      "get": {
+        "operationId": "read_segment_usage_api_projects__project__segments__segment__usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "title": "Project",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "segment",
+            "required": true,
+            "schema": {
+              "title": "Segment",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentUsageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Read Segment Usage",
         "tags": [
           "segments"
         ]

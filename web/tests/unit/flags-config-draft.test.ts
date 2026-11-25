@@ -8,6 +8,8 @@ import {
   configText,
   isDirty,
   moveRule,
+  newClause,
+  newId,
   removeClause,
   removePrerequisite,
   removeRule,
@@ -314,5 +316,24 @@ describe("immutability", () => {
       validateDraft(d);
     }).not.toThrow();
     expect(toConfigIn(d)).toEqual(configIn);
+  });
+});
+
+describe("newId and newClause", () => {
+  it("gives a fresh id on each call", () => {
+    expect(newId()).not.toBe(newId());
+  });
+
+  it("makes an empty key-in clause with its own id", () => {
+    const a = newClause();
+    const b = newClause();
+    expect(a).toEqual({
+      id: expect.any(String),
+      attribute: "key",
+      operator: "in",
+      values: [],
+      negate: false,
+    });
+    expect(a.id).not.toBe(b.id);
   });
 });

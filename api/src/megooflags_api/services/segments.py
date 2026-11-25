@@ -12,6 +12,7 @@ from megooflags_api.models.enums import SegmentTargetKind
 from megooflags_api.schemas.segments import (
     SegmentConfigIn,
     SegmentCreate,
+    SegmentListItem,
     SegmentOut,
     SegmentRuleOut,
     SegmentSummary,
@@ -20,7 +21,7 @@ from megooflags_api.schemas.segments import (
 from megooflags_api.services.clauses import check_clause, insert_clauses, load_clauses
 from megooflags_api.services.flags import like_pattern
 from megooflags_api.services.pagination import decode_cursor, page_slice
-from megooflags_api.services.usage import segment_dependents
+from megooflags_api.services.usage import segment_dependents, segment_flag_counts
 
 
 async def create_segment(session: AsyncSession, project: Project, body: SegmentCreate) -> Segment:
@@ -38,8 +39,15 @@ async def create_segment(session: AsyncSession, project: Project, body: SegmentC
 
 
 async def list_segments(
-    session: AsyncSession, project: Project, *, q: str | None, cursor: str | None, limit: int
-) -> tuple[list[SegmentSummary], str | None]:
+    session: AsyncSession,
+    project: Project,
+    *,
+    q: str | None,
+    cursor: str | None,
+    limit: int,
+    visible: set[uuid.UUID] | None = None,
+) -> tuple[list[SegmentListItem], str | None]:
+    """`flag_count` counts only the `visible` environments; None means all of them."""
     query = (
         select(Segment)
         .where(Segment.project_id == project.id)
@@ -54,7 +62,15 @@ async def list_segments(
     if cursor is not None:
         query = query.where(Segment.key > decode_cursor(cursor))
     rows, next_cursor = page_slice(list(await session.scalars(query)), limit, lambda s: s.key)
-    return [SegmentSummary.model_validate(s, from_attributes=True) for s in rows], next_cursor
+    counts = await segment_flag_counts(session, [s.id for s in rows], visible)
+    items = [
+        SegmentListItem(
+            **SegmentSummary.model_validate(s, from_attributes=True).model_dump(),
+            flag_count=counts.get(s.id, 0),
+        )
+        for s in rows
+    ]
+    return items, next_cursor
 
 
 async def update_segment(session: AsyncSession, segment: Segment, body: SegmentUpdate) -> None:

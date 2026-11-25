@@ -34,6 +34,7 @@ const LABELS: Record<string, string> = {
   "change_request.reject": "Change request rejected",
   "environment.create": "Environment created",
   "environment.delete": "Environment deleted",
+  "environment.reorder": "Environments reordered",
   "environment.update": "Environment changed",
   "flag.archive": "Flag archived",
   "flag.config.update": "Targeting changed",

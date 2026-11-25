@@ -92,7 +92,8 @@ function SegmentPicker({
  */
 export function ClauseRow({
   clause,
-  segments,
+  segments = [],
+  allowSegments = true,
   readOnly,
   canRemove,
   error,
@@ -101,7 +102,9 @@ export function ClauseRow({
 }: {
   clause: ClauseDraft;
   /** The project's segment keys. */
-  segments: string[];
+  segments?: string[];
+  /** False leaves `is in segment` out of the operators (a segment's own rules). */
+  allowSegments?: boolean;
   readOnly: boolean;
   /** False for a rule's only clause. */
   canRemove: boolean;
@@ -145,6 +148,9 @@ export function ClauseRow({
     onChange({ operator: op, values: parsed?.ok ? parsed.values : [] });
   };
 
+  const operators = allowSegments
+    ? OPERATORS
+    : OPERATORS.filter((o) => operatorKind(o.value) !== "segment");
   const shownError = parseError ?? error;
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
@@ -170,7 +176,7 @@ export function ClauseRow({
             disabled={readOnly}
             onChange={(e) => changeOperator(e.target.value as Operator)}
           >
-            {OPERATORS.map((o) => (
+            {operators.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>

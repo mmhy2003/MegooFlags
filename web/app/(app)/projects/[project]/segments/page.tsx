@@ -1,18 +1,13 @@
 import { Suspense } from "react";
 
-import { PlaceholderPage } from "@/components/patterns/placeholder-page";
-import { projectTrail } from "@/lib/routes";
+import { SegmentList } from "@/components/segments/segment-list";
 
 async function Content({ params }: { params: Promise<{ project: string }> }) {
-  const { project } = await params;
-  return (
-    <PlaceholderPage
-      title="Segments"
-      trail={projectTrail(decodeURIComponent(project))}
-    />
-  );
+  const project = decodeURIComponent((await params).project);
+  return <SegmentList project={project} />;
 }
 
+/** The project's segments: search, how many flags use each, and New segment. */
 export default function SegmentsPage({
   params,
 }: {

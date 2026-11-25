@@ -4,6 +4,7 @@ import { FolderPlus } from "lucide-react";
 import { Suspense } from "react";
 
 import { EmptyState } from "@/components/patterns/empty-state";
+import { NewProjectButton } from "@/components/projects/new-project-button";
 import { serverApi } from "@/lib/api/server";
 import { homeTarget } from "@/lib/routes";
 import { PROJECT_COOKIE } from "@/lib/theme";
@@ -19,13 +20,18 @@ async function Home() {
     c.get(PROJECT_COOKIE)?.value ?? null,
   );
   if (target) redirect(target);
+  const { data: permissions } = await api.GET("/api/auth/me/permissions", {
+    params: { query: {} },
+  });
   return (
     <EmptyState
       headingLevel={1}
       icon={FolderPlus}
       title="No projects yet"
       description="Projects you can see will appear here."
-    />
+    >
+      {permissions?.org.includes("project.create") && <NewProjectButton />}
+    </EmptyState>
   );
 }
 

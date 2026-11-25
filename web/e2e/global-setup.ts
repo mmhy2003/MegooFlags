@@ -572,6 +572,123 @@ async function seedGov(
     oidc: { issuer: "https://idp.example.test", client_id: "megooflags" },
     client_secret: "e2e-secret",
   });
+
+  await seedGovAutomation(admin);
+}
+
+/**
+ * The project pages and the Automation tab the visual matrix shows in gov: segment gov-beta, used
+ * by flag gov-rollout, whose development has a paused rollout and a disable scheduled far ahead.
+ * Like seedGov, it only creates what is missing and never changes an existing item.
+ */
+async function seedGovAutomation(admin: APIRequestContext): Promise<void> {
+  const project = "/api/projects/gov";
+  const segments = `${project}/segments`;
+  const beta = `${segments}/gov-beta`;
+  if ((await admin.get(beta)).status() === 404) {
+    await ok(
+      await admin.post(segments, {
+        data: { key: "gov-beta", name: "Gov beta testers" },
+      }),
+      "create gov-beta",
+    );
+    await ok(
+      await admin.put(beta, {
+        data: {
+          included: ["user-1", "user-2"],
+          rules: [
+            {
+              description: "Pro plan",
+              clauses: [{ attribute: "plan", operator: "in", values: ["pro"] }],
+            },
+          ],
+        },
+      }),
+      "configure gov-beta",
+    );
+  }
+
+  const flags = `${project}/flags`;
+  const dev = `${flags}/gov-rollout/environments/development`;
+  if ((await admin.get(`${flags}/gov-rollout`)).status() === 404) {
+    await ok(
+      await admin.post(flags, {
+        data: { key: "gov-rollout", name: "Gov rollout", type: "boolean" },
+      }),
+      "create gov-rollout",
+    );
+    const current = await ok(await admin.get(dev), "GET gov-rollout dev");
+    const { version } = (await current.json()) as { version: number };
+    await ok(
+      await admin.put(dev, {
+        data: {
+          version,
+          enabled: true,
+          rules: [
+            {
+              description: "Beta testers",
+              clauses: [
+                {
+                  attribute: "key",
+                  operator: "in_segment",
+                  values: ["gov-beta"],
+                },
+              ],
+              variation: "true",
+            },
+          ],
+          fallthrough: { variation: "false" },
+        },
+      }),
+      "configure gov-rollout in development",
+    );
+  }
+
+  const rollout = await ok(
+    await admin.get(`${dev}/rollout`),
+    "GET gov-rollout rollout",
+  );
+  if (((await rollout.json()) as { current: unknown }).current === null) {
+    await ok(
+      await admin.post(`${dev}/rollout`, {
+        data: {
+          from_variation: "false",
+          to_variation: "true",
+          steps: [
+            { percentage: 10000, wait_minutes: 60 },
+            { percentage: 50000, wait_minutes: 60 },
+            { percentage: 100000 },
+          ],
+        },
+      }),
+      "start the gov-rollout rollout",
+    );
+    // Paused, so it never moves on and the page never changes.
+    await ok(
+      await admin.post(`${dev}/rollout/pause`),
+      "pause the gov-rollout rollout",
+    );
+  }
+
+  const schedules = await ok(
+    await admin.get(`${dev}/schedules`),
+    "list gov-rollout schedules",
+  );
+  const pending = ((await schedules.json()) as { status: string }[]).some(
+    (s) => s.status === "pending",
+  );
+  if (!pending)
+    await ok(
+      await admin.post(`${dev}/schedules`, {
+        data: {
+          action: "disable",
+          run_at: new Date(
+            Date.now() + 300 * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+        },
+      }),
+      "schedule disabling gov-rollout",
+    );
 }
 
 /** Idempotent: safe to run against a database that an earlier run already seeded. */

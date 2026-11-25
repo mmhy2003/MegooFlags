@@ -102,6 +102,15 @@ async def test_org_viewer_reads_but_cannot_write(client_as: ClientAs) -> None:
         assert_error(r, 403, "forbidden")
 
 
+async def test_reorder_needs_environment_manage(client_as: ClientAs) -> None:
+    async with client_as(("viewer", None, None)) as viewer:
+        r = await viewer.put(
+            "/api/projects/demo/environment-order",
+            json={"environments": ["production", "staging", "development"]},
+        )
+        assert_error(r, 403, "forbidden")
+
+
 async def test_production_editor_sees_and_changes_only_production(client_as: ClientAs) -> None:
     async with client_as(("editor", "demo", "production")) as editor:
         r = await editor.post(TOGGLE.format(env="production"), json={"enabled": True})
@@ -152,6 +161,59 @@ async def test_flag_reads_show_only_visible_environments(client_as: ClientAs) ->
         assert r.status_code == 200, r.text
         envs = [s["environment"] for s in r.json()["environments"]]
         assert envs == ["development", "production", "staging"]
+
+
+async def test_segment_usage_shows_only_visible_environments(
+    api: httpx.AsyncClient, client_as: ClientAs
+) -> None:
+    for env in ("staging", "production"):
+        url = f"/api/projects/demo/flags/new-ui/environments/{env}"
+        version = (await api.get(url)).json()["version"]
+        rule = {"clauses": [{"operator": "in_segment", "values": ["beta"]}], "variation": "true"}
+        r = await api.put(
+            url,
+            json={
+                "version": version,
+                "enabled": False,
+                "rules": [rule],
+                "fallthrough": {"variation": "false"},
+            },
+        )
+        assert r.status_code == 200, r.text
+
+    async with client_as(("editor", "demo", "production")) as editor:
+        r = await editor.get("/api/projects/demo/segments/beta/usage")
+
+    assert r.status_code == 200, r.text
+    assert r.json() == {"used_by": [{"flag": "new-ui", "environment": "production"}]}
+
+
+async def test_segment_flag_count_counts_only_visible_environments(
+    api: httpx.AsyncClient, client_as: ClientAs
+) -> None:
+    await create_flag(api, "demo", "other-ui")
+    for flag, env in (("new-ui", "staging"), ("other-ui", "production")):
+        url = f"/api/projects/demo/flags/{flag}/environments/{env}"
+        version = (await api.get(url)).json()["version"]
+        rule = {"clauses": [{"operator": "in_segment", "values": ["beta"]}], "variation": "true"}
+        r = await api.put(
+            url,
+            json={
+                "version": version,
+                "enabled": False,
+                "rules": [rule],
+                "fallthrough": {"variation": "false"},
+            },
+        )
+        assert r.status_code == 200, r.text
+
+    async with client_as(("editor", "demo", "production")) as editor:
+        r = await editor.get("/api/projects/demo/segments")
+    admin = await api.get("/api/projects/demo/segments")
+
+    assert r.status_code == 200, r.text
+    assert [s["flag_count"] for s in admin.json()["items"]] == [2]
+    assert [s["flag_count"] for s in r.json()["items"]] == [1]
 
 
 async def test_list_flags_by_hidden_environment_is_404(client_as: ClientAs) -> None:

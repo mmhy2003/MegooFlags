@@ -61,6 +61,13 @@ WRITES: list[tuple[str, str, dict[str, str], Any, str]] = [
     ("POST", f"{P}/environments", {}, {"key": "qa", "name": "QA"}, "demo"),
     ("PATCH", f"{P}/environments/{{env}}", {"env": "qa"}, {"name": "Q A"}, "demo"),
     (
+        "PUT",
+        f"{P}/environment-order",
+        {},
+        {"environments": ["qa", "production", "staging", "development"]},
+        "demo",
+    ),
+    (
         "POST",
         f"{P}/flags",
         {},

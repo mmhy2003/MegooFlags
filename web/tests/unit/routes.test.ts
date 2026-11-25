@@ -8,6 +8,7 @@ import {
   projectFromPath,
   projectPath,
   projectTrail,
+  segmentPath,
   switchProjectPath,
 } from "@/lib/routes";
 
@@ -40,6 +41,14 @@ describe("changeRequestPath", () => {
   });
 });
 
+describe("segmentPath", () => {
+  it("points at a segment inside the project and encodes both parts", () => {
+    expect(segmentPath("my shop", "beta testers")).toBe(
+      "/projects/my%20shop/segments/beta%20testers",
+    );
+  });
+});
+
 describe("projectFromPath", () => {
   it("reads the project key from the URL", () => {
     expect(projectFromPath("/projects/demo")).toBe("demo");
@@ -53,6 +62,12 @@ describe("switchProjectPath", () => {
   it("keeps a known section", () => {
     expect(switchProjectPath("/projects/a/audit", "b")).toBe(
       "/projects/b/audit",
+    );
+  });
+
+  it("keeps the project settings", () => {
+    expect(switchProjectPath("/projects/a/settings", "b")).toBe(
+      "/projects/b/settings",
     );
   });
 

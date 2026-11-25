@@ -1,16 +1,16 @@
 "use client";
 
 import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef } from "react";
 
 import { ClauseRow } from "@/components/flags/clause-row";
+import { KeyListField } from "@/components/flags/key-list-field";
 import { ServeEditor } from "@/components/flags/serve-editor";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
-import { Textarea } from "@/components/ui/textarea";
 import { useApiData } from "@/hooks/use-api-data";
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -181,43 +181,6 @@ function PrerequisiteRow({
       </div>
       <FieldError id={errorId} error={error} />
     </li>
-  );
-}
-
-/** The context keys served one variation, one per line; applied to the draft on blur. */
-function TargetsField({
-  variation,
-  keys,
-  readOnly,
-  onApply,
-}: {
-  variation: string;
-  keys: string[];
-  readOnly: boolean;
-  onApply: (keys: string[]) => void;
-}) {
-  const id = useId();
-  const joined = keys.join("\n");
-  const [text, setText] = useState(joined);
-  const [shown, setShown] = useState(joined);
-  // Show the draft's keys when they change from outside the field (Discard, another field).
-  if (shown !== joined) {
-    setShown(joined);
-    setText(joined);
-  }
-  return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <Label htmlFor={id}>Context keys served {variation}</Label>
-      <Textarea
-        id={id}
-        className="min-h-20 font-mono text-base"
-        value={text}
-        readOnly={readOnly}
-        placeholder="One key per line"
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => onApply(text.split("\n"))}
-      />
-    </div>
   );
 }
 
@@ -468,9 +431,9 @@ export function RulesEditor({
       <Section title="Individual targets">
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
           {variations.map((v) => (
-            <TargetsField
+            <KeyListField
               key={v}
-              variation={v}
+              label={`Context keys served ${v}`}
               keys={draft.targets[v] ?? []}
               readOnly={readOnly}
               onApply={(keys) => {

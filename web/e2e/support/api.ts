@@ -96,3 +96,42 @@ export async function putConfig(
   const saved = await ok(await api.put(path, { data: config }), `PUT ${path}`);
   return (await saved.json()) as FlagConfig;
 }
+
+type RolloutStep = { percentage: number; wait_minutes?: number };
+
+/** Starts a progressive rollout of the flag's default rule in env and returns the rollout. */
+export async function startRollout(
+  api: APIRequestContext,
+  flag: string,
+  env: string,
+  steps: RolloutStep[] = [
+    { percentage: 10000, wait_minutes: 60 },
+    { percentage: 100000 },
+  ],
+  from = "false",
+  to = "true",
+): Promise<object> {
+  const path = `/api/projects/${SHOP}/flags/${flag}/environments/${env}/rollout`;
+  const response = await ok(
+    await api.post(path, {
+      data: { from_variation: from, to_variation: to, steps },
+    }),
+    `POST ${path}`,
+  );
+  return (await response.json()) as object;
+}
+
+/** Schedules a change of the flag in env (`{action, run_at, weights?}`) and returns it. */
+export async function scheduleChange(
+  api: APIRequestContext,
+  flag: string,
+  env: string,
+  body: { action: string; run_at: string; weights?: object[] },
+): Promise<object> {
+  const path = `/api/projects/${SHOP}/flags/${flag}/environments/${env}/schedules`;
+  const response = await ok(
+    await api.post(path, { data: body }),
+    `POST ${path}`,
+  );
+  return (await response.json()) as object;
+}

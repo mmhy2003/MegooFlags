@@ -2,18 +2,17 @@
 
 import { Plus, Users } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { EmptyState } from "@/components/patterns/empty-state";
 import { type Column, DataList } from "@/components/patterns/data-list";
 import { LoadFailed, LoadingRows } from "@/components/patterns/list-state";
+import { SearchField } from "@/components/patterns/search-field";
 import { StatusPill } from "@/components/patterns/status-pill";
 import { InviteDialog } from "@/components/settings/invite-dialog";
 import { MemberDialog } from "@/components/settings/member-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useApiData } from "@/hooks/use-api-data";
 import { api } from "@/lib/api/client";
 import { allPages } from "@/lib/api/pages";
@@ -26,7 +25,6 @@ type UserPage = components["schemas"]["Page_UserOut_"];
 type Loaded = { page: UserPage; roles: Map<string, string[]>; now: number };
 
 const PAGE_SIZE = 50;
-const SEARCH_DELAY_MS = 200;
 
 const DATE_TIME = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -125,57 +123,6 @@ function columns(
       ),
     },
   ];
-}
-
-/** The search box; it sends its text after a short pause, and follows `value` (back, forward). */
-function SearchField({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (q: string) => void;
-}) {
-  const id = useId();
-  const [text, setText] = useState(value);
-  const [seen, setSeen] = useState(value);
-  const [sent, setSent] = useState(value);
-  // A new `value` replaces the text, unless it only catches up with what this field sent.
-  if (value !== seen) {
-    setSeen(value);
-    if (value !== sent) {
-      setText(value);
-      setSent(value);
-    }
-  }
-  // Kept in a ref so a parent render doesn't restart the debounce.
-  const onChangeRef = useRef(onChange);
-  useEffect(() => {
-    onChangeRef.current = onChange;
-  });
-
-  useEffect(() => {
-    if (text === sent) return;
-    const timer = setTimeout(() => {
-      setSent(text);
-      onChangeRef.current(text);
-    }, SEARCH_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [text, sent]);
-
-  return (
-    <div className="min-w-48 flex-1 sm:max-w-sm">
-      <Label htmlFor={id} className="sr-only">
-        Search members
-      </Label>
-      <Input
-        id={id}
-        type="search"
-        placeholder="Search by name or email"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-      />
-    </div>
-  );
 }
 
 /** The organization's members and invitations, with a search kept in `?q=`. */
@@ -300,7 +247,12 @@ export function MembersTab() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SearchField value={q} onChange={search} />
+        <SearchField
+          label="Search members"
+          placeholder="Search by name or email"
+          value={q}
+          onChange={search}
+        />
         {add}
       </div>
       {body}

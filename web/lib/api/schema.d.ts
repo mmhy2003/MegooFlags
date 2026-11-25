@@ -1019,6 +1019,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project}/environment-order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder Environments
+         * @description Reorders every environment of the project at once; the list must name each exactly once.
+         */
+        put: operations["reorder_environments_api_projects__project__environment_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project}/environments": {
         parameters: {
             query?: never;
@@ -1701,6 +1721,23 @@ export interface paths {
         head?: never;
         /** Update Segment */
         patch: operations["update_segment_api_projects__project__segments__segment__patch"];
+        trace?: never;
+    };
+    "/api/projects/{project}/segments/{segment}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Segment Usage */
+        get: operations["read_segment_usage_api_projects__project__segments__segment__usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/roles": {
@@ -2729,6 +2766,14 @@ export interface components {
             /** Sort Order */
             sort_order?: number | null;
         };
+        /**
+         * EnvironmentOrderIn
+         * @description Every environment of the project exactly once, in the new order.
+         */
+        EnvironmentOrderIn: {
+            /** Environments */
+            environments: string[];
+        };
         /** EnvironmentOut */
         EnvironmentOut: {
             /** Approvals Required */
@@ -3589,10 +3634,10 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
-        /** Page[SegmentSummary] */
-        Page_SegmentSummary_: {
+        /** Page[SegmentListItem] */
+        Page_SegmentListItem_: {
             /** Items */
-            items: components["schemas"]["SegmentSummary"][];
+            items: components["schemas"]["SegmentListItem"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -4335,6 +4380,30 @@ export interface components {
             name: string;
         };
         /**
+         * SegmentListItem
+         * @description `flag_count`: flags whose rules use the segment, in the environments the caller can see.
+         */
+        SegmentListItem: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Flag Count */
+            flag_count: number;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
          * SegmentOut
          * @description `included` and `excluded` are sorted; `rules` keep their order.
          */
@@ -4379,31 +4448,27 @@ export interface components {
             /** Description */
             description: string;
         };
-        /** SegmentSummary */
-        SegmentSummary: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Description */
-            description: string;
-            /** Key */
-            key: string;
-            /** Name */
-            name: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
         /** SegmentUpdate */
         SegmentUpdate: {
             /** Description */
             description?: string | null;
             /** Name */
             name?: string | null;
+        };
+        /** SegmentUsage */
+        SegmentUsage: {
+            /** Environment */
+            environment: string;
+            /** Flag */
+            flag: string;
+        };
+        /**
+         * SegmentUsageOut
+         * @description Ordered by flag, then environment; only environments the caller can see.
+         */
+        SegmentUsageOut: {
+            /** Used By */
+            used_by: components["schemas"]["SegmentUsage"][];
         };
         /**
          * Serve
@@ -8822,6 +8887,77 @@ export interface operations {
             };
         };
     };
+    reorder_environments_api_projects__project__environment_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnvironmentOrderIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvironmentOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_environments_api_projects__project__environments_get: {
         parameters: {
             query?: never;
@@ -12074,7 +12210,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Page_SegmentSummary_"];
+                    "application/json": components["schemas"]["Page_SegmentListItem_"];
                 };
             };
             /** @description Unauthorized */
@@ -12424,6 +12560,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SegmentOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_segment_usage_api_projects__project__segments__segment__usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                segment: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SegmentUsageOut"];
                 };
             };
             /** @description Unauthorized */

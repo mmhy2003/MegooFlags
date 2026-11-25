@@ -5,15 +5,18 @@ import { Button } from "@/components/ui/button";
 /**
  * A bar stuck to the bottom of the page while the draft has unsaved changes, with Discard and
  * Review. In an environment that needs approval, Review leads to a change request.
+ * `actionLabel` replaces the Review text.
  */
 export function UnsavedBar({
   isDirty,
   needsApproval,
+  actionLabel,
   onDiscard,
   onReview,
 }: {
   isDirty: boolean;
   needsApproval: boolean;
+  actionLabel?: string;
   onDiscard: () => void;
   onReview: () => void;
 }) {
@@ -30,7 +33,8 @@ export function UnsavedBar({
           Discard
         </Button>
         <Button className="min-h-11" onClick={onReview}>
-          {needsApproval ? "Review & request change" : "Review"}
+          {actionLabel ??
+            (needsApproval ? "Review & request change" : "Review")}
         </Button>
       </div>
     </div>

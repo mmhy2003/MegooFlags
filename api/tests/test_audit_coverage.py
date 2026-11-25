@@ -660,6 +660,13 @@ AUDIT_SAMPLES: dict[tuple[str, str], Sample] = dict(
         ),
         sample("PATCH", E, "environment.update", project, {"name": "Prod"}),
         sample("DELETE", E, "environment.delete", project),
+        sample(
+            "PUT",
+            f"{P}/environment-order",
+            "environment.reorder",
+            project,
+            {"environments": ["production", "staging", "development"]},
+        ),
         # Flags and variations
         sample(
             "POST",

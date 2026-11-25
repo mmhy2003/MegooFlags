@@ -11,14 +11,17 @@ from megooflags_api.schemas.common import Page
 from megooflags_api.schemas.segments import (
     SegmentConfigIn,
     SegmentCreate,
+    SegmentListItem,
     SegmentOut,
-    SegmentSummary,
     SegmentUpdate,
+    SegmentUsage,
+    SegmentUsageOut,
 )
 from megooflags_api.services import segments
 from megooflags_api.services.audit import AuditDep, snapshot
 from megooflags_api.services.changes import ChangesDep
 from megooflags_api.services.lookup import get_segment
+from megooflags_api.services.usage import segment_dependents
 
 router = APIRouter(tags=["segments"], responses=ERROR_RESPONSES)
 
@@ -39,11 +42,17 @@ async def list_segments(
     q: str | None = Query(None, description="Case-insensitive substring of the key or name."),
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=500),
-) -> Page[SegmentSummary]:
+) -> Page[SegmentListItem]:
+    row = _project(authz)
     items, next_cursor = await segments.list_segments(
-        session, _project(authz), q=q, cursor=cursor, limit=limit
+        session,
+        row,
+        q=q,
+        cursor=cursor,
+        limit=limit,
+        visible=authz.authorizer.visible_environment_ids(row.id),
     )
-    return Page[SegmentSummary](items=items, next_cursor=next_cursor)
+    return Page[SegmentListItem](items=items, next_cursor=next_cursor)
 
 
 @router.post("/projects/{project}/segments", status_code=201)
@@ -71,6 +80,16 @@ async def read_segment(
 ) -> SegmentOut:
     row = await get_segment(session, _project(authz), segment)
     return await segments.segment_out(session, row)
+
+
+@router.get("/projects/{project}/segments/{segment}/usage")
+async def read_segment_usage(
+    session: SessionDep, authz: ReadProject, project: str, segment: str
+) -> SegmentUsageOut:
+    row = await get_segment(session, _project(authz), segment)
+    visible = authz.authorizer.visible_environment_ids(row.project_id)
+    used_by = await segment_dependents(session, row.id, visible)
+    return SegmentUsageOut(used_by=[SegmentUsage(**u) for u in used_by])
 
 
 @router.put("/projects/{project}/segments/{segment}")

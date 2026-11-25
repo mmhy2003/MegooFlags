@@ -36,12 +36,16 @@ const PAGES: {
 }[] = [
   { name: "flags", path: "/projects/demo/flags", mask: true },
   { name: "flag-new", path: "/projects/demo/flags/new", mask: true },
-  ...["targeting", "test", "history", "insights", "settings"].map((tab) => ({
-    name: `flag-${tab}`,
-    path: `${FLAG}&tab=${tab}`,
-    mask: true,
-    detail: true,
-  })),
+  ...["targeting", "automation", "test", "history", "insights", "settings"].map(
+    (tab) => ({
+      name: `flag-${tab}`,
+      path: `${FLAG}&tab=${tab}`,
+      mask: true,
+      detail: true,
+      // Targeting is read-only until the permissions load.
+      ready: tab === "targeting" ? "Add rule" : undefined,
+    }),
+  ),
   // global-setup.ts seeds a paused webhook in shop, so the page shows a row that never changes.
   { name: "integrations", path: "/projects/shop/integrations", mask: true },
   // global-setup.ts leaves only matrix-worker, which never connects and stays Pending. Its token
@@ -84,6 +88,33 @@ const PAGES: {
     maskText: [/^mf_/],
     ready: "gov server",
   },
+  // The rollout is paused and the scheduled disable is 300 days ahead, so neither moves.
+  {
+    name: "flag-automation-live",
+    path: "/projects/gov/flags/gov-rollout?env=development&tab=automation",
+    mask: true,
+    detail: true,
+    ready: "Paused",
+  },
+  {
+    name: "segments",
+    path: "/projects/gov/segments",
+    mask: true,
+    ready: "gov-beta",
+  },
+  {
+    name: "segment",
+    path: "/projects/gov/segments/gov-beta",
+    mask: true,
+    ready: "gov-rollout",
+  },
+  {
+    name: "environments",
+    path: "/projects/gov/environments",
+    mask: true,
+    ready: "Needs 1 approval",
+  },
+  { name: "project-settings", path: "/projects/gov/settings", mask: true },
   { name: "account-tokens", path: "/account/tokens", mask: true },
   {
     name: "settings-members",
