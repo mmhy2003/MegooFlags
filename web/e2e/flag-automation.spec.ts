@@ -1,4 +1,9 @@
-import { type APIRequestContext, expect, test } from "@playwright/test";
+import {
+  type APIRequestContext,
+  expect,
+  type Page,
+  test,
+} from "@playwright/test";
 
 import {
   adminApi,
@@ -9,6 +14,7 @@ import {
   SHOP,
   startRollout,
 } from "./support/api";
+import { noHorizontalScroll, smallTargets } from "./support/checks";
 import { ADMIN, VIEWER } from "./support/users";
 
 let api: APIRequestContext;
@@ -517,6 +523,114 @@ test.describe("flag automation", () => {
         title: "Launch on Friday",
       }),
     ]);
+  });
+});
+
+/** UI-12 and UI-16 on the current screen. */
+async function fits(page: Page) {
+  expect(await noHorizontalScroll(page)).toBe(true);
+  expect(await smallTargets(page)).toEqual([]);
+}
+
+// UI-15/UI-16: F-10 and T-6 work fully with touch at 344 px.
+test.describe("automation at 344 px with touch", () => {
+  test.use({
+    viewport: { width: 344, height: 800 },
+    hasTouch: true,
+    isMobile: true,
+  });
+
+  test("start, pause and abort a rollout", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await page.goto(automation(flag));
+    const rollout = page.getByRole("region", { name: "Progressive rollout" });
+    await expect(rollout.getByText("No rollout running")).toBeVisible();
+    await fits(page);
+
+    await rollout.getByRole("button", { name: "Start a rollout" }).tap();
+    const dialog = page.getByRole("dialog", {
+      name: "Start a rollout in Development",
+    });
+    // Full screen at 344 px, once it has animated in.
+    await expect
+      .poll(async () => Math.round((await dialog.boundingBox())?.width ?? 0))
+      .toBe(344);
+    await fits(page);
+    const percent = dialog.getByRole("spinbutton", { name: "Step 2 percent" });
+    await percent.tap();
+    await percent.fill("30");
+    await dialog.getByRole("button", { name: "Remove step 3" }).tap();
+    await expect(
+      dialog.getByText(
+        "The first step (10 %) applies when you start. 100 % after 2 hours.",
+      ),
+    ).toBeVisible();
+    await fits(page);
+    await dialog.getByRole("button", { name: "Start rollout" }).tap();
+    await expect(dialog).toBeHidden();
+    await expect(rollout.getByText("Running")).toBeVisible();
+    await fits(page);
+
+    await rollout.getByRole("button", { name: "Pause" }).tap();
+    await expect(rollout.getByText("Paused")).toBeVisible();
+    await fits(page);
+
+    await rollout.getByRole("button", { name: "Abort" }).tap();
+    const confirm = page.getByRole("alertdialog", {
+      name: "Abort the rollout in Development?",
+    });
+    await expect(confirm).toBeVisible();
+    await fits(page);
+    await confirm.getByRole("button", { name: "Abort rollout" }).tap();
+    await expect(confirm).toBeHidden();
+    await expect(rollout.getByText("No rollout running")).toBeVisible();
+    await fits(page);
+  });
+
+  test("schedule and cancel a change", async ({ page }) => {
+    const flag = await createTestFlag(api);
+    await page.goto(automation(flag));
+    const schedules = page.getByRole("region", { name: "Scheduled changes" });
+    await expect(schedules.getByText("No scheduled changes")).toBeVisible();
+
+    await schedules.getByRole("button", { name: "Schedule a change" }).tap();
+    const dialog = page.getByRole("dialog", {
+      name: "Schedule a change in Development",
+    });
+    await expect
+      .poll(async () => Math.round((await dialog.boundingBox())?.width ?? 0))
+      .toBe(344);
+    await fits(page);
+    await dialog.getByRole("radio", { name: "Turn on" }).tap();
+    await expect(dialog.getByRole("radio", { name: "Turn on" })).toBeChecked();
+    await dialog.getByLabel("When").fill(localAhead(48 * HOUR));
+    await fits(page);
+    await dialog.getByRole("button", { name: "Schedule", exact: true }).tap();
+    await expect(dialog).toBeHidden();
+    const row = schedules
+      .getByRole("list", { name: "Upcoming" })
+      .getByRole("listitem")
+      .filter({ hasText: "Turn on" });
+    await expect(row).toBeVisible();
+    await fits(page);
+
+    await row.getByRole("button", { name: "Cancel" }).tap();
+    const confirm = page.getByRole("alertdialog", {
+      name: "Cancel this change?",
+    });
+    await expect(confirm).toBeVisible();
+    await fits(page);
+    await confirm.getByRole("button", { name: "Cancel change" }).tap();
+    await expect(confirm).toBeHidden();
+    await expect(schedules.getByText("No scheduled changes")).toBeVisible();
+    await schedules.getByText("Past changes").tap();
+    await expect(
+      schedules
+        .getByRole("list", { name: "Past changes" })
+        .getByRole("listitem")
+        .filter({ hasText: "Turn on" }),
+    ).toContainText("Cancelled");
+    await fits(page);
   });
 });
 
