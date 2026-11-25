@@ -96,6 +96,10 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - `GET /api/projects/{project}/segments/{segment}/usage` lists the flags and environments whose rules use a segment.
 - Segment list items have `flag_count`: how many flags use the segment in the environments you can see.
 - `PUT /api/projects/{project}/environment-order` reorders all environments of a project in one call.
+- Segments page: create segments, edit included and excluded keys and rules, see which flags use a segment; deleting is blocked while flags use it.
+- Environments page: create, edit, reorder and delete environments, and require approvals (protected environments).
+- Project settings: name, description and stale-flag days; create a project from the project switcher and delete one with its key typed.
+- Automation tab on the flag page: schedule turning a flag on or off or a new default rollout, and start, pause, resume or abort a progressive rollout. In an environment that needs approval these open change requests.
 
 ## [0.1.0]
 
