@@ -42,6 +42,8 @@ const PAGES: {
       path: `${FLAG}&tab=${tab}`,
       mask: true,
       detail: true,
+      // Targeting is read-only until the permissions load.
+      ready: tab === "targeting" ? "Add rule" : undefined,
     }),
   ),
   // global-setup.ts seeds a paused webhook in shop, so the page shows a row that never changes.

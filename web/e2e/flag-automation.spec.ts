@@ -526,10 +526,13 @@ test.describe("flag automation", () => {
   });
 });
 
-/** UI-12 and UI-16 on the current screen. */
+/**
+ * UI-12 and UI-16 on the current screen. Polls, because a dialog that is still
+ * zooming in measures its 44 px targets at 43 px.
+ */
 async function fits(page: Page) {
-  expect(await noHorizontalScroll(page)).toBe(true);
-  expect(await smallTargets(page)).toEqual([]);
+  await expect.poll(() => noHorizontalScroll(page)).toBe(true);
+  await expect.poll(() => smallTargets(page)).toEqual([]);
 }
 
 // UI-15/UI-16: F-10 and T-6 work fully with touch at 344 px.

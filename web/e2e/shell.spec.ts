@@ -78,8 +78,13 @@ test.describe("phone", () => {
     page,
   }) => {
     await page.goto("/projects/demo/segments");
-    await page.getByRole("button", { name: "Open menu" }).click();
     const drawer = page.getByRole("dialog");
+    // The button does nothing until the page has hydrated, so retry until the drawer opens.
+    await expect(async () => {
+      if (!(await drawer.isVisible()))
+        await page.getByRole("button", { name: "Open menu" }).click();
+      await expect(drawer).toBeVisible({ timeout: 1000 });
+    }).toPass();
     await drawer.getByRole("link", { name: "Flags", exact: true }).click();
     await expect(page).toHaveURL(/\/projects\/demo\/flags$/);
     await expect(drawer).toBeHidden();
