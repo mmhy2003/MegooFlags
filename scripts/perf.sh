@@ -430,9 +430,10 @@ if wants cluster; then
   echo "propagation through the control plane done"
 fi
 
-# 6. Many streams: one worker's capacity inside its limits, then enough workers for 100k.
+# 6. Many streams: one worker's capacity inside its limits, then as many workers as 100k needs and
+# the host fits, each at 80 % of that capacity. At least 8 workers make a full run.
 if wants streams; then
-  big_status=full big_reduced="" capacity=""
+  big_status=full big_reduced="" capacity="" need=""
   if [ "$profile" = full ]; then
     perf_worker 2 stop
     perf_worker 3 stop
@@ -452,10 +453,14 @@ if wants streams; then
     need=$(python3 -c "import math; print(math.ceil(100000 / (0.8 * $capacity)))")
     # The control plane and the load generator get about 4 CPUs and 4 GiB.
     fit=$(((cpus - 4) < (mem_total - 4096) / 512 ? (cpus - 4) : (mem_total - 4096) / 512))
-    big_workers=$need
+    big_workers=$((need < fit ? need : fit))
+    big_workers=$((big_workers < 1 ? 1 : big_workers))
     if [ "$need" -gt "$fit" ]; then
-      big_workers=$((fit < 1 ? 1 : fit))
       big_streams=$((big_workers * capacity * 8 / 10))
+    fi
+    if [ "$big_workers" -ge 8 ]; then
+      big_status=full
+    else
       big_status=reduced big_reduced="$big_streams streams, $big_workers workers"
     fi
     echo "one worker holds $capacity streams; $big_workers workers for $big_streams streams"
@@ -490,9 +495,9 @@ if wants streams; then
   )
   combine "$run/streams_100k.json" "$run/streams.json" "workers=$big_workers" \
     "mem_max_mib=$(column_max "$state/workers-mem.log" 2)" "restarts=$restart_count" "oom_killed=$oom_count" \
-    ${capacity:+"capacity_per_worker=$capacity"}
+    "streams_planned=$big_streams" ${capacity:+"capacity_per_worker=$capacity" "workers_for_100k=$need"}
   meta streams_100k "$big_status" "$big_reduced" "$worker_limits" \
-    "mem_max_mib is the most any one worker used; a flip every $big_flip s through the control plane; limits re-split from caddy 0.2 / 96M, api 0.8 / 416M, where Caddy was OOM-killed at about 1000 streams"
+    "sizing: one worker's capacity is measured, then min(workers for 100k, workers the host fits) run at 80 % of it, and at least 8 workers make a full run; mem_max_mib is the most any one worker used; a flip every $big_flip s through the control plane; limits re-split from caddy 0.2 / 96M, api 0.8 / 416M, where Caddy was OOM-killed at about 1000 streams"
 fi
 if wants cluster || wants streams; then
   cluster_down

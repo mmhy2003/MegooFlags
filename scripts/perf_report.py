@@ -151,6 +151,14 @@ def _few_missed(m: Metrics) -> bool:
 
 
 _PROPAGATION = _all(_P95, _few_missed)
+
+
+def _streams_planned(m: Metrics) -> bool:
+    """Every planned stream opened."""
+    opened, planned = _num(m, "streams_opened"), _num(m, "streams_planned")
+    return opened is not None and planned is not None and opened >= planned
+
+
 _REMOTE_TARGET = "p99 < 50 ms, no errors, at 2000 rps per API container"
 _PROPAGATION_TARGET = "p95 < 5 s"
 
@@ -170,13 +178,16 @@ GATES: list[tuple[str, str, str, Check]] = [
     ("Propagation to worker nodes", _PROPAGATION_TARGET, "propagation_cluster", _PROPAGATION),
     (
         "100k streams per cluster",
-        "100000 streams, none dropped, propagation p95 < 5 s, each worker inside 512 MiB",
+        "100k streams by adding workers: at least 8 workers at 80 % of one worker's capacity "
+        "(1 vCPU / 512 MiB), none dropped, propagation p95 < 5 s, each worker inside 512 MiB",
         "streams_100k",
         _all(
-            _at_least("streams_opened", 100000),
+            _at_least("workers", 8),
+            _streams_planned,
             _at_most("streams_dropped", 0),
             _PROPAGATION,
             _at_most("mem_max_mib", 512),
+            _at_least("workers_for_100k", 1),
         ),
     ),
     (
@@ -226,7 +237,9 @@ def _measured(name: str, m: Metrics) -> str:
         return f"{prop} over {_n(m.get('flips'))} flips on {_n(m.get('streams_opened'))} streams"
     if name == "streams_100k":
         return (
-            f"{_n(m.get('streams_opened'))} streams, workers: {_n(m.get('workers'))}, "
+            f"{_n(m.get('streams_opened'))} streams on {_n(m.get('workers'))} workers "
+            f"({_n(m.get('capacity_per_worker'))} per worker; "
+            f"{_n(m.get('workers_for_100k'))} workers for 100k), "
             f"{_n(m.get('streams_dropped'))} dropped, {prop}, "
             f"worker memory up to {_n(m.get('mem_max_mib'))} MiB"
         )
