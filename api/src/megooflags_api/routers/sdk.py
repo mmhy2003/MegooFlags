@@ -8,15 +8,16 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, Request, Response
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from megooflags_api.errors import SDK_ERROR_RESPONSES
 from megooflags_api.etags import canonical_json, derived_etag, etag_matches
 from megooflags_api.evaluation import ErrorCode, evaluate_all
 from megooflags_api.models.enums import SdkKeyKind
+from megooflags_api.responses import FastJSONResponse
 from megooflags_api.schemas.evaluation import EvaluateIn
 from megooflags_api.schemas.events import EventsIn
-from megooflags_api.schemas.sdk import SdkEvaluateOut, SdkEvaluationResult
+from megooflags_api.schemas.sdk import SdkEvaluateOut
 from megooflags_api.sdk_auth import AnyKeyDep, ServerKeyDep, StreamKeyDep
 from megooflags_api.services.delivery import get_delivery
 from megooflags_api.services.events import limit_body_size
@@ -95,22 +96,20 @@ async def evaluate_flags(
             if r.error_code != ErrorCode.FLAG_NOT_FOUND
         ],
     )
-    results = []
+    results: list[dict[str, Any]] = []
     for key, r in resolutions.items():
-        extra: dict[str, Any] = {"metadata": r.metadata} if server else {}
-        results.append(
-            SdkEvaluationResult(
-                key=key,
-                value=r.value,
-                variant=r.variant,
-                reason=r.reason,
-                error_code=r.error_code,
-                error_message=r.error_message,
-                **extra,
-            )
-        )
-    out = SdkEvaluateOut(results=results)
-    return JSONResponse(out.model_dump(mode="json", exclude_unset=True), headers={"ETag": etag})
+        item: dict[str, Any] = {
+            "key": key,
+            "value": r.value,
+            "variant": r.variant,
+            "reason": r.reason,
+            "error_code": r.error_code,
+            "error_message": r.error_message,
+        }
+        if server:
+            item["metadata"] = r.metadata
+        results.append(item)
+    return FastJSONResponse({"results": results}, headers={"ETag": etag})
 
 
 def _frame(principal: SdkPrincipal, entry: CachedRuleset) -> bytes:

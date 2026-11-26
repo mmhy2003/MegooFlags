@@ -27,6 +27,7 @@ dependencies = [
   "httpx>=0.28.1",
   "python3-saml>=1.16.0",
   "httpcore>=1.0.9",
+  "orjson>=3.11",
 ]
 
 [dependency-groups]

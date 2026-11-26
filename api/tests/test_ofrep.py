@@ -188,6 +188,44 @@ async def test_evaluation_error_400(
     validate(ERROR_SCHEMA, r.json())
 
 
+async def test_exact_bodies(api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    await setup_demo(api)
+    server = bearer((await create_sdk_key(api, "server"))["key"])
+    client = bearer((await create_sdk_key(api, "client"))["key"])
+    context = {"targetingKey": "u1"}
+    color = b'{"key":"color","value":"blue","reason":"TARGETING_MATCH","variant":"blue","metadata":'
+
+    r = await single(api, "color", server, context)
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "application/json"
+    assert r.content == color + b'{"rule_index":0}}'
+
+    r = await single(api, "color", client, context)
+    assert r.status_code == 200, r.text
+    assert r.content == color + b"{}}"
+
+    r = await api.post(BULK, json={"context": context}, headers=client)
+    assert r.status_code == 200, r.text
+    assert r.content.startswith(b'{"flags":[' + color + b"{}},")
+
+    def no_variant(*args: Any, **kwargs: Any) -> Resolution:
+        return Resolution("x", None, "DEFAULT", metadata={"m": 1})
+
+    monkeypatch.setattr(ofrep, "evaluate", no_variant)
+    r = await single(api, "color", server, context)
+    assert r.content == b'{"key":"color","value":"x","reason":"DEFAULT","metadata":{"m":1}}'
+    r = await single(api, "color", client, context)
+    assert r.content == b'{"key":"color","value":"x","reason":"DEFAULT","metadata":{}}'
+
+    def no_details(*args: Any, **kwargs: Any) -> Resolution:
+        return Resolution(None, None, "ERROR", "PARSE_ERROR")
+
+    monkeypatch.setattr(ofrep, "evaluate", no_details)
+    r = await single(api, "color", server, context)
+    assert r.status_code == 400, r.text
+    assert r.content == b'{"key":"color","errorCode":"PARSE_ERROR"}'
+
+
 async def test_prerequisite_failed_metadata_for_server_keys_only(api: httpx.AsyncClient) -> None:
     await setup_demo(api)
     server = (await create_sdk_key(api, "server"))["key"]

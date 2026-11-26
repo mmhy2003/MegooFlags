@@ -145,6 +145,32 @@ async def test_evaluate_metadata_for_server_keys_only(api: httpx.AsyncClient) ->
     assert all("metadata" not in res for res in results.values())
 
 
+async def test_evaluate_exact_body(api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    server = (await create_sdk_key(api, "server"))["key"]
+    client = (await create_sdk_key(api, "client"))["key"]
+    body = {"context": {"key": "u", "plan": "pro"}, "flags": ["color", "nope"]}
+    color = (
+        b'{"key":"color","value":"blue","variant":"blue","reason":"TARGETING_MATCH",'
+        b'"error_code":null,"error_message":null'
+    )
+    nope = (
+        b'{"key":"nope","value":null,"variant":null,"reason":"ERROR",'
+        b'"error_code":"FLAG_NOT_FOUND","error_message":"flag \'nope\' not found"'
+    )
+
+    r = await sdk_evaluate(api, server, **body)
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "application/json"
+    assert r.content == (
+        b'{"results":[' + color + b',"metadata":{"rule_index":0}},' + nope + b',"metadata":{}}]}'
+    )
+
+    r = await sdk_evaluate(api, client, **body)
+    assert r.status_code == 200, r.text
+    assert r.content == b'{"results":[' + color + b"}," + nope + b"}]}"
+
+
 async def test_evaluate_etag_per_context_and_kind(api: httpx.AsyncClient) -> None:
     await setup_demo(api)
     server = (await create_sdk_key(api, "server"))["key"]
