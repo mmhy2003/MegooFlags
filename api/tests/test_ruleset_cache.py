@@ -451,6 +451,33 @@ async def test_stale_lookups_do_not_wait_for_the_check(
     assert checks == 1
 
 
+async def test_peek_needs_no_session(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    async with app.state.sessionmaker() as session:
+        environment = EnvRef.of(await load_environment(session))
+    clock = FakeClock()
+    cache = RulesetCache(clock=clock)
+
+    assert cache.peek(environment, 1.0) is None
+    first, _ = await entry(app, cache)
+    assert cache.peek(environment, 1.0) is first
+    cache.invalidate(environment.project_id)
+    assert cache.peek(environment, 1.0) is None
+
+    cache = RulesetCache(app.state.sessionmaker, clock=clock)
+    first, _ = await entry(app, cache)
+    clock.now += 1.5
+    with count_statements(app.state.engine) as statements:
+        stale = cache.peek(environment, 1.0)
+        again = cache.peek(environment, 1.0)
+    assert stale is first
+    assert again is first
+    assert statements == []
+    assert len(cache._refreshes) == 1
+    await settle(cache)
+    assert cache.peek(environment, 1.0) is first
+
+
 async def test_background_check_picks_up_a_write(app: FastAPI, api: httpx.AsyncClient) -> None:
     await setup_demo(api)
     clock = FakeClock()

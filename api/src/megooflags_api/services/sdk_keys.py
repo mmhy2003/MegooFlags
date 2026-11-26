@@ -152,10 +152,17 @@ class KeyResolver:
             return None
         return await self.resolve_hash(session, hash_key(key))
 
-    async def resolve_hash(self, session: AsyncSession, secret_hash: str) -> SdkPrincipal | None:
+    def cached(self, secret_hash: str) -> SdkPrincipal | None:
+        """The principal cached for `secret_hash` within the TTL, else None."""
         entry = self._entries.get(secret_hash)
         if entry is not None and self._clock() - entry[1] < self._ttl:
             return entry[0]
+        return None
+
+    async def resolve_hash(self, session: AsyncSession, secret_hash: str) -> SdkPrincipal | None:
+        hit = self.cached(secret_hash)
+        if hit is not None:
+            return hit
         started = self._clock()
         row = (
             await session.execute(

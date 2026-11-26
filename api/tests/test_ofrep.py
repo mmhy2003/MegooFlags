@@ -4,8 +4,9 @@ import httpx
 import pytest
 from conftest import ClientFactory
 from fastapi import FastAPI
-from helpers import assert_error, create_flag, create_project, create_sdk_key
+from helpers import assert_error, count_statements, create_flag, create_project, create_sdk_key
 from jsonschema import Draft202012Validator
+from test_sdk import CountingSessionmaker
 from test_sdk_auth import wait_for_fresh_window
 
 from megooflags_api.evaluation import Resolution
@@ -237,6 +238,26 @@ async def test_bulk_sorted_with_etag_and_304(api: httpx.AsyncClient) -> None:
     assert r.status_code == 304
     assert r.content == b""
     assert r.headers["etag"] == etag
+
+
+async def test_cached_evaluate_opens_no_session(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup_demo(api)
+    key = (await create_sdk_key(api, "server"))["key"]
+    context = {"targetingKey": "u1"}
+    first = await single(api, "color", bearer(key), context)
+    assert first.status_code == 200, first.text
+    counting = CountingSessionmaker(app.state.sessionmaker)
+    monkeypatch.setattr(app.state, "sessionmaker", counting)
+
+    with count_statements(app.state.engine) as statements:
+        r = await single(api, "color", bearer(key), context)
+
+    assert r.status_code == 200, r.text
+    assert r.json() == first.json()
+    assert counting.sessions == 0
+    assert statements == []
 
 
 async def test_auth_errors(api: httpx.AsyncClient, anon: httpx.AsyncClient) -> None:

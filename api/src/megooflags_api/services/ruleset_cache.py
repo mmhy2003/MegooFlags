@@ -108,14 +108,10 @@ class RulesetCache:
         self, session: AsyncSession, environment: EnvRef, max_age: float = 0.0
     ) -> CachedRuleset:
         """The ruleset of `environment`, trusted without a query for `max_age` seconds."""
-        hit = self._fresh(environment.id, max_age)
-        if hit is not None:
-            return hit
         if max_age > 0:
-            stale = self._stale(environment.id)
-            if stale is not None and self._sessionmaker is not None:
-                self._refresh_in_background(environment, max_age)
-                return stale
+            hit = self.peek(environment, max_age)
+            if hit is not None:
+                return hit
             # Single flight: one fingerprint check per environment at a time, and the lookups
             # that waited for it reuse its result instead of each running the query.
             async with self._lock(environment.id):
@@ -131,6 +127,17 @@ class RulesetCache:
             if hit is not None:
                 return hit
             return await self._rebuild(session, environment, fingerprint, started, epoch)
+
+    def peek(self, environment: EnvRef, max_age: float) -> CachedRuleset | None:
+        """The entry for an SDK read without a session: fresh within max_age, or stale while one
+        background check runs; None when the caller must wait for a check."""
+        hit = self._fresh(environment.id, max_age)
+        if hit is not None or self._sessionmaker is None:
+            return hit
+        stale = self._stale(environment.id)
+        if stale is not None:
+            self._refresh_in_background(environment, max_age)
+        return stale
 
     def invalidate(self, project_id: uuid.UUID) -> None:
         """Make the next lookup of every environment of `project_id` wait for a fresh check."""
