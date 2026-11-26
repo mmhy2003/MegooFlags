@@ -90,20 +90,23 @@ single_services() {
   if [ "$profiling" = 1 ]; then echo caddy pyspy; else echo caddy; fi
 }
 
-# `profile_record <name> <seconds>` samples the api and its Uvicorn workers (PID 1's subprocesses) into
-# $profile_dir/<name>.txt in the background; a no-op unless profiling.
+# `profile_record <name> <seconds> [rate]` samples the api and its Uvicorn workers (PID 1's subprocesses)
+# at <rate> Hz (default 200) into $profile_dir/<name>.txt in the background (py-spy's output in
+# <name>.log); a no-op unless profiling. py-spy stops after <seconds> x <rate> samples, so when it falls
+# behind it runs longer than <seconds>: long recordings use a lower rate.
 profile_record() {
   [ "$profiling" = 1 ] || return 0
   single exec -T pyspy sh -c 'until command -v py-spy >/dev/null; do sleep 1; done'
-  single exec -d -T pyspy py-spy record --pid 1 --subprocesses --nonblocking --rate 200 \
-    --duration "$2" --format raw --output "/out/$1.txt"
+  # shellcheck disable=SC2016  # expanded by the sidecar's shell; py-spy's own output goes to <name>.log
+  single exec -d -T pyspy sh -c 'exec py-spy record --pid 1 --subprocesses --nonblocking --rate "$3" \
+    --duration "$1" --format raw --output "/out/$2.txt" >"/out/$2.log" 2>&1' sh "$2" "$1" "${3:-200}"
 }
-# `profile_wait` waits up to 2 minutes for the recordings to be written: py-spy writes when its
+# `profile_wait` waits up to 10 minutes for the recordings to be written: py-spy writes when its
 # duration ends, which can be after the load does. A no-op unless profiling.
 profile_wait() {
   [ "$profiling" = 1 ] || return 0
   # shellcheck disable=SC2016  # expanded by the sidecar's shell
-  single exec -T pyspy sh -c 'for _ in $(seq 120); do
+  single exec -T pyspy sh -c 'for _ in $(seq 600); do
       grep -qx py-spy /proc/[0-9]*/comm 2>/dev/null || exit 0; sleep 1; done' || true
 }
 # `profile_logs <section>` saves the api log to $profile_dir/<section>_api.log; a no-op unless profiling.
@@ -510,7 +513,7 @@ if wants footprint; then
   skey=$(field "$run/small_seed.json" server_key)
   sample "$state/single-mem.log" single &
   sampler=$!
-  profile_record footprint "$foot_hold"
+  profile_record footprint "$foot_hold" 50
   load_start foot-streams streams --target http://caddy --key "$skey" --streams 20 --ramp-seconds 2 \
     --hold "$foot_hold" --flip-every 1 --api http://caddy --token "$token" --project small \
     --env "$(field "$run/small_seed.json" env)" --flag "$(field "$run/small_seed.json" flag)" \
