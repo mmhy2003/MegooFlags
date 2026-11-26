@@ -10,12 +10,32 @@
 # minutes long, which CI runs; git-ignored). It gates nothing: scripts/perf_report.py renders the
 # verdicts. A scenario that does not fit the host runs at the largest size that does, marked
 # "reduced". On failure the stacks' logs are written to MF_PERF_LOGS (default /tmp/megooflags-perf-logs).
+#
+# MF_PERF_ONLY=<section,...> (remote replicas cluster streams footprint local_eval) runs only those
+# sections and writes the git-ignored perf/results/only.json instead. MF_PERF_PROFILE=1 records py-spy
+# profiles of the api in the remote and footprint sections (scripts/perf/profile.override.yml), with
+# the 10k ruleset and the api logs, to MF_PERF_PROFILE_DIR (default /tmp/megooflags-perf-profiles).
 set -euo pipefail
 profile="${1:-tiny}"
 case "$profile" in
   full | tiny) ;;
   *) echo "usage: $0 [tiny|full]" >&2; exit 2 ;;
 esac
+# MF_PERF_ONLY=<section,...> runs only those sections and writes the git-ignored perf/results/only.json,
+# never perf/results/<VERSION>.json. Sections: remote replicas cluster streams footprint local_eval.
+only="${MF_PERF_ONLY:-}"
+sections="remote replicas cluster streams footprint local_eval"
+for s in ${only//,/ }; do
+  case " $sections " in
+    *" $s "*) ;;
+    *) echo "MF_PERF_ONLY: unknown section '$s' (one of: $sections)" >&2; exit 2 ;;
+  esac
+done
+wants() { [ -z "$only" ] || case ",$only," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+profile_on="${MF_PERF_PROFILE:-0}"
+profile_dir="${MF_PERF_PROFILE_DIR:-/tmp/megooflags-perf-profiles}"
+export MF_PERF_PROFILE_DIR=$profile_dir
+[ "$profile_on" != 1 ] || mkdir -p "$profile_dir"
 root="$(cd "$(dirname "$0")/.." && pwd)"
 version="$(cat "$root/VERSION")"
 network=megooflags-perf
@@ -53,13 +73,43 @@ fi
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
-# The single-node bundle, with the override in $single_override (scripts/perf/<name>.override.yml).
+# The single-node bundle, with the override in $single_override (scripts/perf/<name>.override.yml),
+# plus the py-spy sidecar while profiling=1.
 single_override=remote
+profiling=0
 single() {
+  local extra=()
+  [ "$profiling" != 1 ] || extra=(-f "$root/scripts/perf/profile.override.yml")
   MEGOOFLAGS_SITE_ADDRESS="" MEGOOFLAGS_SECRET_KEY="$secret" MEGOOFLAGS_HTTP_PORT="$http_port" \
     MEGOOFLAGS_HTTPS_PORT="$https_port" docker compose -p megooflags-perf \
     -f "$root/deploy/docker-compose.yml" -f "$root/deploy/compose.ci.yml" \
-    -f "$root/scripts/perf/$single_override.override.yml" "$@"
+    -f "$root/scripts/perf/$single_override.override.yml" "${extra[@]}" "$@"
+}
+# The services `single up` starts: Caddy (and its dependencies), plus py-spy while profiling.
+single_services() {
+  if [ "$profiling" = 1 ]; then echo caddy pyspy; else echo caddy; fi
+}
+
+# `profile_record <name> <seconds>` samples the api and its Uvicorn workers (PID 1's subprocesses) into
+# $profile_dir/<name>.txt in the background; a no-op unless profiling.
+profile_record() {
+  [ "$profiling" = 1 ] || return 0
+  single exec -T pyspy sh -c 'until command -v py-spy >/dev/null; do sleep 1; done'
+  single exec -d -T pyspy py-spy record --pid 1 --subprocesses --nonblocking --rate 200 \
+    --duration "$2" --format raw --output "/out/$1.txt"
+}
+# `profile_wait` waits up to 2 minutes for the recordings to be written: py-spy writes when its
+# duration ends, which can be after the load does. A no-op unless profiling.
+profile_wait() {
+  [ "$profiling" = 1 ] || return 0
+  # shellcheck disable=SC2016  # expanded by the sidecar's shell
+  single exec -T pyspy sh -c 'for _ in $(seq 120); do
+      grep -qx py-spy /proc/[0-9]*/comm 2>/dev/null || exit 0; sleep 1; done' || true
+}
+# `profile_logs <section>` saves the api log to $profile_dir/<section>_api.log; a no-op unless profiling.
+profile_logs() {
+  [ "$profile_on" = 1 ] || return 0
+  single logs --no-color api >"$profile_dir/$1_api.log" 2>&1 || true
 }
 
 # A worker with the worker footprint limits; host port 19000+n, `worker-<n>` on the cluster network.
@@ -234,87 +284,85 @@ else
 fi
 echo "mfload built"
 
-# 3. Remote evaluation: one api container behind Caddy, without limits.
+# 3. Remote evaluation: one api container behind Caddy, without limits. The stack and the seed also
+# serve section 4.
 # 8 uvicorn workers measured best on the 16-CPU build machine: 4 reached only 1651 rps (p99 12.7 s),
 # 12 added queueing and errors.
-api_workers="${MF_PERF_API_WORKERS:-8}"
-MF_PERF_API_WORKERS=$api_workers single up -d --wait --wait-timeout 180 caddy
 base="http://localhost:$http_port"
-wait_ready "$base"
-token=$(bootstrap_admin "$base") || fail "the admin bootstrap failed"
-load_net=megooflags-perf_default
-load seed seed --api http://caddy --token "$token" --project perf --flags "$nflags" --out /out/flags_10k.json
-key=$(field "$run/flags_10k.json" server_key)
-eval_key=$(field "$run/flags_10k.json" eval_key)
-project=$(field "$run/flags_10k.json" project)
-env=$(field "$run/flags_10k.json" env)
-flag=$(field "$run/flags_10k.json" flag)
-# The first full run, with 4 workers, for the notes.
-declare -A tuned_from=([ofrep]="1651 rps at p99 12.7 s" [evaluate]="712 rps at p99 107.5 s")
-for mode in ofrep evaluate; do
-  [ "$mode" = ofrep ] && k=$key || k=$eval_key
-  load "$mode" evaluate --target http://caddy --key "$k" --mode "$mode" --flag "$flag" --rps "$rps" \
-    --duration "$duration" --warmup "$warmup" --out "/out/remote_$mode.json"
-  meta "remote_$mode" "$remote_status" "$remote_reduced" \
+[ "$profile" = full ] && prop_status=full prop_reduced="" || prop_status=reduced prop_reduced="3 flips"
+if wants remote || wants replicas; then
+  api_workers="${MF_PERF_API_WORKERS:-8}"
+  wants remote && profiling=$profile_on
+  # shellcheck disable=SC2046  # one argument per service
+  MF_PERF_API_WORKERS=$api_workers single up -d --wait --wait-timeout 180 $(single_services)
+  wait_ready "$base"
+  token=$(bootstrap_admin "$base") || fail "the admin bootstrap failed"
+  load_net=megooflags-perf_default
+  load seed seed --api http://caddy --token "$token" --project perf --flags "$nflags" --out /out/flags_10k.json
+  key=$(field "$run/flags_10k.json" server_key)
+  eval_key=$(field "$run/flags_10k.json" eval_key)
+  project=$(field "$run/flags_10k.json" project)
+  env=$(field "$run/flags_10k.json" env)
+  flag=$(field "$run/flags_10k.json" flag)
+  if [ "$profiling" = 1 ]; then
+    curl -fsS -H "Authorization: Bearer $key" "$base/sdk/v1/ruleset" -o "$profile_dir/ruleset.json" \
+      || fail "the ruleset download for the profile failed"
+  fi
+fi
+if wants remote; then
+  # The first full run, with 4 workers, for the notes.
+  declare -A tuned_from=([ofrep]="1651 rps at p99 12.7 s" [evaluate]="712 rps at p99 107.5 s")
+  for mode in ofrep evaluate; do
+    [ "$mode" = ofrep ] && k=$key || k=$eval_key
+    profile_record "remote_$mode" $((warmup + duration))
+    load "$mode" evaluate --target http://caddy --key "$k" --mode "$mode" --flag "$flag" --rps "$rps" \
+      --duration "$duration" --warmup "$warmup" --out "/out/remote_$mode.json"
+    meta "remote_$mode" "$remote_status" "$remote_reduced" \
+      "{\"api\": \"unlimited\", \"api_workers\": \"$api_workers\", \"replicas\": \"1\"}" \
+      "tuned from 4 to 8 uvicorn workers (MF_PERF_API_WORKERS): with 4 it reached ${tuned_from[$mode]}"
+  done
+  [ "$nflags" -eq 10000 ] && flags_status=full flags_reduced="" || flags_status=reduced flags_reduced="$nflags flags"
+  # Every flag of the big environment in one /sdk/v1/evaluate request: reported, not gated.
+  load whole-env evaluate --target http://caddy --key "$key" --mode evaluate --rps 5 \
+    --duration "$whole_duration" --warmup "$whole_warmup" --out /out/whole_env_10k.json
+  whole_reduced=$flags_reduced
+  [ "$profile" = full ] || whole_reduced="tiny: $nflags flags for $whole_duration s"
+  meta whole_env_10k "$flags_status" "$whole_reduced" \
     "{\"api\": \"unlimited\", \"api_workers\": \"$api_workers\", \"replicas\": \"1\"}" \
-    "tuned from 4 to 8 uvicorn workers (MF_PERF_API_WORKERS): with 4 it reached ${tuned_from[$mode]}"
-done
-[ "$nflags" -eq 10000 ] && flags_status=full flags_reduced="" || flags_status=reduced flags_reduced="$nflags flags"
-# Every flag of the big environment in one /sdk/v1/evaluate request: reported, not gated.
-load whole-env evaluate --target http://caddy --key "$key" --mode evaluate --rps 5 \
-  --duration "$whole_duration" --warmup "$whole_warmup" --out /out/whole_env_10k.json
-whole_reduced=$flags_reduced
-[ "$profile" = full ] || whole_reduced="tiny: $nflags flags for $whole_duration s"
-meta whole_env_10k "$flags_status" "$whole_reduced" \
-  "{\"api\": \"unlimited\", \"api_workers\": \"$api_workers\", \"replicas\": \"1\"}" \
-  "every flag of the $nflags-flag environment in one request, 5 rps for $whole_duration s"
-meta flags_10k "$flags_status" "$flags_reduced" '{"api": "unlimited"}' \
-  "ruleset_download_ms is the SDK start time: one ruleset download"
-echo "remote evaluation done"
+    "every flag of the $nflags-flag environment in one request, 5 rps for $whole_duration s"
+  meta flags_10k "$flags_status" "$flags_reduced" '{"api": "unlimited"}' \
+    "ruleset_download_ms is the SDK start time: one ruleset download"
+  if [ "$profiling" = 1 ]; then
+    profile_wait
+    profile_logs remote
+    # Section 4 scales the api to 3, which a sidecar in one api's PID namespace cannot follow.
+    single rm -sf pyspy
+    profiling=0
+  fi
+  echo "remote evaluation done"
+fi
 
 # 4. Propagation across three api replicas behind Caddy. The remote scenario's worker count is per
 # container; three replicas of it would share the host's CPUs (at 3 x 8 workers on 16 CPUs, p95 was
 # 11.9 s against 5.6 s at 3 x 4), so the replicas keep 4 workers each.
-replica_workers="${MF_PERF_REPLICA_API_WORKERS:-4}"
-MF_PERF_API_WORKERS=$replica_workers single up -d --wait --wait-timeout 180 --scale api=3 caddy
-wait_ready "$base"
-load prop-replicas streams --target http://caddy --key "$key" --streams 30 --ramp-seconds 3 \
-  --hold "$prop_hold" --flip-every "$prop_flip" --api http://caddy --token "$token" --project "$project" \
-  --env "$env" --flag "$flag" --out /out/propagation_replicas.json
-[ "$profile" = full ] && prop_status=full prop_reduced="" || prop_status=reduced prop_reduced="3 flips"
-meta propagation_replicas "$prop_status" "$prop_reduced" \
-  "{\"api\": \"unlimited\", \"api_workers\": \"$replica_workers\", \"replicas\": \"3\"}" \
-  "30 streams on the $nflags-flag project, a flip every $prop_flip s; $replica_workers workers per replica (MF_PERF_REPLICA_API_WORKERS): at 3 x 8 on 16 CPUs p95 was 11.9 s"
-single down -v --remove-orphans
-echo "propagation across replicas done"
+if wants replicas; then
+  replica_workers="${MF_PERF_REPLICA_API_WORKERS:-4}"
+  MF_PERF_API_WORKERS=$replica_workers single up -d --wait --wait-timeout 180 --scale api=3 caddy
+  wait_ready "$base"
+  load prop-replicas streams --target http://caddy --key "$key" --streams 30 --ramp-seconds 3 \
+    --hold "$prop_hold" --flip-every "$prop_flip" --api http://caddy --token "$token" --project "$project" \
+    --env "$env" --flag "$flag" --out /out/propagation_replicas.json
+  meta propagation_replicas "$prop_status" "$prop_reduced" \
+    "{\"api\": \"unlimited\", \"api_workers\": \"$replica_workers\", \"replicas\": \"3\"}" \
+    "30 streams on the $nflags-flag project, a flip every $prop_flip s; $replica_workers workers per replica (MF_PERF_REPLICA_API_WORKERS): at 3 x 8 on 16 CPUs p95 was 11.9 s"
+  profile_logs replicas
+  echo "propagation across replicas done"
+fi
+if wants remote || wants replicas; then
+  single down -v --remove-orphans
+fi
 
 # 5. Propagation through the control plane to three workers.
-cat >"$state/cp.env" <<EOF
-MEGOOFLAGS_SECRET_KEY=$secret
-MEGOOFLAGS_HTTP_PORT=$http_port
-MEGOOFLAGS_HTTPS_PORT=$https_port
-EOF
-docker network rm "$network" >/dev/null 2>&1 || true
-docker network create "$network" >/dev/null
-cp_up
-for _ in $(seq 30); do
-  cp_compose cp caddy:/data/caddy/pki/authorities/local/root.crt "$state/certs/ca.crt" 2>/dev/null && break
-  sleep 2
-done
-[ -s "$state/certs/ca.crt" ] || fail "Caddy's local CA root was not created"
-chmod 644 "$state/certs/ca.crt"
-cp_base="https://localhost:$https_port"
-tls=(--cacert "$state/certs/ca.crt")
-wait_ready "$cp_base" "${tls[@]}"
-token=$(bootstrap_admin "$cp_base" "${tls[@]}") || fail "the admin bootstrap failed"
-load_net=$network
-cp_api=https://cp.megooflags.internal
-load seed-cluster seed --api "$cp_api" --insecure --token "$token" --project cluster --flags 100 \
-  --eval-flags 1 --out /out/cluster_seed.json
-ckey=$(field "$run/cluster_seed.json" server_key)
-cenv=$(field "$run/cluster_seed.json" env)
-cflag=$(field "$run/cluster_seed.json" flag)
-
 worker_start() {
   local n=$1
   perf_worker "$n" up -d --wait --wait-timeout 120
@@ -337,135 +385,183 @@ EOF
   started=$n
   worker_start "$n"
 }
-for n in 1 2 3; do
-  add_worker "$n"
-done
-workers=3 wait_streams || fail "the workers did not connect to the control plane"
 worker_limits='{"worker": "1 vCPU / 512 MiB (caddy 0.35 / 256M, api 0.65 / 256M)"}'
-load prop-cluster streams --target http://worker-1 --target http://worker-2 --target http://worker-3 \
-  --key "$ckey" --streams 30 --ramp-seconds 3 --hold "$prop_hold" --flip-every "$prop_flip" \
-  --api "$cp_api" --insecure --token "$token" --project cluster --env "$cenv" --flag "$cflag" \
-  --out /out/propagation_cluster.json
-meta propagation_cluster "$prop_status" "$prop_reduced" "$worker_limits" \
-  "30 streams over 3 workers, a flip every $prop_flip s"
-echo "propagation through the control plane done"
-
-# 6. Many streams: one worker's capacity inside its limits, then enough workers for 100k.
-big_status=full big_reduced="" capacity=""
-if [ "$profile" = full ]; then
-  perf_worker 2 stop
-  perf_worker 3 stop
-  load_start capacity streams --target http://worker-1 --key "$ckey" --ramp-until-error --max 60000 \
-    --ramp-seconds 300 --hold 0 --flip-every 0 --out /out/capacity.json
-  # Stop opening streams once the worker uses 90 % of its 512 MiB.
-  while [ "$(docker inspect -f '{{.State.Running}}' mf-perf-capacity)" = true ]; do
-    if awk -v m="$(mem_mib perf_worker 1)" 'BEGIN { exit !(m >= 460.8) }'; then
-      docker kill -s INT mf-perf-capacity >/dev/null || true
-      break
-    fi
+if wants cluster || wants streams; then
+  cat >"$state/cp.env" <<EOF
+MEGOOFLAGS_SECRET_KEY=$secret
+MEGOOFLAGS_HTTP_PORT=$http_port
+MEGOOFLAGS_HTTPS_PORT=$https_port
+EOF
+  docker network rm "$network" >/dev/null 2>&1 || true
+  docker network create "$network" >/dev/null
+  cp_up
+  for _ in $(seq 30); do
+    cp_compose cp caddy:/data/caddy/pki/authorities/local/root.crt "$state/certs/ca.crt" 2>/dev/null && break
     sleep 2
   done
-  load_wait capacity
-  capacity=$(metric "$run/capacity.json" capacity | cut -d. -f1)
-  [ "$capacity" -gt 0 ] || fail "a worker held no streams"
-  need=$(python3 -c "import math; print(math.ceil(100000 / (0.8 * $capacity)))")
-  # The control plane and the load generator get about 4 CPUs and 4 GiB.
-  fit=$(((cpus - 4) < (mem_total - 4096) / 512 ? (cpus - 4) : (mem_total - 4096) / 512))
-  big_workers=$need
-  if [ "$need" -gt "$fit" ]; then
-    big_workers=$((fit < 1 ? 1 : fit))
-    big_streams=$((big_workers * capacity * 8 / 10))
-    big_status=reduced big_reduced="$big_streams streams, $big_workers workers"
-  fi
-  echo "one worker holds $capacity streams; $big_workers workers for $big_streams streams"
-  # Fresh processes for the run.
-  perf_worker 1 down
+  [ -s "$state/certs/ca.crt" ] || fail "Caddy's local CA root was not created"
+  chmod 644 "$state/certs/ca.crt"
+  cp_base="https://localhost:$https_port"
+  tls=(--cacert "$state/certs/ca.crt")
+  wait_ready "$cp_base" "${tls[@]}"
+  token=$(bootstrap_admin "$cp_base" "${tls[@]}") || fail "the admin bootstrap failed"
+  load_net=$network
+  cp_api=https://cp.megooflags.internal
+  load seed-cluster seed --api "$cp_api" --insecure --token "$token" --project cluster --flags 100 \
+    --eval-flags 1 --out /out/cluster_seed.json
+  ckey=$(field "$run/cluster_seed.json" server_key)
+  cenv=$(field "$run/cluster_seed.json" env)
+  cflag=$(field "$run/cluster_seed.json" flag)
   for n in 1 2 3; do
-    worker_start "$n"
-  done
-  for n in $(seq 4 "$big_workers"); do
     add_worker "$n"
   done
-  workers=$big_workers wait_streams || fail "the workers did not connect to the control plane"
-else
-  big_workers=1
-  big_status=reduced big_reduced="tiny: $big_streams streams, 1 worker"
+  workers=3 wait_streams || fail "the workers did not connect to the control plane"
 fi
-targets=()
-for n in $(seq "$big_workers"); do
-  targets+=(--target "http://worker-$n")
-done
-sample_workers "$state/workers-mem.log" &
-sampler=$!
-load streams-100k streams "${targets[@]}" --key "$ckey" --streams "$big_streams" --ramp-seconds "$big_ramp" \
-  --hold "$big_hold" --flip-every "$big_flip" --api "$cp_api" --insecure --token "$token" --project cluster \
-  --env "$cenv" --flag "$cflag" --out /out/streams.json
-kill "$sampler" 2>/dev/null || true
-sampler=""
-touch "$state/workers-mem.log"
-read -r restart_count oom_count < <(
-  for n in $(seq "$big_workers"); do restarts perf_worker "$n"; done \
-    | awk '{ r += $1; o += $2 } END { printf "%d %d\n", r, o }'
-)
-combine "$run/streams_100k.json" "$run/streams.json" "workers=$big_workers" \
-  "mem_max_mib=$(column_max "$state/workers-mem.log" 2)" "restarts=$restart_count" "oom_killed=$oom_count" \
-  ${capacity:+"capacity_per_worker=$capacity"}
-meta streams_100k "$big_status" "$big_reduced" "$worker_limits" \
-  "mem_max_mib is the most any one worker used; a flip every $big_flip s through the control plane; limits re-split from caddy 0.2 / 96M, api 0.8 / 416M, where Caddy was OOM-killed at about 1000 streams"
-cluster_down
-started=0
-echo "many streams done"
+if wants cluster; then
+  load prop-cluster streams --target http://worker-1 --target http://worker-2 --target http://worker-3 \
+    --key "$ckey" --streams 30 --ramp-seconds 3 --hold "$prop_hold" --flip-every "$prop_flip" \
+    --api "$cp_api" --insecure --token "$token" --project cluster --env "$cenv" --flag "$cflag" \
+    --out /out/propagation_cluster.json
+  meta propagation_cluster "$prop_status" "$prop_reduced" "$worker_limits" \
+    "30 streams over 3 workers, a flip every $prop_flip s"
+  echo "propagation through the control plane done"
+fi
+
+# 6. Many streams: one worker's capacity inside its limits, then enough workers for 100k.
+if wants streams; then
+  big_status=full big_reduced="" capacity=""
+  if [ "$profile" = full ]; then
+    perf_worker 2 stop
+    perf_worker 3 stop
+    load_start capacity streams --target http://worker-1 --key "$ckey" --ramp-until-error --max 60000 \
+      --ramp-seconds 300 --hold 0 --flip-every 0 --out /out/capacity.json
+    # Stop opening streams once the worker uses 90 % of its 512 MiB.
+    while [ "$(docker inspect -f '{{.State.Running}}' mf-perf-capacity)" = true ]; do
+      if awk -v m="$(mem_mib perf_worker 1)" 'BEGIN { exit !(m >= 460.8) }'; then
+        docker kill -s INT mf-perf-capacity >/dev/null || true
+        break
+      fi
+      sleep 2
+    done
+    load_wait capacity
+    capacity=$(metric "$run/capacity.json" capacity | cut -d. -f1)
+    [ "$capacity" -gt 0 ] || fail "a worker held no streams"
+    need=$(python3 -c "import math; print(math.ceil(100000 / (0.8 * $capacity)))")
+    # The control plane and the load generator get about 4 CPUs and 4 GiB.
+    fit=$(((cpus - 4) < (mem_total - 4096) / 512 ? (cpus - 4) : (mem_total - 4096) / 512))
+    big_workers=$need
+    if [ "$need" -gt "$fit" ]; then
+      big_workers=$((fit < 1 ? 1 : fit))
+      big_streams=$((big_workers * capacity * 8 / 10))
+      big_status=reduced big_reduced="$big_streams streams, $big_workers workers"
+    fi
+    echo "one worker holds $capacity streams; $big_workers workers for $big_streams streams"
+    # Fresh processes for the run.
+    perf_worker 1 down
+    for n in 1 2 3; do
+      worker_start "$n"
+    done
+    for n in $(seq 4 "$big_workers"); do
+      add_worker "$n"
+    done
+    workers=$big_workers wait_streams || fail "the workers did not connect to the control plane"
+  else
+    big_workers=1
+    big_status=reduced big_reduced="tiny: $big_streams streams, 1 worker"
+  fi
+  targets=()
+  for n in $(seq "$big_workers"); do
+    targets+=(--target "http://worker-$n")
+  done
+  sample_workers "$state/workers-mem.log" &
+  sampler=$!
+  load streams-100k streams "${targets[@]}" --key "$ckey" --streams "$big_streams" --ramp-seconds "$big_ramp" \
+    --hold "$big_hold" --flip-every "$big_flip" --api "$cp_api" --insecure --token "$token" --project cluster \
+    --env "$cenv" --flag "$cflag" --out /out/streams.json
+  kill "$sampler" 2>/dev/null || true
+  sampler=""
+  touch "$state/workers-mem.log"
+  read -r restart_count oom_count < <(
+    for n in $(seq "$big_workers"); do restarts perf_worker "$n"; done \
+      | awk '{ r += $1; o += $2 } END { printf "%d %d\n", r, o }'
+  )
+  combine "$run/streams_100k.json" "$run/streams.json" "workers=$big_workers" \
+    "mem_max_mib=$(column_max "$state/workers-mem.log" 2)" "restarts=$restart_count" "oom_killed=$oom_count" \
+    ${capacity:+"capacity_per_worker=$capacity"}
+  meta streams_100k "$big_status" "$big_reduced" "$worker_limits" \
+    "mem_max_mib is the most any one worker used; a flip every $big_flip s through the control plane; limits re-split from caddy 0.2 / 96M, api 0.8 / 416M, where Caddy was OOM-killed at about 1000 streams"
+fi
+if wants cluster || wants streams; then
+  cluster_down
+  started=0
+fi
 
 # 7. Single-node footprint: the whole bundle inside 2 vCPU / 2 GB under a small-team load.
-single_override=single
-single up -d --wait --wait-timeout 180 caddy
-wait_ready "$base"
-token=$(bootstrap_admin "$base") || fail "the admin bootstrap failed"
-load_net=megooflags-perf_default
-load seed-small seed --api http://caddy --token "$token" --project small --flags 100 --eval-flags 1 \
-  --out /out/small_seed.json
-skey=$(field "$run/small_seed.json" server_key)
-sample "$state/single-mem.log" single &
-sampler=$!
-load_start foot-streams streams --target http://caddy --key "$skey" --streams 20 --ramp-seconds 2 \
-  --hold "$foot_hold" --flip-every 1 --api http://caddy --token "$token" --project small \
-  --env "$(field "$run/small_seed.json" env)" --flag "$(field "$run/small_seed.json" flag)" \
-  --out /out/foot_streams.json
-load_start foot-eval evaluate --target http://caddy --key "$skey" --mode ofrep \
-  --flag "$(field "$run/small_seed.json" flag)" --rps 50 --duration "$foot_hold" --warmup 0 \
-  --out /out/foot_eval.json
-load_wait foot-streams
-load_wait foot-eval
-kill "$sampler" 2>/dev/null || true
-sampler=""
-touch "$state/single-mem.log"
-read -r restart_count oom_count < <(restarts single)
-combine "$run/footprint_single.json" "$run/foot_streams.json" "$run/foot_eval.json" \
-  "restarts=$restart_count" "oom_killed=$oom_count" "mem_max_mib=$(column_max "$state/single-mem.log" 1)"
-[ "$profile" = full ] && foot_status=full foot_reduced="" || foot_status=reduced foot_reduced="tiny: $foot_hold s"
-meta footprint_single "$foot_status" "$foot_reduced" \
-  '{"caddy": "0.25 / 128M", "web": "0.25 / 256M", "api": "1.0 / 768M, 2 workers", "db": "0.4 / 640M", "valkey": "0.1 / 128M"}' \
-  "100 flags, 20 streams, a flip every second and 50 rps for $foot_hold s; giving the api 1.2 CPU (db 0.3) or 3 workers made p99 worse, so the split is unchanged"
-single down -v --remove-orphans
-echo "single-node footprint done"
+if wants footprint; then
+  single_override=single
+  profiling=$profile_on
+  # shellcheck disable=SC2046  # one argument per service
+  single up -d --wait --wait-timeout 180 $(single_services)
+  wait_ready "$base"
+  token=$(bootstrap_admin "$base") || fail "the admin bootstrap failed"
+  load_net=megooflags-perf_default
+  load seed-small seed --api http://caddy --token "$token" --project small --flags 100 --eval-flags 1 \
+    --out /out/small_seed.json
+  skey=$(field "$run/small_seed.json" server_key)
+  sample "$state/single-mem.log" single &
+  sampler=$!
+  profile_record footprint "$foot_hold"
+  load_start foot-streams streams --target http://caddy --key "$skey" --streams 20 --ramp-seconds 2 \
+    --hold "$foot_hold" --flip-every 1 --api http://caddy --token "$token" --project small \
+    --env "$(field "$run/small_seed.json" env)" --flag "$(field "$run/small_seed.json" flag)" \
+    --out /out/foot_streams.json
+  load_start foot-eval evaluate --target http://caddy --key "$skey" --mode ofrep \
+    --flag "$(field "$run/small_seed.json" flag)" --rps 50 --duration "$foot_hold" --warmup 0 \
+    --out /out/foot_eval.json
+  load_wait foot-streams
+  load_wait foot-eval
+  kill "$sampler" 2>/dev/null || true
+  sampler=""
+  touch "$state/single-mem.log"
+  read -r restart_count oom_count < <(restarts single)
+  combine "$run/footprint_single.json" "$run/foot_streams.json" "$run/foot_eval.json" \
+    "restarts=$restart_count" "oom_killed=$oom_count" "mem_max_mib=$(column_max "$state/single-mem.log" 1)"
+  [ "$profile" = full ] && foot_status=full foot_reduced="" || foot_status=reduced foot_reduced="tiny: $foot_hold s"
+  meta footprint_single "$foot_status" "$foot_reduced" \
+    '{"caddy": "0.25 / 128M", "web": "0.25 / 256M", "api": "1.0 / 768M, 2 workers", "db": "0.4 / 640M", "valkey": "0.1 / 128M"}' \
+    "100 flags, 20 streams, a flip every second and 50 rps for $foot_hold s; giving the api 1.2 CPU (db 0.3) or 3 workers made p99 worse, so the split is unchanged"
+  profile_wait
+  profile_logs footprint
+  single down -v --remove-orphans
+  profiling=0
+  echo "single-node footprint done"
+fi
 
 # 8. Local evaluation in each server SDK.
-for sdk in go node python java dotnet ruby php; do
+if wants local_eval; then
+  for sdk in go node python java dotnet ruby php; do
+    if [ "$profile" = full ]; then
+      meta "local_eval_$sdk" full "" '{}' "the SDK's p99 guard on 10 000 flags"
+    else
+      meta "local_eval_$sdk" skipped "" '{}' "not in the tiny profile"
+    fi
+  done
   if [ "$profile" = full ]; then
-    meta "local_eval_$sdk" full "" '{}' "the SDK's p99 guard on 10 000 flags"
-  else
-    meta "local_eval_$sdk" skipped "" '{}' "not in the tiny profile"
+    bash "$root/scripts/perf/local_eval.sh" "$run" || echo "a local evaluation guard failed: see the results"
   fi
-done
-if [ "$profile" = full ]; then
-  bash "$root/scripts/perf/local_eval.sh" "$run" || echo "a local evaluation guard failed: see the results"
 fi
 
 # 9. Merge.
-if [ "$profile" = full ]; then
+if [ -n "$only" ]; then
+  dest="$root/perf/results/only.json"
+elif [ "$profile" = full ]; then
   dest="$root/perf/results/$version.json"
 else
   dest="$root/perf/results/tiny.json"
 fi
 python3 "$root/scripts/perf_report.py" merge --dir "$run" --version "$version" --profile "$profile" --out "$dest"
-echo "perf OK ($profile)"
+if [ -n "$only" ]; then
+  echo "perf OK ($profile, only $only)"
+else
+  echo "perf OK ($profile)"
+fi

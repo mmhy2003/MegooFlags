@@ -243,6 +243,9 @@ bash scripts/helm_test.sh
 For a release, a maintainer runs `bash scripts/perf.sh full` on the build machine (it takes about an
 hour) and commits `perf/results/<VERSION>.json`. CI never runs it:
 shared runners are too small and too noisy for the NFR targets.
+`MF_PERF_ONLY=remote,footprint` (any of `remote replicas cluster streams footprint local_eval`) runs only
+those sections into the git-ignored `perf/results/only.json`, and `MF_PERF_PROFILE=1` adds py-spy profiles of the
+api, the 10k ruleset and the api logs in `MF_PERF_PROFILE_DIR` (default `/tmp/megooflags-perf-profiles`).
 
 If you change a workflow, also run `docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest`.
 

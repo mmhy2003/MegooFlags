@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -374,12 +375,12 @@ def test_render_sizing_formula_matches_the_table() -> None:
 
 def test_perf_sh_evaluates_the_whole_10k_environment() -> None:
     script = (SCRIPTS / "perf.sh").read_text(encoding="utf-8").replace("\\\n", " ")
-    run = re.search(r"^load whole-env evaluate .*$", script, re.MULTILINE)
+    run = re.search(r"^\s*load whole-env evaluate .*$", script, re.MULTILINE)
     assert run is not None
     assert '--key "$key"' in run.group(0)
     assert "--mode evaluate" in run.group(0)
     assert "/out/whole_env_10k.json" in run.group(0)
-    assert re.search(r"^meta whole_env_10k ", script, re.MULTILINE)
+    assert re.search(r"^\s*meta whole_env_10k ", script, re.MULTILINE)
 
 
 def test_render_sizing_guidance_uses_the_measured_capacity() -> None:
@@ -397,3 +398,36 @@ def test_main_renders_the_report(tmp_path: Path) -> None:
     out = tmp_path / "perf" / "REPORT.md"
     assert main(["render", "--results", str(results), "--out", str(out)]) == 0
     assert out.read_text(encoding="utf-8") == render(PASSING)
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+def test_perf_sh_rejects_an_unknown_only_section() -> None:
+    done = subprocess.run(
+        ["bash", str(SCRIPTS / "perf.sh"), "full"],
+        env={**os.environ, "MF_PERF_ONLY": "bogus"},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert done.returncode == 2
+    assert "unknown section 'bogus'" in done.stderr
+
+
+def test_perf_sh_only_writes_scratch_results() -> None:
+    script = (SCRIPTS / "perf.sh").read_text(encoding="utf-8")
+    assert "perf/results/only.json" in script
+    ignored = (SCRIPTS.parent / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "perf/results/only.json" in ignored
+
+
+def test_profile_override_shares_the_api_pid_namespace() -> None:
+    text = (SCRIPTS / "perf" / "profile.override.yml").read_text(encoding="utf-8")
+    try:
+        import yaml
+    except ImportError:
+        assert 'pid: "service:api"' in text
+        assert "SYS_PTRACE" in text
+        return
+    pyspy = yaml.safe_load(text)["services"]["pyspy"]
+    assert pyspy["pid"] == "service:api"
+    assert "SYS_PTRACE" in pyspy["cap_add"]

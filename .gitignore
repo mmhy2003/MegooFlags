@@ -29,5 +29,6 @@ terraform/dist/
 *.tfstate*
 terraform/internal/**/.terraform.lock.hcl
 
-# Load test results of the tiny profile (scripts/perf.sh tiny)
+# Load test results of the tiny profile (scripts/perf.sh tiny) and of MF_PERF_ONLY runs
 perf/results/tiny.json
+perf/results/only.json
