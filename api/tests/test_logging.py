@@ -4,6 +4,7 @@ import logging.config
 from pathlib import Path
 
 import httpx
+import pytest
 from fastapi import FastAPI
 from opentelemetry.sdk.trace import TracerProvider
 
@@ -104,6 +105,24 @@ async def test_access_log_fields_and_levels() -> None:
     assert (nope.levelno, nope.route, nope.status) == (logging.INFO, "other", 404)
     assert nope.method == "GET" and nope.client_ip == "198.51.100.7"
     assert isinstance(nope.duration_ms, float)
+
+
+async def test_access_log_skips_work_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(scope: object, route: str) -> str:
+        raise AssertionError("built a log line for a disabled logger")
+
+    monkeypatch.setattr("megooflags_api.logging._loggable_path", fail)
+    app = create_app(Settings())
+    access_logger.setLevel(logging.WARNING)
+    transport = httpx.ASGITransport(app=app)
+    try:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/healthz")
+    finally:
+        access_logger.setLevel(logging.NOTSET)
+        await app.state.engine.dispose()
+
+    assert response.status_code == 200
 
 
 async def test_query_key_not_logged() -> None:

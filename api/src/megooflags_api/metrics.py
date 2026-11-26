@@ -4,6 +4,7 @@ each worker writes its values there, so `/metrics` on any worker reports the who
 import os
 import time
 from collections.abc import Callable
+from typing import Any
 
 from fastapi import APIRouter, Response
 from prometheus_client import (
@@ -86,6 +87,9 @@ MULTIPROC_ENV = "PROMETHEUS_MULTIPROC_DIR"
 
 router = APIRouter()
 
+# (method, route, status) -> its REQUESTS and DURATION children, so a request skips labels().
+_CHILDREN: dict[tuple[str, str, int], tuple[Any, Any]] = {}
+
 # Called by render() first, so gauges read from live state are current (the worker's).
 BEFORE_RENDER: list[Callable[[], None]] = []
 
@@ -129,5 +133,13 @@ class MetricsMiddleware:
             IN_PROGRESS.dec()
             route = route_label(scope)
             method = scope["method"]
-            REQUESTS.labels(method=method, route=route, status=str(status.code)).inc()
-            DURATION.labels(method=method, route=route).observe(time.perf_counter() - started)
+            key = (method, route, status.code)
+            children = _CHILDREN.get(key)
+            if children is None:
+                children = _CHILDREN[key] = (
+                    REQUESTS.labels(method=method, route=route, status=str(status.code)),
+                    DURATION.labels(method=method, route=route),
+                )
+            requests, duration = children
+            requests.inc()
+            duration.observe(time.perf_counter() - started)

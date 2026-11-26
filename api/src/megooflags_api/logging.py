@@ -94,18 +94,20 @@ class AccessLogMiddleware:
             await self.app(scope, receive, status.send)
         finally:
             route = route_label(scope)
-            client = scope.get("client")
-            access_logger.log(
-                logging.DEBUG if route in QUIET_ROUTES else logging.INFO,
-                "%s %s %s",
-                scope["method"],
-                _loggable_path(scope, route),
-                status.code,
-                extra={
-                    "method": scope["method"],
-                    "route": route,
-                    "status": status.code,
-                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
-                    "client_ip": client[0] if client else None,
-                },
-            )
+            level = logging.DEBUG if route in QUIET_ROUTES else logging.INFO
+            if access_logger.isEnabledFor(level):
+                client = scope.get("client")
+                access_logger.log(
+                    level,
+                    "%s %s %s",
+                    scope["method"],
+                    _loggable_path(scope, route),
+                    status.code,
+                    extra={
+                        "method": scope["method"],
+                        "route": route,
+                        "status": status.code,
+                        "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                        "client_ip": client[0] if client else None,
+                    },
+                )
