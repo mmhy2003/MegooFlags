@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import random
 import re
 import time
 import uuid
@@ -17,9 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from test_spec_schemas import ruleset_schema
 
 from megooflags_api.evaluation import Ruleset
-from megooflags_api.models import Environment, Project
+from megooflags_api.models import Environment, Flag, Project
 from megooflags_api.services import ruleset_cache
-from megooflags_api.services.ruleset import EnvRef, RulesetParts, build_ruleset
+from megooflags_api.services.ruleset import EnvRef, FlagParts, RulesetParts, build_ruleset
 from megooflags_api.services.ruleset_cache import CachedRuleset, RulesetCache
 
 FLAGS = "/api/projects/demo/flags"
@@ -679,3 +680,224 @@ async def test_locks_are_released(
                 await cache.get_entry(session, gone, max_age=max_age)
 
     assert cache._locks == {}
+
+
+async def assert_same_as_full(
+    app: FastAPI, cache: RulesetCache, env: str = "production"
+) -> CachedRuleset:
+    """The persistent cache's entry after a check equals a fresh full build."""
+    async with app.state.sessionmaker() as session:
+        environment = await load_environment(session, env)
+        got = await cache.get_entry(session, environment, max_age=0)
+        full = await RulesetCache().get_entry(session, environment, max_age=0)
+    assert got.body == full.body
+    assert got.etag == full.etag
+    assert got.sorted_keys == full.sorted_keys
+    assert got.ruleset == full.ruleset  # compiled patterns compare by pattern and flags
+    return got
+
+
+class BuildSpy:
+    """Records the full and the per-flag builds of ruleset_cache."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.flags: list[set[uuid.UUID]] = []
+        self.parts = 0
+        build_flags = ruleset_cache.build_flags
+        build_parts = ruleset_cache.build_parts
+
+        async def flags(
+            session: AsyncSession, environment: EnvRef, flag_ids: Any = None
+        ) -> FlagParts:
+            self.flags.append(set(flag_ids))
+            return await build_flags(session, environment, flag_ids)
+
+        async def parts(session: AsyncSession, environment: EnvRef) -> RulesetParts:
+            self.parts += 1
+            return await build_parts(session, environment)
+
+        monkeypatch.setattr(ruleset_cache, "build_flags", flags)
+        monkeypatch.setattr(ruleset_cache, "build_parts", parts)
+
+
+async def flag_id(app: FastAPI, key: str) -> uuid.UUID:
+    async with app.state.sessionmaker() as session:
+        found = await session.scalar(
+            select(Flag.id)
+            .join(Project, Project.id == Flag.project_id)
+            .where(Project.key == "demo", Flag.key == key)
+        )
+    assert found is not None
+    return found
+
+
+WRITE_BY_NAME = {w[0]: w[1] for w in WRITES}
+
+
+@pytest.mark.parametrize("write", [w[1] for w in WRITES], ids=[w[0] for w in WRITES])
+async def test_write_matches_full_build(app: FastAPI, api: httpx.AsyncClient, write: Write) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    await assert_same_as_full(app, cache)
+
+    r = await write(api)
+
+    assert r.status_code in (200, 201, 204), r.text
+    await assert_same_as_full(app, cache)
+
+
+@pytest.mark.parametrize("name", ["config_put", "toggle", "kill", "copy"])
+async def test_incremental_for_version_writes(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    first, _ = await entry(app, cache, max_age=0.0)
+    spy = BuildSpy(monkeypatch)
+
+    r = await WRITE_BY_NAME[name](api)
+    assert r.status_code == 200, r.text
+    got, _ = await entry(app, cache, max_age=0.0)
+
+    assert spy.flags == [{await flag_id(app, "color")}]
+    assert spy.parts == 0
+    assert got is not first
+    assert await assert_same_as_full(app, cache) is got
+
+
+@pytest.mark.parametrize("name", ["flag_create", "archive", "variation_patch", "segment_put"])
+async def test_full_build_for_structural_writes(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    await entry(app, cache, max_age=0.0)
+    spy = BuildSpy(monkeypatch)
+
+    r = await WRITE_BY_NAME[name](api)
+    assert r.status_code in (200, 201), r.text
+    await entry(app, cache, max_age=0.0)
+
+    assert spy.parts == 1
+    assert spy.flags == []
+
+
+async def test_toggled_twice_between_checks(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    first = await assert_same_as_full(app, cache)
+
+    for enabled in (False, True):
+        r = await api.post(f"{PRODUCTION}/toggle", json={"enabled": enabled})
+        assert r.status_code == 200, r.text
+
+    got = await assert_same_as_full(app, cache)
+    assert got.ruleset.flags["color"].enabled is True
+    assert got.fingerprint != first.fingerprint
+
+
+async def test_toggled_then_archived(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    await assert_same_as_full(app, cache)
+
+    r = await api.post(f"{PRODUCTION}/toggle", json={"enabled": False})
+    assert r.status_code == 200, r.text
+    r = await api.post(f"{COLOR}/archive")
+    assert r.status_code == 200, r.text
+
+    got = await assert_same_as_full(app, cache)
+    assert "color" not in got.ruleset.flags
+
+
+async def random_write(api: httpx.AsyncClient, rng: random.Random, i: int) -> httpx.Response:
+    if rng.randrange(8) == 0:
+        if rng.random() < 0.5:
+            return await api.put(
+                f"{SEGMENTS}/beta", json={"included": [f"u{i}"], "excluded": [], "rules": []}
+            )
+        return await api.patch(f"{FLAGS}/umlaut/variations/de", json={"value": f"grün-{i}"})
+    production = f"{FLAGS}/{rng.choice(ORDER_KEYS)}/environments/production"
+    kind = rng.choice(("toggle", "kill", "config", "target"))
+    if kind == "toggle":
+        return await api.post(f"{production}/toggle", json={"enabled": rng.random() < 0.5})
+    if kind == "kill":
+        return await api.post(f"{production}/kill")
+    version = (await api.get(production)).json()["version"]
+    config: dict[str, Any] = {
+        "version": version,
+        "enabled": True,
+        "fallthrough": {"variation": rng.choice(("true", "false"))},
+    }
+    if kind == "config":
+        config["rules"] = [
+            {
+                "description": "größer",
+                "clauses": [{"attribute": "app", "operator": "semver_gt", "values": ["1.0.0"]}],
+                "variation": rng.choice(("true", "false")),
+            }
+        ]
+    else:
+        config["targets"] = [{"variation": "true", "values": [f"u{i}"]}]
+    return await api.put(production, json=config)
+
+
+async def test_random_writes_match_full_build(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup_fragments(api)
+    cache = RulesetCache()
+    await assert_same_as_full(app, cache)
+    spy = BuildSpy(monkeypatch)
+    rng = random.Random(459)
+
+    for i in range(40):
+        r = await random_write(api, rng, i)
+        assert r.status_code == 200, r.text
+        if rng.random() < 0.5:  # several writes pile up between checks
+            await assert_same_as_full(app, cache)
+    await assert_same_as_full(app, cache)
+
+    assert spy.flags  # the incremental path ran
+    assert any(len(ids) > 1 for ids in spy.flags)
+
+
+async def test_incremental_failure_falls_back(
+    app: FastAPI,
+    api: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    await entry(app, cache, max_age=0.0)
+
+    async def failing(session: AsyncSession, environment: EnvRef, flag_ids: Any = None) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(ruleset_cache, "build_flags", failing)
+    r = await api.post(f"{PRODUCTION}/toggle", json={"enabled": False})
+    assert r.status_code == 200, r.text
+
+    got = await assert_same_as_full(app, cache)
+
+    assert got.ruleset.flags["color"].enabled is False
+    assert any("incremental ruleset rebuild failed" in r.getMessage() for r in caplog.records)
+
+
+async def test_many_changed_flags_take_the_full_build(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup_fragments(api)
+    cache = RulesetCache()
+    await entry(app, cache, max_age=0.0)
+    monkeypatch.setattr(ruleset_cache, "INCREMENTAL_MAX_FLAGS", 1)
+    spy = BuildSpy(monkeypatch)
+
+    for key in ("a-b", "b"):
+        r = await api.post(f"{FLAGS}/{key}/environments/production/toggle", json={"enabled": True})
+        assert r.status_code == 200, r.text
+    await assert_same_as_full(app, cache)
+
+    assert spy.flags == []
+    assert spy.parts == 2  # the persistent cache, then the fresh one

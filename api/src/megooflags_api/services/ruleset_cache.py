@@ -6,10 +6,13 @@ may trust an entry for `max_age` seconds after its last fingerprint check. After
 with a sessionmaker keeps serving the entry while one background task checks the fingerprint and
 rebuilds, so no SDK request waits for the check. A Valkey change message invalidates the entries
 of its project at once: the next lookup waits for a fresh check instead of serving the old entry.
+When only flag_environment versions moved, a rebuild reloads just the changed flags and patches
+their fragments into the old body, which gives the same bytes, ETag and ruleset as a full build.
 """
 
 import asyncio
 import contextlib
+import dataclasses
 import hashlib
 import json
 import logging
@@ -23,12 +26,21 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from megooflags_api.evaluation import Ruleset, parse_ruleset
-from megooflags_api.services.ruleset import SCHEMA_VERSION, EnvRef, RulesetParts, build_parts
+from megooflags_api.evaluation import Ruleset, parse_flag, parse_ruleset
+from megooflags_api.services.ruleset import (
+    SCHEMA_VERSION,
+    EnvRef,
+    FlagParts,
+    RulesetParts,
+    build_flags,
+    build_parts,
+    flag_versions,
+)
 
 logger = logging.getLogger(__name__)
 
 SDK_MAX_AGE = 1.0
+INCREMENTAL_MAX_FLAGS = 256  # beyond this many changed flags, a full build is cheaper
 
 # Three parts, flag_environment | flag | segment, so a rebuild can tell what moved.
 FINGERPRINT = text("""
@@ -113,6 +125,28 @@ def _prepare(parts: RulesetParts, fingerprint: str) -> tuple[CachedRuleset, _Par
         sorted_keys=tuple(sorted(ruleset.flags)),
     )
     return cached, _Parts(head, order, fragments, tail, parts.flags.ids, parts.flags.versions)
+
+
+def _patch(
+    cached: CachedRuleset, parts: _Parts, changed: FlagParts, fingerprint: str
+) -> tuple[CachedRuleset, _Parts]:
+    """A copy of the entry with the changed flags re-encoded and re-parsed; the old one is kept."""
+    fragments = dict(parts.fragments)
+    flags = dict(cached.ruleset.flags)  # same order: only existing keys are replaced
+    for key, raw in changed.flags.items():
+        fragments[key] = _encode(key) + b":" + _encode(raw)
+        flags[key] = parse_flag(key, raw)
+    body = _body(parts.head, parts.order, fragments, parts.tail)
+    ruleset = dataclasses.replace(cached.ruleset, flags=flags)
+    new_parts = dataclasses.replace(
+        parts, fragments=fragments, versions={**parts.versions, **changed.versions}
+    )
+    return CachedRuleset(fingerprint, ruleset, body, _etag(body), cached.sorted_keys), new_parts
+
+
+def _only_versions_moved(old: str, new: str) -> bool:
+    """Only the flag_environment part of the fingerprint differs."""
+    return old.split("|")[1:] == new.split("|")[1:]
 
 
 def from_body(body: bytes) -> CachedRuleset:
@@ -280,10 +314,22 @@ class RulesetCache:
         epoch: int,
     ) -> CachedRuleset:
         """Build and store the ruleset; the caller holds the environment's lock."""
-        parts = await build_parts(session, environment)
-        # Parsing, encoding and hashing 10k flags takes hundreds of milliseconds: keep them off
-        # the event loop so other requests on this replica are served meanwhile.
-        cached, kept = await asyncio.to_thread(_prepare, parts, fingerprint)
+        old = self._entries.get(environment.id)
+        built = None
+        if old is not None and _only_versions_moved(old.cached.fingerprint, fingerprint):
+            try:
+                built = await self._incremental(session, environment, old, fingerprint)
+            except Exception:
+                logger.exception(
+                    "incremental ruleset rebuild failed; rebuilding in full",
+                    extra={"environment_id": environment.id},
+                )
+        if built is None:
+            parts = await build_parts(session, environment)
+            # Parsing, encoding and hashing 10k flags takes hundreds of milliseconds: keep them
+            # off the event loop so other requests on this replica are served meanwhile.
+            built = await asyncio.to_thread(_prepare, parts, fingerprint)
+        cached, kept = built
         entry = _Entry(cached, kept, environment.project_id, started, epoch)
         old = self._entries.get(environment.id)
         if old is not None:
@@ -293,6 +339,23 @@ class RulesetCache:
         while len(self._entries) > self._max:
             self._entries.popitem(last=False)
         return cached
+
+    async def _incremental(
+        self, session: AsyncSession, environment: EnvRef, old: _Entry, fingerprint: str
+    ) -> tuple[CachedRuleset, _Parts] | None:
+        """The old entry with only the flags whose version moved reloaded; None for a full build."""
+        versions = await flag_versions(session, environment)
+        if versions.keys() != old.parts.versions.keys():
+            return None
+        changed = [i for i, v in versions.items() if old.parts.versions[i] != v]
+        if len(changed) > INCREMENTAL_MAX_FLAGS:
+            return None
+        if not changed:  # e.g. an archived flag's row moved
+            return dataclasses.replace(old.cached, fingerprint=fingerprint), old.parts
+        flags = await build_flags(session, environment, changed)
+        if set(flags.ids) != set(changed) or not set(flags.flags) <= old.parts.fragments.keys():
+            return None  # archived or renamed meanwhile
+        return await asyncio.to_thread(_patch, old.cached, old.parts, flags, fingerprint)
 
     def _lookup(
         self, environment_id: uuid.UUID, fingerprint: str, checked_at: float, epoch: int
