@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -18,7 +19,7 @@ from test_spec_schemas import ruleset_schema
 from megooflags_api.evaluation import Ruleset
 from megooflags_api.models import Environment, Project
 from megooflags_api.services import ruleset_cache
-from megooflags_api.services.ruleset import EnvRef, build_ruleset
+from megooflags_api.services.ruleset import EnvRef, RulesetParts, build_ruleset
 from megooflags_api.services.ruleset_cache import CachedRuleset, RulesetCache
 
 FLAGS = "/api/projects/demo/flags"
@@ -200,14 +201,14 @@ async def test_concurrent_misses_build_once(
     async with app.state.sessionmaker() as session:
         environment = await load_environment(session)
     calls = 0
-    build = ruleset_cache.build_ruleset
+    build = ruleset_cache.build_parts
 
-    async def counting(session: AsyncSession, environment: Environment) -> dict[str, Any]:
+    async def counting(session: AsyncSession, environment: EnvRef) -> RulesetParts:
         nonlocal calls
         calls += 1
         return await build(session, environment)
 
-    monkeypatch.setattr(ruleset_cache, "build_ruleset", counting)
+    monkeypatch.setattr(ruleset_cache, "build_parts", counting)
     cache = RulesetCache()
 
     async def get() -> Ruleset:
@@ -250,6 +251,76 @@ async def test_entry_body_and_etag(app: FastAPI, api: httpx.AsyncClient) -> None
     assert result.etag == '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
     Draft202012Validator(ruleset_schema()).validate(json.loads(result.body))
     assert result.ruleset.environment == "production"
+
+
+# A locale collation in Postgres orders these keys unlike Python; the body keeps the database order.
+ORDER_KEYS = ("b", "ab", "a_b", "a.b", "a-b")
+
+
+async def setup_fragments(api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    for key in ORDER_KEYS:
+        await create_flag(api, key=key)
+    variations = [{"key": "de", "value": "grün"}, {"key": "en", "value": "green"}]
+    await create_flag(api, key="umlaut", type="string", variations=variations, off_variation="en")
+    r = await api.put(
+        f"{FLAGS}/umlaut/environments/production",
+        json={
+            "version": 1,
+            "enabled": True,
+            "rules": [
+                {
+                    "description": "größer",
+                    "clauses": [{"attribute": "app", "operator": "semver_gt", "values": ["1.0.0"]}],
+                    "variation": "de",
+                }
+            ],
+            "fallthrough": {"variation": "en"},
+        },
+    )
+    assert r.status_code == 200, r.text
+
+
+async def test_entry_body_from_fragments(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_fragments(api)
+
+    result, _ = await entry(app, RulesetCache(), max_age=0.0)
+
+    async with app.state.sessionmaker() as session:
+        raw = await build_ruleset(session, await load_environment(session))
+    body = json.dumps(raw, separators=(",", ":"), ensure_ascii=False).encode()
+    assert "grün".encode() in result.body and "größer".encode() in result.body
+    assert result.body == body
+    assert result.etag == '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
+    Draft202012Validator(ruleset_schema()).validate(json.loads(result.body))
+    assert result.sorted_keys == tuple(sorted(result.ruleset.flags))
+
+
+async def test_fingerprint_has_three_parts(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    async with app.state.sessionmaker() as session:
+        environment_id = (await load_environment(session)).id
+
+    async def parts() -> list[str]:
+        await entry(app, cache, max_age=0.0)
+        return cache._entries[environment_id].cached.fingerprint.split("|")
+
+    first = await parts()
+    assert len(first) == 3
+    assert all(re.fullmatch(r"[0-9a-f]{32}", p) for p in first)
+
+    r = await api.post(f"{PRODUCTION}/toggle", json={"enabled": False})
+    assert r.status_code == 200, r.text
+    toggled = await parts()
+    assert toggled[0] != first[0]
+    assert toggled[1:] == first[1:]
+
+    r = await api.put(f"{SEGMENTS}/beta", json={"included": ["u1"], "excluded": [], "rules": []})
+    assert r.status_code == 200, r.text
+    segment = await parts()
+    assert segment[:2] == toggled[:2]
+    assert segment[2] != toggled[2]
 
 
 async def test_entry_has_sorted_keys(app: FastAPI, api: httpx.AsyncClient) -> None:
@@ -596,10 +667,10 @@ async def test_locks_are_released(
         await entry(app, cache, max_age=0.0, env=env)
         await entry(app, cache, max_age=1.0, env=env)
 
-    async def failing(session: AsyncSession, environment: EnvRef) -> dict[str, Any]:
+    async def failing(session: AsyncSession, environment: EnvRef) -> RulesetParts:
         raise LookupError("environment deleted")
 
-    monkeypatch.setattr(ruleset_cache, "build_ruleset", failing)
+    monkeypatch.setattr(ruleset_cache, "build_parts", failing)
     async with app.state.sessionmaker() as session:
         environment = EnvRef.of(await load_environment(session))
         gone = EnvRef(id=uuid.uuid4(), project_id=environment.project_id, key="gone")

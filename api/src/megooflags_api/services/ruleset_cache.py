@@ -16,7 +16,7 @@ import logging
 import time
 import uuid
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -24,22 +24,23 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from megooflags_api.evaluation import Ruleset, parse_ruleset
-from megooflags_api.services.ruleset import EnvRef, build_ruleset
+from megooflags_api.services.ruleset import SCHEMA_VERSION, EnvRef, RulesetParts, build_parts
 
 logger = logging.getLogger(__name__)
 
 SDK_MAX_AGE = 1.0
 
+# Three parts, flag_environment | flag | segment, so a rebuild can tell what moved.
 FINGERPRINT = text("""
-SELECT md5(
-  coalesce((SELECT string_agg(fe.id::text || ':' || fe.version::text, ',' ORDER BY fe.id)
-            FROM flag_environment fe WHERE fe.environment_id = :environment_id), '')
+SELECT
+  md5(coalesce((SELECT string_agg(fe.id::text || ':' || fe.version::text, ',' ORDER BY fe.id)
+                FROM flag_environment fe WHERE fe.environment_id = :environment_id), ''))
   || '|' ||
-  coalesce((SELECT string_agg(f.id::text || ':' || f.updated_at::text, ',' ORDER BY f.id)
-            FROM flag f WHERE f.project_id = :project_id AND f.archived_at IS NULL), '')
+  md5(coalesce((SELECT string_agg(f.id::text || ':' || f.updated_at::text, ',' ORDER BY f.id)
+                FROM flag f WHERE f.project_id = :project_id AND f.archived_at IS NULL), ''))
   || '|' ||
-  coalesce((SELECT string_agg(s.id::text || ':' || s.updated_at::text, ',' ORDER BY s.id)
-            FROM segment s WHERE s.project_id = :project_id), ''))
+  md5(coalesce((SELECT string_agg(s.id::text || ':' || s.updated_at::text, ',' ORDER BY s.id)
+                FROM segment s WHERE s.project_id = :project_id), ''))
 """)
 
 
@@ -54,9 +55,22 @@ class CachedRuleset:
     sorted_keys: tuple[str, ...]  # the ruleset's flag keys, sorted once for evaluate_all
 
 
+@dataclass(frozen=True, slots=True)
+class _Parts:
+    """What an incremental rebuild reuses from the entry it replaces; never mutated."""
+
+    head: bytes  # {"schema_version":1,"project":..,"environment":..,"flags":{
+    order: tuple[str, ...]  # flag keys in body order
+    fragments: dict[str, bytes]  # key -> b'"<key>":{...}'
+    tail: bytes  # },"segments":{...}}
+    ids: dict[uuid.UUID, str]
+    versions: dict[uuid.UUID, int]
+
+
 @dataclass(slots=True)
 class _Entry:
     cached: CachedRuleset
+    parts: _Parts
     project_id: uuid.UUID
     checked_at: float
     checked_epoch: int  # the cache's epoch when the last check started
@@ -67,16 +81,38 @@ def _etag(body: bytes) -> str:
     return '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
 
 
-def _prepare(raw: dict[str, Any], fingerprint: str) -> CachedRuleset:
-    body = json.dumps(raw, separators=(",", ":"), ensure_ascii=False).encode()
-    ruleset = parse_ruleset(raw)
-    return CachedRuleset(
+def _encode(value: Any) -> bytes:
+    return json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def _body(head: bytes, order: Iterable[str], fragments: dict[str, bytes], tail: bytes) -> bytes:
+    return head + b",".join(fragments[k] for k in order) + tail
+
+
+def _prepare(parts: RulesetParts, fingerprint: str) -> tuple[CachedRuleset, _Parts]:
+    """The entry of a full build; its body equals the encoded `parts.to_json()`."""
+    head = (
+        b'{"schema_version":'
+        + _encode(SCHEMA_VERSION)
+        + b',"project":'
+        + _encode(parts.project)
+        + b',"environment":'
+        + _encode(parts.environment)
+        + b',"flags":{'
+    )
+    fragments = {k: _encode(k) + b":" + _encode(v) for k, v in parts.flags.flags.items()}
+    tail = b'},"segments":' + _encode(parts.segments) + b"}"
+    order = tuple(parts.flags.flags)
+    body = _body(head, order, fragments, tail)
+    ruleset = parse_ruleset(parts.to_json())
+    cached = CachedRuleset(
         fingerprint=fingerprint,
         ruleset=ruleset,
         body=body,
         etag=_etag(body),
         sorted_keys=tuple(sorted(ruleset.flags)),
     )
+    return cached, _Parts(head, order, fragments, tail, parts.flags.ids, parts.flags.versions)
 
 
 def from_body(body: bytes) -> CachedRuleset:
@@ -244,11 +280,11 @@ class RulesetCache:
         epoch: int,
     ) -> CachedRuleset:
         """Build and store the ruleset; the caller holds the environment's lock."""
-        raw = await build_ruleset(session, environment)
+        parts = await build_parts(session, environment)
         # Parsing, encoding and hashing 10k flags takes hundreds of milliseconds: keep them off
         # the event loop so other requests on this replica are served meanwhile.
-        cached = await asyncio.to_thread(_prepare, raw, fingerprint)
-        entry = _Entry(cached, environment.project_id, started, epoch)
+        cached, kept = await asyncio.to_thread(_prepare, parts, fingerprint)
+        entry = _Entry(cached, kept, environment.project_id, started, epoch)
         old = self._entries.get(environment.id)
         if old is not None:
             entry.invalidated_epoch = old.invalidated_epoch  # a change message during the build
