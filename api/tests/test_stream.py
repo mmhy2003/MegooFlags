@@ -242,7 +242,9 @@ def principal(project_id: uuid.UUID | None = None) -> SdkPrincipal:
 
 def cached(etag: str) -> CachedRuleset:
     raw = {"schema_version": 1, "project": "p", "environment": "e", "flags": {}, "segments": {}}
-    return CachedRuleset(fingerprint=etag, ruleset=parse_ruleset(raw), body=b"{}", etag=etag)
+    return CachedRuleset(
+        fingerprint=etag, ruleset=parse_ruleset(raw), body=b"{}", etag=etag, sorted_keys=()
+    )
 
 
 async def test_subscriber_keeps_latest() -> None:

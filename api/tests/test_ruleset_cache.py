@@ -252,6 +252,15 @@ async def test_entry_body_and_etag(app: FastAPI, api: httpx.AsyncClient) -> None
     assert result.ruleset.environment == "production"
 
 
+async def test_entry_has_sorted_keys(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+
+    result, _ = await entry(app, RulesetCache(), max_age=0.0)
+
+    assert result.ruleset.flags
+    assert result.sorted_keys == tuple(sorted(result.ruleset.flags))
+
+
 async def test_max_age_hit_is_zero_statements(app: FastAPI, api: httpx.AsyncClient) -> None:
     await setup_demo(api)
     clock = FakeClock()

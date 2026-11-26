@@ -84,7 +84,9 @@ async def evaluate_flags(
     if etag_matches(if_none_match, etag):
         return _not_modified(etag)
     server = principal.kind == SdkKeyKind.SERVER
-    resolutions = evaluate_all(entry.ruleset, body.context, body.flags)
+    resolutions = evaluate_all(
+        entry.ruleset, body.context, body.flags, sorted_keys=entry.sorted_keys
+    )
     get_delivery(request).events.record_counts(
         principal.environment.id,
         [

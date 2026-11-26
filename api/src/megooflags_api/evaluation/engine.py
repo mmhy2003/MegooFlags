@@ -1,6 +1,6 @@
 """Flag evaluation as specified in spec/evaluation.md. Stdlib only."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Any
 
 from megooflags_api.evaluation.bucketing import bucket, bucket_text, pick_variation
@@ -52,10 +52,21 @@ def evaluate(
 
 
 def evaluate_all(
-    ruleset: Ruleset, context: Any, flag_keys: Iterable[str] | None = None
+    ruleset: Ruleset,
+    context: Any,
+    flag_keys: Iterable[str] | None = None,
+    *,
+    sorted_keys: Sequence[str] | None = None,
 ) -> dict[str, Resolution]:
-    """Resolve several flags (all of them when `flag_keys` is None), sorted by key, default None."""
-    keys = sorted(set(ruleset.flags if flag_keys is None else flag_keys))
+    """Resolve several flags (all of them when `flag_keys` is None), sorted by key, default None.
+
+    `sorted_keys`, the ruleset's flag keys already sorted, saves sorting them when `flag_keys`
+    is None; it is ignored otherwise.
+    """
+    if flag_keys is None and sorted_keys is not None:
+        keys: Iterable[str] = sorted_keys
+    else:
+        keys = sorted(set(ruleset.flags if flag_keys is None else flag_keys))
     return {key: evaluate(ruleset, key, context, None) for key in keys}
 
 

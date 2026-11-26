@@ -214,6 +214,12 @@ def test_from_body_etag_matches_prepare() -> None:
     assert entry.ruleset == cached.ruleset
 
 
+def test_from_body_sorted_keys() -> None:
+    entry = from_body(BODY)
+    assert entry.ruleset.flags
+    assert entry.sorted_keys == tuple(sorted(entry.ruleset.flags))
+
+
 async def test_stream_hub_with_source() -> None:
     entry = from_body(BODY)
     source = FakeStreamSource(entry)

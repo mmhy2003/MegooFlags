@@ -51,6 +51,7 @@ class CachedRuleset:
     ruleset: Ruleset
     body: bytes
     etag: str
+    sorted_keys: tuple[str, ...]  # the ruleset's flag keys, sorted once for evaluate_all
 
 
 @dataclass(slots=True)
@@ -68,16 +69,26 @@ def _etag(body: bytes) -> str:
 
 def _prepare(raw: dict[str, Any], fingerprint: str) -> CachedRuleset:
     body = json.dumps(raw, separators=(",", ":"), ensure_ascii=False).encode()
+    ruleset = parse_ruleset(raw)
     return CachedRuleset(
-        fingerprint=fingerprint, ruleset=parse_ruleset(raw), body=body, etag=_etag(body)
+        fingerprint=fingerprint,
+        ruleset=ruleset,
+        body=body,
+        etag=_etag(body),
+        sorted_keys=tuple(sorted(ruleset.flags)),
     )
 
 
 def from_body(body: bytes) -> CachedRuleset:
     """A ruleset from the JSON bytes SDKs download, with the same ETag the cache gives them."""
     etag = _etag(body)
+    ruleset = parse_ruleset(json.loads(body))
     return CachedRuleset(
-        fingerprint=etag, ruleset=parse_ruleset(json.loads(body)), body=body, etag=etag
+        fingerprint=etag,
+        ruleset=ruleset,
+        body=body,
+        etag=etag,
+        sorted_keys=tuple(sorted(ruleset.flags)),
     )
 
 

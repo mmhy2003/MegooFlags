@@ -95,7 +95,7 @@ async def evaluate_flags(
     etag = derived_etag(entry.etag, principal.kind, canonical_json(ctx))
     if etag_matches(if_none_match, etag):
         return Response(status_code=304, headers={"ETag": etag})
-    results = evaluate_all(entry.ruleset, ctx)
+    results = evaluate_all(entry.ruleset, ctx, sorted_keys=entry.sorted_keys)
     _count(request, principal, results)
     flags = [_dump(_item(k, r, principal)) for k, r in results.items()]
     return JSONResponse({"flags": flags}, headers={"ETag": etag})
