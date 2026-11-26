@@ -132,7 +132,9 @@ def _all(*checks: Check) -> Check:
 
 
 _NO_ERRORS = _at_most("errors", 0)
-_REMOTE = _all(_below("p99_ms", 50), _NO_ERRORS, _at_least("rps", 2000))
+# mfload's rate includes the tail of the last responses, so a full 2000 rps run reads 1999.x: the
+# maintainer accepted 99.5 % of the requested rate (MF-459).
+_REMOTE = _all(_below("p99_ms", 50), _NO_ERRORS, _at_least("rps", 1990))
 _P95 = _below("prop_p95_ms", 5000)
 
 
@@ -159,7 +161,7 @@ def _streams_planned(m: Metrics) -> bool:
     return opened is not None and planned is not None and opened >= planned
 
 
-_REMOTE_TARGET = "p99 < 50 ms, no errors, at 2000 rps per API container"
+_REMOTE_TARGET = "p99 < 50 ms, no errors, at 2000 rps per API container (at least 99.5 % reached)"
 _PROPAGATION_TARGET = "p95 < 5 s"
 
 GATES: list[tuple[str, str, str, Check]] = [
@@ -192,12 +194,14 @@ GATES: list[tuple[str, str, str, Check]] = [
     ),
     (
         "Single-node footprint",
-        "2 vCPU / 2 GB: no restart or OOM kill, p99 < 50 ms, propagation p95 < 5 s",
+        "2 vCPU / 2 GB: no restart or OOM kill, p95 < 50 ms, p99 < 150 ms, propagation p95 < 5 s",
         "footprint_single",
         _all(
             _at_most("restarts", 0),
             _at_most("oom_killed", 0),
-            _below("p99_ms", 50),
+            # The maintainer's single-node target (MF-459): one api vCPU shared by two workers.
+            _below("p95_ms", 50),
+            _below("p99_ms", 150),
             _NO_ERRORS,
             # A flip every second: a missed update may only be superseded by the next one.
             _P95,
@@ -245,7 +249,8 @@ def _measured(name: str, m: Metrics) -> str:
         )
     return (
         f"{_n(m.get('restarts'))} restarts, {_n(m.get('oom_killed'))} OOM kills, "
-        f"p99 {_n(m.get('p99_ms'))} ms at {_n(m.get('rps'), 0)} rps, {prop}, "
+        f"p95 {_n(m.get('p95_ms'))} ms, p99 {_n(m.get('p99_ms'))} ms "
+        f"at {_n(m.get('rps'), 0)} rps, {prop}, "
         f"memory up to {_n(m.get('mem_max_mib'))} MiB"
     )
 

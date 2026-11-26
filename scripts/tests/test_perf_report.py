@@ -291,6 +291,32 @@ def test_render_failing_gate(name: str, metrics: dict[str, Any], row: str) -> No
     assert [v for v in rows.values() if v != "pass"] == ["fail"]
 
 
+@pytest.mark.parametrize(
+    ("name", "metrics", "row", "verdict"),
+    [
+        # mfload's rate includes the tail of the last responses: a full 2000 rps run reads 1999.x.
+        ("remote_ofrep", {"rps": 1999.65}, "Remote evaluation, OFREP", "pass"),
+        ("remote_evaluate", {"rps": 1990.0}, "Remote evaluation, /sdk/v1/evaluate", "pass"),
+        ("remote_ofrep", {"rps": 1989.9}, "Remote evaluation, OFREP", "fail"),
+        # The maintainer's single-node target (MF-459): p99 < 150 ms and p95 < 50 ms.
+        ("footprint_single", {"p95_ms": 34.0, "p99_ms": 112.8}, "Single-node footprint", "pass"),
+        ("footprint_single", {"p99_ms": 150.0}, "Single-node footprint", "fail"),
+        ("footprint_single", {"p95_ms": 50.0}, "Single-node footprint", "fail"),
+    ],
+)
+def test_render_accepted_tolerances(
+    name: str, metrics: dict[str, Any], row: str, verdict: str
+) -> None:
+    assert _rows(render(_with(name, metrics=metrics)))[row] == verdict
+
+
+def test_render_footprint_row_shows_the_gated_p95() -> None:
+    report = render(_with("footprint_single", metrics={"p95_ms": 34.0, "p99_ms": 112.8}))
+    table = report.split("## NFR verdicts", 1)[1].split("\n## ", 1)[0]
+    row = next(line for line in table.splitlines() if line.startswith("| Single-node footprint"))
+    assert "p95 34 ms, p99 112.8 ms at 50 rps" in row
+
+
 def test_render_streams_row() -> None:
     table = render(PASSING).split("## NFR verdicts", 1)[1].split("\n## ", 1)[0]
     row = next(line for line in table.splitlines() if line.startswith("| 100k streams per cluster"))
