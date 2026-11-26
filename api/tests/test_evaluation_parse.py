@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from megooflags_api.evaluation import ErrorCode, RulesetError, parse_ruleset
+from megooflags_api.evaluation import ErrorCode, RulesetError, parse_flag, parse_ruleset
 from megooflags_api.evaluation.model import Rollout, Serve, Weight
 
 
@@ -445,4 +445,18 @@ def test_errors(mutation: Mutation | Any, path: str) -> None:
     with pytest.raises(RulesetError) as exc:
         parse_ruleset(data)
     assert path in str(exc.value)
+    assert exc.value.error_code == ErrorCode.PARSE_ERROR
+
+
+def test_parse_flag_equals_parse_ruleset() -> None:
+    doc = ruleset()
+
+    for key, raw in doc["flags"].items():
+        assert parse_flag(key, raw) == parse_ruleset(doc).flags[key]
+
+    bad = copy.deepcopy(doc["flags"]["b"])
+    bad["fallthrough"] = {"variation": "nope"}
+    with pytest.raises(RulesetError) as exc:
+        parse_flag("b", bad)
+    assert str(exc.value).startswith("flags.b.fallthrough")
     assert exc.value.error_code == ErrorCode.PARSE_ERROR
