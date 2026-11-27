@@ -1,7 +1,7 @@
 {
   "version": "0.1.0",
   "profile": "full",
-  "started_at": "2026-11-17T23:01:09Z",
+  "started_at": "2026-11-27T07:33:01Z",
   "host": {
     "cpus": 16,
     "memory_mib": 32050,
@@ -21,11 +21,11 @@
       "metrics": {
         "count": 120000,
         "errors": 0,
-        "max_ms": 843.011652,
-        "p50_ms": 5.346924,
-        "p95_ms": 36.046131,
-        "p99_ms": 266.130084,
-        "rps": 1999.8250792999638
+        "max_ms": 517.723385,
+        "p50_ms": 3.922733,
+        "p95_ms": 10.954975,
+        "p99_ms": 20.38649,
+        "rps": 1999.6566260296315
       },
       "notes": "tuned from 4 to 8 uvicorn workers (MF_PERF_API_WORKERS): with 4 it reached 1651 rps at p99 12.7 s"
     },
@@ -38,13 +38,13 @@
         "replicas": "1"
       },
       "metrics": {
-        "count": 119956,
-        "errors": 44,
-        "max_ms": 30467.604203,
-        "p50_ms": 15074.067177,
-        "p95_ms": 28430.792417,
-        "p99_ms": 29632.360872,
-        "rps": 1331.045396502564
+        "count": 120000,
+        "errors": 0,
+        "max_ms": 488.087213,
+        "p50_ms": 4.602665,
+        "p95_ms": 13.899119,
+        "p99_ms": 35.810676,
+        "rps": 1999.719399073964
       },
       "notes": "tuned from 4 to 8 uvicorn workers (MF_PERF_API_WORKERS): with 4 it reached 712 rps at p99 107.5 s"
     },
@@ -59,11 +59,11 @@
       "metrics": {
         "count": 150,
         "errors": 0,
-        "max_ms": 6304.190627,
-        "p50_ms": 468.123474,
-        "p95_ms": 4761.542915,
-        "p99_ms": 5636.285438,
-        "rps": 4.297466762191564
+        "max_ms": 5837.457264,
+        "p50_ms": 265.048032,
+        "p95_ms": 1289.09757,
+        "p99_ms": 4263.88614,
+        "rps": 4.2811213625768545
       },
       "notes": "every flag of the 10000-flag environment in one request, 5 rps for 30 s"
     },
@@ -74,10 +74,10 @@
         "api": "unlimited"
       },
       "metrics": {
-        "flag_list_ms": 47.632361,
+        "flag_list_ms": 29.147169,
         "flags": 10000,
         "ruleset_bytes": 4850089,
-        "ruleset_download_ms": 4354.681232,
+        "ruleset_download_ms": 5170.357455,
         "errors": 0
       },
       "notes": "ruleset_download_ms is the SDK start time: one ruleset download"
@@ -93,9 +93,9 @@
       "metrics": {
         "flips": 20,
         "missed": 0,
-        "prop_max_ms": 5607.757444,
-        "prop_p50_ms": 5009.497169,
-        "prop_p95_ms": 5310.756871,
+        "prop_max_ms": 1746.646507,
+        "prop_p50_ms": 829.261181,
+        "prop_p95_ms": 1577.598948,
         "streams_dropped": 0,
         "streams_opened": 30,
         "errors": 0
@@ -111,9 +111,9 @@
       "metrics": {
         "flips": 20,
         "missed": 0,
-        "prop_max_ms": 716.210353,
-        "prop_p50_ms": 412.675906,
-        "prop_p95_ms": 621.364495,
+        "prop_max_ms": 645.929197,
+        "prop_p50_ms": 363.511775,
+        "prop_p95_ms": 467.023217,
         "streams_dropped": 0,
         "streams_opened": 30,
         "errors": 0
@@ -121,27 +121,29 @@
       "notes": "30 streams over 3 workers, a flip every 35 s"
     },
     "streams_100k": {
-      "status": "reduced",
-      "reduced_to": "17721 streams, 12 workers",
+      "status": "full",
+      "reduced_to": null,
       "limits": {
         "worker": "1 vCPU / 512 MiB (caddy 0.35 / 256M, api 0.65 / 256M)"
       },
       "metrics": {
         "flips": 20,
         "missed": 0,
-        "prop_max_ms": 5208.361984,
-        "prop_p50_ms": 3306.407053,
-        "prop_p95_ms": 4561.399036,
+        "prop_max_ms": 4922.637455,
+        "prop_p50_ms": 2850.429971,
+        "prop_p95_ms": 3905.560792,
         "streams_dropped": 0,
-        "streams_opened": 17721,
+        "streams_opened": 19065,
         "workers": 12.0,
-        "mem_max_mib": 469.9,
+        "mem_max_mib": 494.9,
         "restarts": 0.0,
         "oom_killed": 0.0,
-        "capacity_per_worker": 1846.0,
+        "streams_planned": 19065.0,
+        "capacity_per_worker": 1986.0,
+        "workers_for_100k": 63.0,
         "errors": 0
       },
-      "notes": "mem_max_mib is the most any one worker used; a flip every 30 s through the control plane; limits re-split from caddy 0.2 / 96M, api 0.8 / 416M, where Caddy was OOM-killed at about 1000 streams"
+      "notes": "sizing: one worker's capacity is measured, then min(workers for 100k, workers the host fits) run at 80 % of it, and at least 8 workers make a full run; mem_max_mib is the most any one worker used; a flip every 30 s through the control plane; limits re-split from caddy 0.2 / 96M, api 0.8 / 416M, where Caddy was OOM-killed at about 1000 streams"
     },
     "footprint_single": {
       "status": "full",
@@ -155,22 +157,22 @@
       },
       "metrics": {
         "flips": 600,
-        "missed": 230,
-        "prop_max_ms": 995.491541,
-        "prop_p50_ms": 276.851768,
-        "prop_p95_ms": 714.108368,
+        "missed": 0,
+        "prop_max_ms": 771.822933,
+        "prop_p50_ms": 180.466693,
+        "prop_p95_ms": 319.443979,
         "streams_dropped": 0,
         "streams_opened": 20,
-        "count": 29997,
-        "errors": 3,
-        "max_ms": 2469.7958,
-        "p50_ms": 8.140633,
-        "p95_ms": 272.600065,
-        "p99_ms": 674.631417,
-        "rps": 50.00104162186573,
+        "count": 30000,
+        "errors": 0,
+        "max_ms": 738.991726,
+        "p50_ms": 4.76876,
+        "p95_ms": 47.104142,
+        "p99_ms": 141.55514,
+        "rps": 49.99882343443678,
         "restarts": 0.0,
         "oom_killed": 0.0,
-        "mem_max_mib": 531.2
+        "mem_max_mib": 512.2
       },
       "notes": "100 flags, 20 streams, a flip every second and 50 rps for 600 s; giving the api 1.2 CPU (db 0.3) or 3 workers made p99 worse, so the split is unchanged"
     },
@@ -180,7 +182,7 @@
       "limits": {},
       "metrics": {
         "passed": 1,
-        "p99_ms": 0.012831,
+        "p99_ms": 0.014127,
         "errors": 0
       },
       "notes": "the SDK's p99 guard on 10 000 flags"
@@ -202,7 +204,7 @@
       "limits": {},
       "metrics": {
         "passed": 1,
-        "p99_ms": 0.0725,
+        "p99_ms": 0.0719,
         "errors": 0
       },
       "notes": "the SDK's p99 guard on 10 000 flags"
@@ -213,7 +215,7 @@
       "limits": {},
       "metrics": {
         "passed": 1,
-        "p99_ms": 0.029,
+        "p99_ms": 0.027,
         "errors": 0
       },
       "notes": "the SDK's p99 guard on 10 000 flags"
@@ -234,7 +236,7 @@
       "limits": {},
       "metrics": {
         "passed": 1,
-        "p99_ms": 0.0681,
+        "p99_ms": 0.0646,
         "errors": 0
       },
       "notes": "the SDK's p99 guard on 10 000 flags"
@@ -245,7 +247,7 @@
       "limits": {},
       "metrics": {
         "passed": 1,
-        "p99_ms": 0.0664,
+        "p99_ms": 0.0411,
         "errors": 0
       },
       "notes": "the SDK's p99 guard on 10 000 flags"

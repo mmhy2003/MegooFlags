@@ -16,7 +16,7 @@ from megooflags_api.models.enums import SdkKeyKind
 from megooflags_api.routers.sdk import RETRY_FRAME, REVOKED_FRAME, _events
 from megooflags_api.schemas.events import EventsIn
 from megooflags_api.services.delivery import Delivery
-from megooflags_api.services.ruleset import EnvRef
+from megooflags_api.services.ruleset import EnvRef, FlagParts, RulesetParts
 from megooflags_api.services.ruleset_cache import CachedRuleset, _prepare, from_body
 from megooflags_api.services.sdk_keys import SdkPrincipal
 from megooflags_api.services.streams import Closed, Revoked, StreamHub, Subscriber
@@ -206,12 +206,24 @@ async def test_client_key_rate_limited(app: FastAPI, client: httpx.AsyncClient) 
 
 
 def test_from_body_etag_matches_prepare() -> None:
-    cached = _prepare(RAW, "fingerprint")
+    parts = RulesetParts(
+        project=RAW["project"],
+        environment=RAW["environment"],
+        flags=FlagParts(flags=RAW["flags"], ids={}, versions={}),
+        segments=RAW["segments"],
+    )
+    cached, _ = _prepare(parts, "fingerprint")
     entry = from_body(cached.body)
     assert entry.etag == cached.etag
     assert entry.fingerprint == entry.etag
     assert entry.body == cached.body
     assert entry.ruleset == cached.ruleset
+
+
+def test_from_body_sorted_keys() -> None:
+    entry = from_body(BODY)
+    assert entry.ruleset.flags
+    assert entry.sorted_keys == tuple(sorted(entry.ruleset.flags))
 
 
 async def test_stream_hub_with_source() -> None:

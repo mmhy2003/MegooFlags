@@ -1,4 +1,5 @@
 import json
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -9,8 +10,13 @@ from jsonschema import Draft202012Validator
 from sqlalchemy import select
 
 from megooflags_api.evaluation import parse_ruleset
-from megooflags_api.models import Environment, Project
-from megooflags_api.services.ruleset import build_ruleset
+from megooflags_api.models import Environment, Flag, FlagEnvironment, Project
+from megooflags_api.services.ruleset import (
+    build_flags,
+    build_parts,
+    build_ruleset,
+    flag_versions,
+)
 
 SPEC = Path(__file__).resolve().parents[2] / "spec"
 FLAGS = "/api/projects/demo/flags"
@@ -120,15 +126,28 @@ async def setup_demo(api: httpx.AsyncClient) -> None:
     assert r.status_code == 200, r.text
 
 
+async def demo_environment(session: Any, env: str) -> Environment:
+    environment = await session.scalar(
+        select(Environment)
+        .join(Project, Project.id == Environment.project_id)
+        .where(Project.key == "demo", Environment.key == env)
+    )
+    assert environment is not None
+    return environment
+
+
 async def build(app: FastAPI, env: str) -> dict[str, Any]:
     async with app.state.sessionmaker() as session:
-        environment = await session.scalar(
-            select(Environment)
-            .join(Project, Project.id == Environment.project_id)
-            .where(Project.key == "demo", Environment.key == env)
-        )
-        assert environment is not None
-        return await build_ruleset(session, environment)
+        return await build_ruleset(session, await demo_environment(session, env))
+
+
+async def demo_versions(session: Any, environment: Environment) -> dict[uuid.UUID, int]:
+    rows = await session.execute(
+        select(Flag.id, FlagEnvironment.version)
+        .join(FlagEnvironment, FlagEnvironment.flag_id == Flag.id)
+        .where(FlagEnvironment.environment_id == environment.id)
+    )
+    return {flag_id: version for flag_id, version in rows}
 
 
 async def test_build_ruleset(app: FastAPI, api: httpx.AsyncClient) -> None:
@@ -153,3 +172,49 @@ async def test_build_ruleset_per_environment(app: FastAPI, api: httpx.AsyncClien
     assert staging["flags"]["color"]["fallthrough"] == {"variation": "red"}
     assert staging["flags"]["color"]["rules"] == []
     assert staging["segments"] == EXPECTED["segments"]
+
+
+async def test_build_parts_matches_build_ruleset(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+
+    async with app.state.sessionmaker() as session:
+        environment = await demo_environment(session, "production")
+        parts = await build_parts(session, environment)
+        ruleset = await build_ruleset(session, environment)
+
+    assert parts.to_json() == ruleset == EXPECTED
+    assert list(parts.to_json()) == list(ruleset)
+
+
+async def test_build_flags_by_id_equals_the_subset(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    await create_flag(api, key="extra")
+
+    async with app.state.sessionmaker() as session:
+        environment = await demo_environment(session, "production")
+        full = await build_flags(session, environment)
+        ids = {id_ for id_, key in full.ids.items() if key in ("color", "gate")}
+        subset = await build_flags(session, environment, ids)
+
+    assert set(full.flags) == {"color", "extra", "gate"}
+    assert subset.flags == {key: full.flags[key] for key in ("color", "gate")}
+    assert list(subset.flags) == ["color", "gate"]
+    assert subset.ids == {id_: full.ids[id_] for id_ in ids}
+    assert subset.versions == {id_: full.versions[id_] for id_ in ids}
+    assert subset.versions == {id_: 2 for id_ in ids}
+
+
+async def test_flag_versions(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+
+    async with app.state.sessionmaker() as session:
+        environment = await demo_environment(session, "production")
+        versions = await flag_versions(session, environment)
+        everything = await demo_versions(session, environment)
+        live = await build_flags(session, environment)
+        archived = await session.scalar(select(Flag.id).where(Flag.key == "old"))
+
+    assert versions == live.versions
+    assert set(versions.values()) == {2}
+    assert archived in everything
+    assert archived not in versions

@@ -106,6 +106,11 @@ def parse_ruleset(data: Any) -> Ruleset:
     )
 
 
+def parse_flag(key: str, value: Any) -> Flag:
+    """One flag of a ruleset, validated as parse_ruleset does."""
+    return _flag(key, value, f"flags.{key}")
+
+
 def _flag(key: str, value: Any, path: str) -> Flag:
     obj = _dict(value, path)
     if _get(obj, "key", path) != key:

@@ -12,6 +12,7 @@ from prometheus_client import REGISTRY
 from megooflags_api.main import create_app
 from megooflags_api.sdk_auth import AnyKeyDep, OfrepKeyDep, ServerKeyDep, StreamKeyDep
 from megooflags_api.services.rate_limit import RateLimiter
+from megooflags_api.services.sdk_keys import KeyResolver, hash_key
 from megooflags_api.settings import Settings
 
 KEYS = "/api/projects/demo/environments/production/sdk-keys"
@@ -127,6 +128,27 @@ async def test_resolver_hit_issues_no_statements(app: FastAPI, sdk: httpx.AsyncC
 
     assert len(first) == 1
     assert second == []
+
+
+async def test_key_resolver_cached(app: FastAPI, sdk: httpx.AsyncClient) -> None:
+    created = await create_sdk_key(sdk, "server")
+    secret_hash = hash_key(created["key"])
+    now = 1000.0
+    resolver = KeyResolver(ttl=10.0, clock=lambda: now)
+
+    assert resolver.cached(secret_hash) is None
+    async with app.state.sessionmaker() as session:
+        principal = await resolver.resolve_hash(session, secret_hash)
+    assert principal is not None
+    assert resolver.cached(secret_hash) is principal
+    assert resolver.cached(hash_key("mf_server_" + "b" * 32)) is None
+    now += 10.0
+    assert resolver.cached(secret_hash) is None
+
+    async with app.state.sessionmaker() as session:
+        assert await resolver.resolve_hash(session, secret_hash) == principal
+    resolver.forget(principal.key_id)
+    assert resolver.cached(secret_hash) is None
 
 
 async def test_ofrep_accepts_x_api_key(sdk: httpx.AsyncClient, anon: httpx.AsyncClient) -> None:

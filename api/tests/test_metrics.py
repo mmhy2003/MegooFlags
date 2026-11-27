@@ -3,11 +3,14 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import httpx
+import pytest
 from conftest import ClientFactory
 from prometheus_client import REGISTRY
 
+from megooflags_api import metrics
 from megooflags_api.export_openapi import render
 from megooflags_api.main import create_app
 
@@ -35,6 +38,28 @@ async def test_metrics_counts_requests(client_for: ClientFactory) -> None:
         "megooflags_http_requests_in_progress",
     ):
         assert name in response.text
+
+
+async def test_label_children_are_looked_up_once(
+    client_for: ClientFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = 0
+    original = metrics.REQUESTS.labels
+
+    def counting(*args: Any, **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(metrics.REQUESTS, "labels", counting)
+    before = sample("megooflags_http_requests_total", method="GET", route="/healthz", status="200")
+    async with client_for(None) as client:
+        for _ in range(3):
+            assert (await client.get("/healthz")).status_code == 200
+
+    assert calls <= 1  # an earlier test may have cached the pair already
+    after = sample("megooflags_http_requests_total", method="GET", route="/healthz", status="200")
+    assert after == before + 3
 
 
 async def test_route_label_is_the_template() -> None:

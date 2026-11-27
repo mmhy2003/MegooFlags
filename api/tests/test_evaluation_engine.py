@@ -577,6 +577,15 @@ def test_evaluate_all_with_keys_sorts_and_reports_unknown() -> None:
     assert results["zeta"].variant == "red"
 
 
+def test_evaluate_all_with_sorted_keys() -> None:
+    rs = ruleset(flag("zeta"), gate("alpha"), flag("mid", enabled=False))
+    ctx = {"key": "user-1"}
+    results = evaluate_all(rs, ctx, sorted_keys=tuple(sorted(rs.flags)))
+    assert results == evaluate_all(rs, ctx)
+    assert list(results) == ["alpha", "mid", "zeta"]
+    assert list(evaluate_all(rs, ctx, ["zeta"], sorted_keys=("alpha", "mid"))) == ["zeta"]
+
+
 def test_evaluate_all_invalid_context() -> None:
     results = evaluate_all(ruleset(flag("c")), [])  # type: ignore[arg-type]
     assert results["c"].error_code == ErrorCode.INVALID_CONTEXT

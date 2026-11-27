@@ -28,7 +28,7 @@ from megooflags_api.services.events import (
 from megooflags_api.services.rate_limit import RateLimiter
 from megooflags_api.services.ruleset import EnvRef
 from megooflags_api.services.ruleset_cache import SDK_MAX_AGE, CachedRuleset, RulesetCache
-from megooflags_api.services.sdk_keys import KeyResolver, SdkPrincipal
+from megooflags_api.services.sdk_keys import KeyResolver, SdkPrincipal, hash_key, key_kind
 
 
 class RulesetSource(Protocol):
@@ -92,6 +92,9 @@ class DbRulesetSource:
 
     async def get_entry(self, environment: EnvRef) -> CachedRuleset:
         cache: RulesetCache = self._app.state.ruleset_cache
+        hit = cache.peek(environment, SDK_MAX_AGE)
+        if hit is not None:
+            return hit
         async with self._app.state.sessionmaker() as session:
             return await cache.get_entry(session, environment, max_age=SDK_MAX_AGE)
 
@@ -101,12 +104,15 @@ class DbKeySource:
         self._app = app
 
     async def resolve(self, key: str) -> SdkPrincipal | None:
-        resolver: KeyResolver = self._app.state.key_resolver
-        async with self._app.state.sessionmaker() as session:
-            return await resolver.resolve(session, key)
+        if key_kind(key) is None:
+            return None
+        return await self.resolve_hash(hash_key(key))
 
     async def resolve_hash(self, secret_hash: str) -> SdkPrincipal | None:
         resolver: KeyResolver = self._app.state.key_resolver
+        hit = resolver.cached(secret_hash)
+        if hit is not None:
+            return hit
         async with self._app.state.sessionmaker() as session:
             return await resolver.resolve_hash(session, secret_hash)
 

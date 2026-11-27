@@ -183,6 +183,9 @@ def create_app(
     app.add_middleware(SdkCorsMiddleware)
     app.include_router(health.router)
     app.include_router(metrics.router)
+    # Routes match in order and these are the hot paths: first, they skip every /api router.
+    app.include_router(sdk.router)
+    app.include_router(ofrep.router)
     # Public or self-checking routes (PUBLIC_ROUTES): no get_principal on the router.
     app.include_router(setup.router, prefix="/api")
     app.include_router(auth.router, prefix="/api")
@@ -212,8 +215,6 @@ def create_app(
     ):
         app.include_router(module.router, prefix="/api", dependencies=[Depends(get_principal)])
     app.include_router(sso.admin_router, prefix="/api", dependencies=[Depends(get_principal)])
-    app.include_router(sdk.router)
-    app.include_router(ofrep.router)
     app.state.tracer_provider = configure_tracing(app, app.state.engine)
     return app
 

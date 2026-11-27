@@ -1,6 +1,8 @@
 import asyncio
 import hashlib
 import json
+import random
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -16,9 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from test_spec_schemas import ruleset_schema
 
 from megooflags_api.evaluation import Ruleset
-from megooflags_api.models import Environment, Project
+from megooflags_api.models import Environment, Flag, Project
 from megooflags_api.services import ruleset_cache
-from megooflags_api.services.ruleset import EnvRef, build_ruleset
+from megooflags_api.services.ruleset import EnvRef, FlagParts, RulesetParts, build_ruleset
 from megooflags_api.services.ruleset_cache import CachedRuleset, RulesetCache
 
 FLAGS = "/api/projects/demo/flags"
@@ -200,14 +202,14 @@ async def test_concurrent_misses_build_once(
     async with app.state.sessionmaker() as session:
         environment = await load_environment(session)
     calls = 0
-    build = ruleset_cache.build_ruleset
+    build = ruleset_cache.build_parts
 
-    async def counting(session: AsyncSession, environment: Environment) -> dict[str, Any]:
+    async def counting(session: AsyncSession, environment: EnvRef) -> RulesetParts:
         nonlocal calls
         calls += 1
         return await build(session, environment)
 
-    monkeypatch.setattr(ruleset_cache, "build_ruleset", counting)
+    monkeypatch.setattr(ruleset_cache, "build_parts", counting)
     cache = RulesetCache()
 
     async def get() -> Ruleset:
@@ -250,6 +252,85 @@ async def test_entry_body_and_etag(app: FastAPI, api: httpx.AsyncClient) -> None
     assert result.etag == '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
     Draft202012Validator(ruleset_schema()).validate(json.loads(result.body))
     assert result.ruleset.environment == "production"
+
+
+# A locale collation in Postgres orders these keys unlike Python; the body keeps the database order.
+ORDER_KEYS = ("b", "ab", "a_b", "a.b", "a-b")
+
+
+async def setup_fragments(api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    for key in ORDER_KEYS:
+        await create_flag(api, key=key)
+    variations = [{"key": "de", "value": "grün"}, {"key": "en", "value": "green"}]
+    await create_flag(api, key="umlaut", type="string", variations=variations, off_variation="en")
+    r = await api.put(
+        f"{FLAGS}/umlaut/environments/production",
+        json={
+            "version": 1,
+            "enabled": True,
+            "rules": [
+                {
+                    "description": "größer",
+                    "clauses": [{"attribute": "app", "operator": "semver_gt", "values": ["1.0.0"]}],
+                    "variation": "de",
+                }
+            ],
+            "fallthrough": {"variation": "en"},
+        },
+    )
+    assert r.status_code == 200, r.text
+
+
+async def test_entry_body_from_fragments(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_fragments(api)
+
+    result, _ = await entry(app, RulesetCache(), max_age=0.0)
+
+    async with app.state.sessionmaker() as session:
+        raw = await build_ruleset(session, await load_environment(session))
+    body = json.dumps(raw, separators=(",", ":"), ensure_ascii=False).encode()
+    assert "grün".encode() in result.body and "größer".encode() in result.body
+    assert result.body == body
+    assert result.etag == '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
+    Draft202012Validator(ruleset_schema()).validate(json.loads(result.body))
+    assert result.sorted_keys == tuple(sorted(result.ruleset.flags))
+
+
+async def test_fingerprint_has_three_parts(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    async with app.state.sessionmaker() as session:
+        environment_id = (await load_environment(session)).id
+
+    async def parts() -> list[str]:
+        await entry(app, cache, max_age=0.0)
+        return cache._entries[environment_id].cached.fingerprint.split("|")
+
+    first = await parts()
+    assert len(first) == 3
+    assert all(re.fullmatch(r"[0-9a-f]{32}", p) for p in first)
+
+    r = await api.post(f"{PRODUCTION}/toggle", json={"enabled": False})
+    assert r.status_code == 200, r.text
+    toggled = await parts()
+    assert toggled[0] != first[0]
+    assert toggled[1:] == first[1:]
+
+    r = await api.put(f"{SEGMENTS}/beta", json={"included": ["u1"], "excluded": [], "rules": []})
+    assert r.status_code == 200, r.text
+    segment = await parts()
+    assert segment[:2] == toggled[:2]
+    assert segment[2] != toggled[2]
+
+
+async def test_entry_has_sorted_keys(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+
+    result, _ = await entry(app, RulesetCache(), max_age=0.0)
+
+    assert result.ruleset.flags
+    assert result.sorted_keys == tuple(sorted(result.ruleset.flags))
 
 
 async def test_max_age_hit_is_zero_statements(app: FastAPI, api: httpx.AsyncClient) -> None:
@@ -451,6 +532,33 @@ async def test_stale_lookups_do_not_wait_for_the_check(
     assert checks == 1
 
 
+async def test_peek_needs_no_session(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    async with app.state.sessionmaker() as session:
+        environment = EnvRef.of(await load_environment(session))
+    clock = FakeClock()
+    cache = RulesetCache(clock=clock)
+
+    assert cache.peek(environment, 1.0) is None
+    first, _ = await entry(app, cache)
+    assert cache.peek(environment, 1.0) is first
+    cache.invalidate(environment.project_id)
+    assert cache.peek(environment, 1.0) is None
+
+    cache = RulesetCache(app.state.sessionmaker, clock=clock)
+    first, _ = await entry(app, cache)
+    clock.now += 1.5
+    with count_statements(app.state.engine) as statements:
+        stale = cache.peek(environment, 1.0)
+        again = cache.peek(environment, 1.0)
+    assert stale is first
+    assert again is first
+    assert statements == []
+    assert len(cache._refreshes) == 1
+    await settle(cache)
+    assert cache.peek(environment, 1.0) is first
+
+
 async def test_background_check_picks_up_a_write(app: FastAPI, api: httpx.AsyncClient) -> None:
     await setup_demo(api)
     clock = FakeClock()
@@ -560,10 +668,10 @@ async def test_locks_are_released(
         await entry(app, cache, max_age=0.0, env=env)
         await entry(app, cache, max_age=1.0, env=env)
 
-    async def failing(session: AsyncSession, environment: EnvRef) -> dict[str, Any]:
+    async def failing(session: AsyncSession, environment: EnvRef) -> RulesetParts:
         raise LookupError("environment deleted")
 
-    monkeypatch.setattr(ruleset_cache, "build_ruleset", failing)
+    monkeypatch.setattr(ruleset_cache, "build_parts", failing)
     async with app.state.sessionmaker() as session:
         environment = EnvRef.of(await load_environment(session))
         gone = EnvRef(id=uuid.uuid4(), project_id=environment.project_id, key="gone")
@@ -572,3 +680,224 @@ async def test_locks_are_released(
                 await cache.get_entry(session, gone, max_age=max_age)
 
     assert cache._locks == {}
+
+
+async def assert_same_as_full(
+    app: FastAPI, cache: RulesetCache, env: str = "production"
+) -> CachedRuleset:
+    """The persistent cache's entry after a check equals a fresh full build."""
+    async with app.state.sessionmaker() as session:
+        environment = await load_environment(session, env)
+        got = await cache.get_entry(session, environment, max_age=0)
+        full = await RulesetCache().get_entry(session, environment, max_age=0)
+    assert got.body == full.body
+    assert got.etag == full.etag
+    assert got.sorted_keys == full.sorted_keys
+    assert got.ruleset == full.ruleset  # compiled patterns compare by pattern and flags
+    return got
+
+
+class BuildSpy:
+    """Records the full and the per-flag builds of ruleset_cache."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.flags: list[set[uuid.UUID]] = []
+        self.parts = 0
+        build_flags = ruleset_cache.build_flags
+        build_parts = ruleset_cache.build_parts
+
+        async def flags(
+            session: AsyncSession, environment: EnvRef, flag_ids: Any = None
+        ) -> FlagParts:
+            self.flags.append(set(flag_ids))
+            return await build_flags(session, environment, flag_ids)
+
+        async def parts(session: AsyncSession, environment: EnvRef) -> RulesetParts:
+            self.parts += 1
+            return await build_parts(session, environment)
+
+        monkeypatch.setattr(ruleset_cache, "build_flags", flags)
+        monkeypatch.setattr(ruleset_cache, "build_parts", parts)
+
+
+async def flag_id(app: FastAPI, key: str) -> uuid.UUID:
+    async with app.state.sessionmaker() as session:
+        found = await session.scalar(
+            select(Flag.id)
+            .join(Project, Project.id == Flag.project_id)
+            .where(Project.key == "demo", Flag.key == key)
+        )
+    assert found is not None
+    return found
+
+
+WRITE_BY_NAME = {w[0]: w[1] for w in WRITES}
+
+
+@pytest.mark.parametrize("write", [w[1] for w in WRITES], ids=[w[0] for w in WRITES])
+async def test_write_matches_full_build(app: FastAPI, api: httpx.AsyncClient, write: Write) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    await assert_same_as_full(app, cache)
+
+    r = await write(api)
+
+    assert r.status_code in (200, 201, 204), r.text
+    await assert_same_as_full(app, cache)
+
+
+@pytest.mark.parametrize("name", ["config_put", "toggle", "kill", "copy"])
+async def test_incremental_for_version_writes(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    first, _ = await entry(app, cache, max_age=0.0)
+    spy = BuildSpy(monkeypatch)
+
+    r = await WRITE_BY_NAME[name](api)
+    assert r.status_code == 200, r.text
+    got, _ = await entry(app, cache, max_age=0.0)
+
+    assert spy.flags == [{await flag_id(app, "color")}]
+    assert spy.parts == 0
+    assert got is not first
+    assert await assert_same_as_full(app, cache) is got
+
+
+@pytest.mark.parametrize("name", ["flag_create", "archive", "variation_patch", "segment_put"])
+async def test_full_build_for_structural_writes(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    await entry(app, cache, max_age=0.0)
+    spy = BuildSpy(monkeypatch)
+
+    r = await WRITE_BY_NAME[name](api)
+    assert r.status_code in (200, 201), r.text
+    await entry(app, cache, max_age=0.0)
+
+    assert spy.parts == 1
+    assert spy.flags == []
+
+
+async def test_toggled_twice_between_checks(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    first = await assert_same_as_full(app, cache)
+
+    for enabled in (False, True):
+        r = await api.post(f"{PRODUCTION}/toggle", json={"enabled": enabled})
+        assert r.status_code == 200, r.text
+
+    got = await assert_same_as_full(app, cache)
+    assert got.ruleset.flags["color"].enabled is True
+    assert got.fingerprint != first.fingerprint
+
+
+async def test_toggled_then_archived(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    await assert_same_as_full(app, cache)
+
+    r = await api.post(f"{PRODUCTION}/toggle", json={"enabled": False})
+    assert r.status_code == 200, r.text
+    r = await api.post(f"{COLOR}/archive")
+    assert r.status_code == 200, r.text
+
+    got = await assert_same_as_full(app, cache)
+    assert "color" not in got.ruleset.flags
+
+
+async def random_write(api: httpx.AsyncClient, rng: random.Random, i: int) -> httpx.Response:
+    if rng.randrange(8) == 0:
+        if rng.random() < 0.5:
+            return await api.put(
+                f"{SEGMENTS}/beta", json={"included": [f"u{i}"], "excluded": [], "rules": []}
+            )
+        return await api.patch(f"{FLAGS}/umlaut/variations/de", json={"value": f"grün-{i}"})
+    production = f"{FLAGS}/{rng.choice(ORDER_KEYS)}/environments/production"
+    kind = rng.choice(("toggle", "kill", "config", "target"))
+    if kind == "toggle":
+        return await api.post(f"{production}/toggle", json={"enabled": rng.random() < 0.5})
+    if kind == "kill":
+        return await api.post(f"{production}/kill")
+    version = (await api.get(production)).json()["version"]
+    config: dict[str, Any] = {
+        "version": version,
+        "enabled": True,
+        "fallthrough": {"variation": rng.choice(("true", "false"))},
+    }
+    if kind == "config":
+        config["rules"] = [
+            {
+                "description": "größer",
+                "clauses": [{"attribute": "app", "operator": "semver_gt", "values": ["1.0.0"]}],
+                "variation": rng.choice(("true", "false")),
+            }
+        ]
+    else:
+        config["targets"] = [{"variation": "true", "values": [f"u{i}"]}]
+    return await api.put(production, json=config)
+
+
+async def test_random_writes_match_full_build(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup_fragments(api)
+    cache = RulesetCache()
+    await assert_same_as_full(app, cache)
+    spy = BuildSpy(monkeypatch)
+    rng = random.Random(459)
+
+    for i in range(40):
+        r = await random_write(api, rng, i)
+        assert r.status_code == 200, r.text
+        if rng.random() < 0.5:  # several writes pile up between checks
+            await assert_same_as_full(app, cache)
+    await assert_same_as_full(app, cache)
+
+    assert spy.flags  # the incremental path ran
+    assert any(len(ids) > 1 for ids in spy.flags)
+
+
+async def test_incremental_failure_falls_back(
+    app: FastAPI,
+    api: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    await setup_demo(api)
+    cache = RulesetCache()
+    await entry(app, cache, max_age=0.0)
+
+    async def failing(session: AsyncSession, environment: EnvRef, flag_ids: Any = None) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(ruleset_cache, "build_flags", failing)
+    r = await api.post(f"{PRODUCTION}/toggle", json={"enabled": False})
+    assert r.status_code == 200, r.text
+
+    got = await assert_same_as_full(app, cache)
+
+    assert got.ruleset.flags["color"].enabled is False
+    assert any("incremental ruleset rebuild failed" in r.getMessage() for r in caplog.records)
+
+
+async def test_many_changed_flags_take_the_full_build(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup_fragments(api)
+    cache = RulesetCache()
+    await entry(app, cache, max_age=0.0)
+    monkeypatch.setattr(ruleset_cache, "INCREMENTAL_MAX_FLAGS", 1)
+    spy = BuildSpy(monkeypatch)
+
+    for key in ("a-b", "b"):
+        r = await api.post(f"{FLAGS}/{key}/environments/production/toggle", json={"enabled": True})
+        assert r.status_code == 200, r.text
+    await assert_same_as_full(app, cache)
+
+    assert spy.flags == []
+    assert spy.parts == 2  # the persistent cache, then the fresh one

@@ -4,12 +4,12 @@ with a server or client key. Client keys get no selection metadata, so rules are
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, Request, Response
-from fastapi.responses import JSONResponse
 
 from megooflags_api.errors import SDK_ERROR_RESPONSES
 from megooflags_api.etags import canonical_json, derived_etag, etag_matches
 from megooflags_api.evaluation import ErrorCode, Resolution, evaluate, evaluate_all
 from megooflags_api.models.enums import SdkKeyKind
+from megooflags_api.responses import FastJSONResponse
 from megooflags_api.schemas.ofrep import OfrepBulk, OfrepError, OfrepRequest, OfrepSuccess
 from megooflags_api.sdk_auth import OfrepKeyDep
 from megooflags_api.services.delivery import get_delivery
@@ -40,22 +40,18 @@ def _count(request: Request, principal: SdkPrincipal, results: dict[str, Resolut
     )
 
 
-def _item(key: str, r: Resolution, principal: SdkPrincipal) -> OfrepSuccess | OfrepError:
+def _item(key: str, r: Resolution, server: bool) -> dict[str, Any]:
+    """One OFREP result; a null `variant` or `errorDetails` is omitted, a null `value` stays."""
     if r.error_code is not None:
-        return OfrepError(key=key, errorCode=r.error_code, errorDetails=r.error_message)
-    metadata = r.metadata if principal.kind == SdkKeyKind.SERVER else {}
-    return OfrepSuccess(
-        key=key, value=r.value, reason=r.reason, variant=r.variant, metadata=metadata
-    )
-
-
-def _dump(item: OfrepSuccess | OfrepError) -> dict[str, Any]:
-    """Omit a null `variant` or `errorDetails`; a null `value` stays, as it is required."""
-    data = item.model_dump(mode="json")
-    for field in ("variant", "errorDetails"):
-        if data.get(field, "") is None:
-            del data[field]
-    return data
+        error: dict[str, Any] = {"key": key, "errorCode": r.error_code}
+        if r.error_message is not None:
+            error["errorDetails"] = r.error_message
+        return error
+    item: dict[str, Any] = {"key": key, "value": r.value, "reason": r.reason}
+    if r.variant is not None:
+        item["variant"] = r.variant
+    item["metadata"] = r.metadata if server else {}
+    return item
 
 
 @router.post(
@@ -73,12 +69,12 @@ async def evaluate_flag(
     entry = await _entry(request, principal)
     resolution = evaluate(entry.ruleset, key, ofrep_context(body.context), None)
     _count(request, principal, {key: resolution})
-    item = _item(key, resolution, principal)
-    if isinstance(item, OfrepError):
-        status = 404 if item.errorCode == ErrorCode.FLAG_NOT_FOUND else 400
-    else:
+    item = _item(key, resolution, principal.kind == SdkKeyKind.SERVER)
+    if resolution.error_code is None:
         status = 200
-    return JSONResponse(_dump(item), status_code=status)
+    else:
+        status = 404 if resolution.error_code == ErrorCode.FLAG_NOT_FOUND else 400
+    return FastJSONResponse(item, status_code=status)
 
 
 @router.post(
@@ -95,7 +91,8 @@ async def evaluate_flags(
     etag = derived_etag(entry.etag, principal.kind, canonical_json(ctx))
     if etag_matches(if_none_match, etag):
         return Response(status_code=304, headers={"ETag": etag})
-    results = evaluate_all(entry.ruleset, ctx)
+    results = evaluate_all(entry.ruleset, ctx, sorted_keys=entry.sorted_keys)
     _count(request, principal, results)
-    flags = [_dump(_item(k, r, principal)) for k, r in results.items()]
-    return JSONResponse({"flags": flags}, headers={"ETag": etag})
+    server = principal.kind == SdkKeyKind.SERVER
+    flags = [_item(k, r, server) for k, r in results.items()]
+    return FastJSONResponse({"flags": flags}, headers={"ETag": etag})

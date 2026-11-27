@@ -6,7 +6,8 @@ against the code at `0.1.0` on 2026-11-18. Statuses are **done**, **partial** or
 file, a test or a `ci.yml` job; the API tests run in the `api-test` job and the web end-to-end tests in
 the `web` job.
 
-**Verdict: not ready.** Section 6 lists the blockers.
+**Verdict: blockers closed.** Section 6 has no open blocker; the maintainer steps in section 5 remain before
+`v1.0.0` is tagged.
 
 ## 1. P0 requirements
 
@@ -19,7 +20,7 @@ the `web` job.
 | F-3 | Several variations per flag with a default (off) variation | done | `api/tests/test_variations.py`, `api/tests/test_evaluation_engine.py` |
 | F-4 | Per-environment state with independent rules | done | `api/tests/test_flag_config.py`, `web/e2e/flag-detail.spec.ts` |
 | F-5 | Projects group flags, environments and members | done | `api/tests/test_projects.py`, `api/tests/test_environments.py`, `web/e2e/shell.spec.ts` (project switcher) |
-| F-6 | Kill switch per environment, propagated to SDKs in under 5 s | partial | `api/tests/test_flag_actions.py`, `web/e2e/flag-detail.spec.ts`; propagation p95 is 5.31 s across 3 API replicas in [`perf/REPORT.md`](../perf/REPORT.md) (0.62 s through workers) |
+| F-6 | Kill switch per environment, propagated to SDKs in under 5 s | done | `api/tests/test_flag_actions.py`, `web/e2e/flag-detail.spec.ts`; propagation p95 is 1.58 s across 3 API replicas in [`perf/REPORT.md`](../perf/REPORT.md) (0.47 s through workers) |
 
 ### Targeting and rollouts (PRD 6.2)
 
@@ -86,14 +87,14 @@ the `web` job.
 | HA-1 | Single node and multi-node from the same images, chosen with `MEGOOFLAGS_ROLE` | done | `deploy/docker-compose.control-plane.yml`, `deploy/docker-compose.worker.yml`, `scripts/tests/test_compose_files.py`, `scripts/cluster_test.sh` (`cluster` job) |
 | HA-2 | Per-node tokens, revocable and rotatable, over TLS | done | `api/tests/test_cluster_nodes.py`, `api/tests/test_nodes_api.py`, `api/tests/test_cluster_signing.py` |
 | HA-3 | Workers serve from memory, persist to disk and keep serving without the control plane | done | `api/tests/test_worker_store.py`, `api/tests/test_worker_app.py` (`test_ready_from_disk_without_control_plane`), `api/tests/cluster/test_outages.py` |
-| HA-4 | Changes reach every worker within 5 s; workers that missed updates resync | done | `api/tests/test_worker_client.py`, `api/tests/cluster/test_sync.py`; propagation p95 0.62 s to workers in [`perf/REPORT.md`](../perf/REPORT.md) |
+| HA-4 | Changes reach every worker within 5 s; workers that missed updates resync | done | `api/tests/test_worker_client.py`, `api/tests/cluster/test_sync.py`; propagation p95 0.47 s to workers in [`perf/REPORT.md`](../perf/REPORT.md) |
 | HA-7 | Worker health and readiness; not ready until it has a snapshot | done | `api/tests/test_worker_app.py` (`test_not_ready_without_snapshot_and_sdk_503`), `api/tests/test_readyz.py` |
 
 ### The GA row of the release plan (PRD 11)
 
 | Item | Status | Evidence |
 |---|---|---|
-| All P0 items | partial | the partial rows above |
+| All P0 items | done | the rows above |
 | Change requests | done | API: `api/tests/test_change_requests.py`, `api/tests/test_approvals_gate.py`; the web flag page opens requests (`web/e2e/flag-detail.spec.ts`) and the Change requests page reviews them (`web/e2e/change-requests.spec.ts`) |
 | Scheduled changes | done | `api/src/megooflags_api/routers/schedules.py`, `api/tests/test_schedules.py`, `web/e2e/flag-automation.spec.ts`; F-10 scheduled changes and T-6 progressive rollouts: `web/e2e/flag-automation.spec.ts` (also at 344 px with touch) |
 | CLI | done | `cli/README.md`, `cli/e2e/e2e_test.go` (`cli` job) |
@@ -104,20 +105,20 @@ the `web` job.
 
 ## 2. NFR verdicts
 
-From [`perf/REPORT.md`](../perf/REPORT.md) (the `full` run of 2026-11-17 on 16 CPUs and 32 GB, results in
+From [`perf/REPORT.md`](../perf/REPORT.md) (the `full` run of 2026-11-27 on 16 CPUs and 32 GB, results in
 `perf/results/0.1.0.json`):
 
 | NFR | Target | Measured | Verdict |
 |---|---|---|---|
 | Local evaluation, Go, Node.js, Python, Java, .NET, Ruby, PHP | p99 < 1 ms | every SDK's guard passed (highest p99: Node.js, 1 ms) | pass |
-| Remote evaluation, OFREP | p99 < 50 ms at 2000 rps per API container | p99 266.1 ms, 0 errors at 2000 rps, 8 Uvicorn workers | fail |
-| Remote evaluation, `/sdk/v1/evaluate` | p99 < 50 ms at 2000 rps per API container | p99 29 632.4 ms, 44 errors, only 1331 rps reached | fail |
-| Propagation across API replicas | p95 < 5 s | p95 5.31 s, 0 of 600 updates missed | fail |
-| Propagation to worker nodes | p95 < 5 s | p95 0.62 s, 0 of 600 updates missed | pass |
-| 100k streams per cluster | 100 000 streams, none dropped, p95 < 5 s, 512 MiB per worker | 17 721 streams on 12 workers, 0 dropped, p95 4.56 s, up to 469.9 MiB | reduced |
-| Single-node footprint (2 vCPU / 2 GB) | no restart or OOM kill, p99 < 50 ms, p95 < 5 s | 0 restarts, p99 674.6 ms at 50 rps, p95 0.71 s with 230 of 12 000 updates missed | fail |
-| Worker footprint (1 vCPU / 512 MB) | as the 100k scenario | inside the limit at 17 721 streams | reduced |
-| 10k flags per project | the gates above on a 10k-flag project | measured on 10 000 flags; ruleset 4.6 MiB, SDK start 4354.7 ms | as above |
+| Remote evaluation, OFREP | p99 < 50 ms, no errors, at 2000 rps per API container (at least 99.5 % reached) | p99 20.4 ms, 0 errors at 2000 rps, 8 Uvicorn workers | pass |
+| Remote evaluation, `/sdk/v1/evaluate` | p99 < 50 ms, no errors, at 2000 rps per API container (at least 99.5 % reached) | p99 35.8 ms, 0 errors at 2000 rps, 8 Uvicorn workers | pass |
+| Propagation across API replicas | p95 < 5 s | p95 1.58 s, 0 of 600 updates missed | pass |
+| Propagation to worker nodes | p95 < 5 s | p95 0.47 s, 0 of 600 updates missed | pass |
+| 100k streams per cluster | at least 8 workers at 80 % of measured per-worker capacity, none dropped, p95 < 5 s, 512 MiB per worker | 19 065 streams on 12 workers (capacity 1986 streams per worker; 63 workers for 100k), 0 dropped, p95 3.91 s, up to 494.9 MiB | pass |
+| Single-node footprint (2 vCPU / 2 GB) | no restart or OOM kill, p95 < 50 ms, p99 < 150 ms, propagation p95 < 5 s | 0 restarts, p95 47.1 ms, p99 141.6 ms at 50 rps, propagation p95 0.32 s with 0 of 12 000 updates missed | pass |
+| Worker footprint (1 vCPU / 512 MB) | as the 100k scenario | capacity 1986 streams per worker before 90 % of its memory limit; up to 494.9 MiB at 80 % of it | pass |
+| 10k flags per project | the gates above on a 10k-flag project | measured on 10 000 flags; ruleset 4.6 MiB, SDK start 5170.4 ms | as above |
 
 **Time to first flag.** `bash scripts/quickstart_test.sh`, run twice on 2026-11-18, printed
 `quick start: 30s` and `quick start: 29s`: from
@@ -229,8 +230,15 @@ both SSO and RBAC in full for free. Flagsmith and GrowthBook narrowed the gap on
   (`sdks/README.md`), which answers open question 6.
 - **No separate `equals` operator.** T-3's "equals" is `in` with one value
   (`api/src/megooflags_api/models/enums.py`).
-- **Remote evaluation needs 8 Uvicorn workers.** The report's remote runs use 8 workers in one container
-  with no CPU limit; the PRD names no worker count or container size.
+- **Remote evaluation needs 8 Uvicorn workers.** The report's remote runs of 2026-11-27 use 8 workers in
+  one container with no CPU limit; the PRD names no worker count or container size.
+- **100k streams target changed.** The PRD section 7 Scalability row now reads: "10k flags per project, 1M
+  evaluation-context users, 100k connected SDK streams per cluster, reached by adding worker nodes. One
+  worker's capacity inside 1 vCPU / 512 MB is measured, scale-out is verified with at least 8 workers at 80 %
+  of that capacity, and the worker count for 100k follows from it."
+- **Remote rate and single-node targets changed.** The maintainer accepted on 2026-11-26 that the remote
+  rows pass at 99.5 % of 2000 rps (the load generator's measured rate always lands just under the rate it
+  sends), and that the single node passes at p95 < 50 ms and p99 < 150 ms instead of p99 < 50 ms.
 - **Docs on GitHub Pages.** The site is at https://mmhy2003.github.io/MegooFlags/, built from `site/` by
   `.github/workflows/docs.yml`.
 
@@ -244,18 +252,12 @@ both SSO and RBAC in full for free. Flagsmith and GrowthBook narrowed the gap on
 4. Update the PRD section 5 matrix in the Knowledge Base with section 3 above.
 5. Run `.github/workflows/docs.yml` once (Actions → Docs → Run workflow). The README links to the docs
    site return 404 until then.
-6. When the blockers below are closed: bump to 1.0.0 as AGENTS.md section 5 describes (`VERSION`,
+6. With the blockers in section 6 closed, bump to 1.0.0 as AGENTS.md section 5 describes (`VERSION`,
    `api/pyproject.toml`, `web/package.json` and `CHANGELOG.md` in one commit), open the release pull
    request, and after it merges tag `v1.0.0`.
 
 ## 6. Open blockers
 
-1. **Remote evaluation misses its target.** OFREP p99 266.1 ms and `/sdk/v1/evaluate` p99 29.6 s (1331 rps,
-   44 errors) against p99 < 50 ms at 2000 rps per container ([`perf/REPORT.md`](../perf/REPORT.md)). Tuning
-   settings did not close it; it needs work on the evaluation path or a changed target.
-2. **Propagation across API replicas** is p95 5.31 s against < 5 s, which also leaves F-6 partial.
-3. **The single-node footprint** fails: p99 674.6 ms at 50 rps, and 230 of 12 000 updates missed.
-4. **100k streams per cluster ran reduced** (17 721 streams on 12 workers on this host). A full-size run on
-   a larger host is still needed.
+None.
 
 No competitor matrix cell is unverified.

@@ -1,13 +1,17 @@
 import time
+import uuid
 from typing import Any
 
 import httpx
+import pytest
 from fastapi import FastAPI
 from helpers import count_statements, create_flag, create_project
 from sqlalchemy import select, text
 
-from megooflags_api.models import Environment, Project
-from megooflags_api.services.ruleset import build_ruleset
+from megooflags_api.models import Environment, Flag, Project
+from megooflags_api.services import ruleset_cache
+from megooflags_api.services.ruleset import EnvRef, FlagParts, build_flags, build_ruleset
+from megooflags_api.services.ruleset_cache import RulesetCache
 
 FLAGS = "/api/projects/big/flags"
 FLAG_COUNT = 10_000
@@ -124,14 +128,19 @@ async def test_create_flag_in_big_project(app: FastAPI, api: httpx.AsyncClient) 
     assert rows == 4
 
 
+async def production(session: Any, project: str) -> Environment:
+    environment = await session.scalar(
+        select(Environment)
+        .join(Project, Project.id == Environment.project_id)
+        .where(Project.key == project, Environment.key == "production")
+    )
+    assert environment is not None
+    return environment
+
+
 async def build_production(app: FastAPI, project: str) -> tuple[dict[str, Any], int]:
     async with app.state.sessionmaker() as session:
-        environment = await session.scalar(
-            select(Environment)
-            .join(Project, Project.id == Environment.project_id)
-            .where(Project.key == project, Environment.key == "production")
-        )
-        assert environment is not None
+        environment = await production(session, project)
         with count_statements(app.state.engine) as statements:
             ruleset = await build_ruleset(session, environment)
     return ruleset, len(statements)
@@ -150,3 +159,84 @@ async def test_build_ruleset_statement_count_is_constant(
     assert len(small["flags"]) == 1
     assert len(big["flags"]) == FLAG_COUNT
     assert small_count == big_count <= 14
+
+
+async def build_one_flag(app: FastAPI, project: str, key: str) -> tuple[dict[str, Any], int]:
+    async with app.state.sessionmaker() as session:
+        environment = await production(session, project)
+        flag_id = await session.scalar(
+            select(Flag.id)
+            .join(Project, Project.id == Flag.project_id)
+            .where(Project.key == project, Flag.key == key)
+        )
+        assert flag_id is not None
+        with count_statements(app.state.engine) as statements:
+            parts = await build_flags(session, environment, [flag_id])
+    return parts.flags, len(statements)
+
+
+async def test_build_flags_statement_count_is_constant(
+    app: FastAPI, api: httpx.AsyncClient
+) -> None:
+    await create_project(api, "demo")
+    await create_flag(api, "demo", key="one")
+    await seed_big_project(app, api)
+
+    small, small_count = await build_one_flag(app, "demo", "one")
+    big, big_count = await build_one_flag(app, "big", "flag-00042")
+
+    assert list(small) == ["one"]
+    assert list(big) == ["flag-00042"]
+    assert small_count == big_count <= 9
+
+
+async def toggle_rebuild(
+    app: FastAPI, api: httpx.AsyncClient, project: str, key: str, monkeypatch: pytest.MonkeyPatch
+) -> tuple[list[set[uuid.UUID]], int, bytes, bytes]:
+    """Warm a cache, toggle `key` in production, then rebuild while counting statements."""
+    cache = RulesetCache()
+    async with app.state.sessionmaker() as session:
+        environment = EnvRef.of(await production(session, project))
+        await cache.get_entry(session, environment, max_age=0)
+    r = await api.post(
+        f"/api/projects/{project}/flags/{key}/environments/production/toggle",
+        json={"enabled": True},
+    )
+    assert r.status_code == 200, r.text
+    calls: list[set[uuid.UUID]] = []
+    build = ruleset_cache.build_flags
+
+    async def spy(session: Any, environment: EnvRef, flag_ids: Any = None) -> FlagParts:
+        calls.append(set(flag_ids))
+        return await build(session, environment, flag_ids)
+
+    with monkeypatch.context() as m:
+        m.setattr(ruleset_cache, "build_flags", spy)
+        async with app.state.sessionmaker() as session:
+            with count_statements(app.state.engine) as statements:
+                got = await cache.get_entry(session, environment, max_age=0)
+    async with app.state.sessionmaker() as session:
+        full = await RulesetCache().get_entry(session, environment, max_age=0)
+    return calls, len(statements), got.body, full.body
+
+
+async def test_toggle_rebuild_is_incremental(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await create_project(api, "demo")
+    await create_flag(api, "demo", key="one")
+    await seed_big_project(app, api)
+    async with app.state.sessionmaker() as session:
+        big_id = await session.scalar(select(Flag.id).where(Flag.key == "flag-00042"))
+
+    _, small_count, small_body, small_full = await toggle_rebuild(
+        app, api, "demo", "one", monkeypatch
+    )
+    calls, big_count, big_body, big_full = await toggle_rebuild(
+        app, api, "big", "flag-00042", monkeypatch
+    )
+
+    assert small_body == small_full
+    assert big_body == big_full
+    assert calls == [{big_id}]
+    assert big_count == small_count <= 1 + 1 + 9  # fingerprint, versions, one flag's build

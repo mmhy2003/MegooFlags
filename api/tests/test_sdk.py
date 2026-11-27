@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 from fastapi import FastAPI
 from helpers import assert_error, count_statements, create_flag, create_project, create_sdk_key
 from jsonschema import Draft202012Validator
@@ -144,6 +145,32 @@ async def test_evaluate_metadata_for_server_keys_only(api: httpx.AsyncClient) ->
     assert all("metadata" not in res for res in results.values())
 
 
+async def test_evaluate_exact_body(api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+    server = (await create_sdk_key(api, "server"))["key"]
+    client = (await create_sdk_key(api, "client"))["key"]
+    body = {"context": {"key": "u", "plan": "pro"}, "flags": ["color", "nope"]}
+    color = (
+        b'{"key":"color","value":"blue","variant":"blue","reason":"TARGETING_MATCH",'
+        b'"error_code":null,"error_message":null'
+    )
+    nope = (
+        b'{"key":"nope","value":null,"variant":null,"reason":"ERROR",'
+        b'"error_code":"FLAG_NOT_FOUND","error_message":"flag \'nope\' not found"'
+    )
+
+    r = await sdk_evaluate(api, server, **body)
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "application/json"
+    assert r.content == (
+        b'{"results":[' + color + b',"metadata":{"rule_index":0}},' + nope + b',"metadata":{}}]}'
+    )
+
+    r = await sdk_evaluate(api, client, **body)
+    assert r.status_code == 200, r.text
+    assert r.content == b'{"results":[' + color + b"}," + nope + b"}]}"
+
+
 async def test_evaluate_etag_per_context_and_kind(api: httpx.AsyncClient) -> None:
     await setup_demo(api)
     server = (await create_sdk_key(api, "server"))["key"]
@@ -170,6 +197,37 @@ async def test_warm_evaluate_issues_no_statements(app: FastAPI, api: httpx.Async
         r = await sdk_evaluate(api, key, context={"key": "u"})
 
     assert r.status_code == 200, r.text
+    assert statements == []
+
+
+class CountingSessionmaker:
+    """Wraps the app's sessionmaker and counts the sessions opened through it."""
+
+    def __init__(self, sessionmaker: Any) -> None:
+        self._sessionmaker = sessionmaker
+        self.sessions = 0
+
+    def __call__(self) -> Any:
+        self.sessions += 1
+        return self._sessionmaker()
+
+
+async def test_cached_evaluate_opens_no_session(
+    app: FastAPI, api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup_demo(api)
+    key = (await create_sdk_key(api, "server"))["key"]
+    first = await sdk_evaluate(api, key, context={"key": "u", "plan": "pro"})
+    assert first.status_code == 200, first.text
+    counting = CountingSessionmaker(app.state.sessionmaker)
+    monkeypatch.setattr(app.state, "sessionmaker", counting)
+
+    with count_statements(app.state.engine) as statements:
+        r = await sdk_evaluate(api, key, context={"key": "u", "plan": "pro"})
+
+    assert r.status_code == 200, r.text
+    assert r.json() == first.json()
+    assert counting.sessions == 0
     assert statements == []
 
 

@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -197,9 +198,11 @@ PASSING = {
         "streams_100k": _full(
             {
                 **PROP,
-                "streams_opened": 100000,
-                "workers": 4,
-                "capacity_per_worker": 40000,
+                "streams_opened": 25600,
+                "streams_planned": 25600,
+                "workers": 8,
+                "capacity_per_worker": 4000,
+                "workers_for_100k": 32,
                 "mem_max_mib": 430.5,
                 "restarts": 0,
                 "oom_killed": 0,
@@ -269,7 +272,9 @@ def test_render_sections_in_order() -> None:
         ("local_eval_java", {"passed": 0}, "Local evaluation, Java"),
         ("local_eval_php", {"errors": 1}, "Local evaluation, PHP"),
         ("propagation_replicas", {"prop_p95_ms": 6000.0}, "Propagation across API replicas"),
-        ("streams_100k", {"streams_opened": 99999}, "100k streams per cluster"),
+        ("streams_100k", {"streams_opened": 25599}, "100k streams per cluster"),
+        ("streams_100k", {"workers": 7}, "100k streams per cluster"),
+        ("streams_100k", {"workers_for_100k": None}, "100k streams per cluster"),
         ("streams_100k", {"prop_p95_ms": 5000.0}, "100k streams per cluster"),
         ("footprint_single", {"restarts": 1}, "Single-node footprint"),
         ("footprint_single", {"prop_p95_ms": 5000.0}, "Single-node footprint"),
@@ -277,13 +282,49 @@ def test_render_sections_in_order() -> None:
         # More than 5 % of the updates (flips x streams) missed: p95 over all of them is not < 5 s.
         ("propagation_replicas", {"missed": 31}, "Propagation across API replicas"),
         ("propagation_cluster", {"missed": 349}, "Propagation to worker nodes"),
-        ("streams_100k", {"missed": 100001}, "100k streams per cluster"),
+        ("streams_100k", {"missed": 25601}, "100k streams per cluster"),
     ],
 )
 def test_render_failing_gate(name: str, metrics: dict[str, Any], row: str) -> None:
     rows = _rows(render(_with(name, metrics=metrics)))
     assert rows[row] == "fail"
     assert [v for v in rows.values() if v != "pass"] == ["fail"]
+
+
+@pytest.mark.parametrize(
+    ("name", "metrics", "row", "verdict"),
+    [
+        # mfload's rate includes the tail of the last responses: a full 2000 rps run reads 1999.x.
+        ("remote_ofrep", {"rps": 1999.65}, "Remote evaluation, OFREP", "pass"),
+        ("remote_evaluate", {"rps": 1990.0}, "Remote evaluation, /sdk/v1/evaluate", "pass"),
+        ("remote_ofrep", {"rps": 1989.9}, "Remote evaluation, OFREP", "fail"),
+        # The maintainer's single-node target (MF-459): p99 < 150 ms and p95 < 50 ms.
+        ("footprint_single", {"p95_ms": 34.0, "p99_ms": 112.8}, "Single-node footprint", "pass"),
+        ("footprint_single", {"p99_ms": 150.0}, "Single-node footprint", "fail"),
+        ("footprint_single", {"p95_ms": 50.0}, "Single-node footprint", "fail"),
+    ],
+)
+def test_render_accepted_tolerances(
+    name: str, metrics: dict[str, Any], row: str, verdict: str
+) -> None:
+    assert _rows(render(_with(name, metrics=metrics)))[row] == verdict
+
+
+def test_render_footprint_row_shows_the_gated_p95() -> None:
+    report = render(_with("footprint_single", metrics={"p95_ms": 34.0, "p99_ms": 112.8}))
+    table = report.split("## NFR verdicts", 1)[1].split("\n## ", 1)[0]
+    row = next(line for line in table.splitlines() if line.startswith("| Single-node footprint"))
+    assert "p95 34 ms, p99 112.8 ms at 50 rps" in row
+
+
+def test_render_streams_row() -> None:
+    table = render(PASSING).split("## NFR verdicts", 1)[1].split("\n## ", 1)[0]
+    row = next(line for line in table.splitlines() if line.startswith("| 100k streams per cluster"))
+    measured = [c.strip() for c in row.strip("|").split("|")][2]
+    assert measured == (
+        "25600 streams on 8 workers (4000 per worker; 32 workers for 100k), 0 dropped, "
+        "propagation p95 0.9 s (0 of 512000 updates missed), worker memory up to 430.5 MiB"
+    )
 
 
 def test_render_few_missed_updates_pass() -> None:
@@ -374,20 +415,20 @@ def test_render_sizing_formula_matches_the_table() -> None:
 
 def test_perf_sh_evaluates_the_whole_10k_environment() -> None:
     script = (SCRIPTS / "perf.sh").read_text(encoding="utf-8").replace("\\\n", " ")
-    run = re.search(r"^load whole-env evaluate .*$", script, re.MULTILINE)
+    run = re.search(r"^\s*load whole-env evaluate .*$", script, re.MULTILINE)
     assert run is not None
     assert '--key "$key"' in run.group(0)
     assert "--mode evaluate" in run.group(0)
     assert "/out/whole_env_10k.json" in run.group(0)
-    assert re.search(r"^meta whole_env_10k ", script, re.MULTILINE)
+    assert re.search(r"^\s*meta whole_env_10k ", script, re.MULTILINE)
 
 
 def test_render_sizing_guidance_uses_the_measured_capacity() -> None:
     report = render(PASSING)
     sizing = report.split("## Sizing guidance", 1)[1]
-    assert "40000 streams" in sizing
-    # 100k streams at 80 % of a worker's capacity: ceil(100000 / 32000) workers.
-    assert "| 100000 | 4 |" in sizing
+    assert "4000 streams" in sizing
+    # 100k streams at 80 % of a worker's capacity: ceil(100000 / 3200) workers.
+    assert "| 100000 | 32 |" in sizing
     assert "4 Uvicorn workers" in sizing
 
 
@@ -397,3 +438,43 @@ def test_main_renders_the_report(tmp_path: Path) -> None:
     out = tmp_path / "perf" / "REPORT.md"
     assert main(["render", "--results", str(results), "--out", str(out)]) == 0
     assert out.read_text(encoding="utf-8") == render(PASSING)
+
+
+def test_perf_sh_plans_at_least_8_workers() -> None:
+    script = (SCRIPTS / "perf.sh").read_text(encoding="utf-8")
+    assert "streams_planned=" in script
+    assert "workers_for_100k=" in script
+    assert re.search(r'if \[ "\$big_workers" -ge 8 \]; then\s+big_status=full', script)
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+def test_perf_sh_rejects_an_unknown_only_section() -> None:
+    done = subprocess.run(
+        ["bash", str(SCRIPTS / "perf.sh"), "full"],
+        env={**os.environ, "MF_PERF_ONLY": "bogus"},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert done.returncode == 2
+    assert "unknown section 'bogus'" in done.stderr
+
+
+def test_perf_sh_only_writes_scratch_results() -> None:
+    script = (SCRIPTS / "perf.sh").read_text(encoding="utf-8")
+    assert "perf/results/only.json" in script
+    ignored = (SCRIPTS.parent / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "perf/results/only.json" in ignored
+
+
+def test_profile_override_shares_the_api_pid_namespace() -> None:
+    text = (SCRIPTS / "perf" / "profile.override.yml").read_text(encoding="utf-8")
+    try:
+        import yaml
+    except ImportError:
+        assert 'pid: "service:api"' in text
+        assert "SYS_PTRACE" in text
+        return
+    pyspy = yaml.safe_load(text)["services"]["pyspy"]
+    assert pyspy["pid"] == "service:api"
+    assert "SYS_PTRACE" in pyspy["cap_add"]
