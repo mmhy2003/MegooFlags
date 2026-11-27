@@ -6,8 +6,7 @@ against the code at `0.1.0` on 2026-11-18. Statuses are **done**, **partial** or
 file, a test or a `ci.yml` job; the API tests run in the `api-test` job and the web end-to-end tests in
 the `web` job.
 
-**Verdict: blockers closed.** Section 6 has no open blocker; the maintainer steps in section 5 remain before
-`v1.0.0` is tagged.
+**Verdict: not ready.** Section 6 lists the blockers.
 
 ## 1. P0 requirements
 
@@ -120,8 +119,8 @@ From [`perf/REPORT.md`](../perf/REPORT.md) (the `full` run of 2026-11-27 on 16 C
 | Worker footprint (1 vCPU / 512 MB) | as the 100k scenario | capacity 1986 streams per worker before 90 % of its memory limit; up to 494.9 MiB at 80 % of it | pass |
 | 10k flags per project | the gates above on a 10k-flag project | measured on 10 000 flags; ruleset 4.6 MiB, SDK start 5170.4 ms | as above |
 
-**Time to first flag.** `bash scripts/quickstart_test.sh`, run twice on 2026-11-18, printed
-`quick start: 30s` and `quick start: 29s`: from
+**Time to first flag.** `bash scripts/quickstart_test.sh`, run twice on 2026-11-27, printed
+`quick start: 31s` and `quick start: 31s`: from
 `docker compose up -d` to the first flag evaluated through OFREP, with the images already built locally
 (the `quickstart` job measures the same, and fails at five minutes). Downloading the release images and
 reading the page are not included.
@@ -258,6 +257,11 @@ both SSO and RBAC in full for free. Flagsmith and GrowthBook narrowed the gap on
 
 ## 6. Open blockers
 
-None.
+1. **The HTTPS smoke test exceeds its idle memory limit.** `bash scripts/smoke.sh https` measured 1031 MiB
+   and 1030 MiB against the 1024 MiB limit in `scripts/smoke.sh`; `bash scripts/smoke.sh http` passed with
+   998 MiB. The api container holds 909 MiB: one replica with the default worker count, which is 8 workers
+   on the 16-CPU build machine (`MAX_AUTO_WORKERS` in `api/src/megooflags_api/serve.py`). The api image from
+   before MF-459 measured 905 MiB (1018 MiB in total, a pass), so this is a thin margin on large hosts, not
+   a regression. It needs a fix to the check or to the default worker count, or an accepted difference.
 
 No competitor matrix cell is unverified.
