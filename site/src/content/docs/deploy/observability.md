@@ -10,7 +10,7 @@ public address.
 
 | Endpoint   | Answers                                                                                                                                                                                                                                                 |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/healthz` | Liveness. Always `200` with `{"status": "ok", "version": "0.1.0", "role": "standalone"}` while the process runs. It checks no dependency. The api image's Docker health check uses it.                                                                  |
+| `/healthz` | Liveness. Always `200` with `{"status": "ok", "version": "1.0.0", "role": "standalone"}` while the process runs. It checks no dependency. The api image's Docker health check uses it.                                                                  |
 | `/readyz`  | Readiness. `200 {"status": "ready"}`, or `503` with a reason. On a single node or control plane it checks PostgreSQL and Valkey (`not_ready` when either fails). On a worker it needs a valid snapshot: `not_ready`, `revoked` or `draining` otherwise. |
 
 Point load balancer health checks at `/readyz`, so an API process that cannot serve, or a worker

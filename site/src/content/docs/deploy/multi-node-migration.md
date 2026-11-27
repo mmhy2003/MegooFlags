@@ -17,12 +17,12 @@ that holds the node's `docker-compose.yml` and `.env`.
 Multi-node needs a release that ships `docker-compose.control-plane.yml`. Download it, the
 `Caddyfile` and `.env.example` of that release next to your `docker-compose.yml`, compare
 `.env.example` with your `.env`, then set `MEGOOFLAGS_VERSION` in `.env` to that release (for
-example `MEGOOFLAGS_VERSION=0.1.0`) and upgrade as usual:
+example `MEGOOFLAGS_VERSION=1.0.0`) and upgrade as usual:
 
 ```bash
 docker compose pull
 docker compose up -d
-curl -fsS https://flags.example.com/healthz    # {"status":"ok","version":"0.1.0","role":"standalone"}
+curl -fsS https://flags.example.com/healthz    # {"status":"ok","version":"1.0.0","role":"standalone"}
 ```
 
 Check that `.env` does not set `MEGOOFLAGS_ROLE`: each compose file brings its own default.
@@ -35,7 +35,7 @@ kept, and only the `api` container is recreated:
 
 ```bash
 docker compose -f docker-compose.control-plane.yml up -d
-curl -fsS https://flags.example.com/healthz    # {"status":"ok","version":"0.1.0","role":"control-plane"}
+curl -fsS https://flags.example.com/healthz    # {"status":"ok","version":"1.0.0","role":"control-plane"}
 ```
 
 While the API restarts (a few seconds), SDKs evaluate from their cache and then reconnect their
@@ -105,7 +105,7 @@ Rolling back is the same steps in reverse, also without downtime:
 
    ```bash
    docker compose up -d
-   curl -fsS https://flags.example.com/healthz    # {"status":"ok","version":"0.1.0","role":"standalone"}
+   curl -fsS https://flags.example.com/healthz    # {"status":"ok","version":"1.0.0","role":"standalone"}
    ```
 
 The node registry stays in the database and the Nodes page is hidden while the node is

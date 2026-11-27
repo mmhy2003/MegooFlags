@@ -27,7 +27,7 @@ docker compose up -d --wait
 Then open http://localhost/setup and create the admin.
 
 For production, edit `.env`: set a strong database password, set `MEGOOFLAGS_SITE_ADDRESS` to your domain
-for automatic HTTPS, and pin `MEGOOFLAGS_VERSION` to an exact release (for example `0.1.0`) so that
+for automatic HTTPS, and pin `MEGOOFLAGS_VERSION` to an exact release (for example `1.0.0`) so that
 upgrades only happen when you change it.
 
 Full quick start, from a new flag to an evaluation with curl and the SDKs:

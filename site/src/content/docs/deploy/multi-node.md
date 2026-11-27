@@ -72,9 +72,9 @@ On the control-plane host, download `docker-compose.control-plane.yml`, `Caddyfi
 ```bash
 cp .env.example .env
 # Edit .env: MEGOOFLAGS_SITE_ADDRESS=flags.example.com, MEGOOFLAGS_SECRET_KEY, POSTGRES_PASSWORD,
-# and pin MEGOOFLAGS_VERSION to an exact release, e.g. 0.1.0.
+# and pin MEGOOFLAGS_VERSION to an exact release, e.g. 1.0.0.
 docker compose -f docker-compose.control-plane.yml up -d
-curl -fsS https://flags.example.com/healthz    # {"status":"ok","version":"0.1.0","role":"control-plane"}
+curl -fsS https://flags.example.com/healthz    # {"status":"ok","version":"1.0.0","role":"control-plane"}
 ```
 
 Open `https://flags.example.com`, finish the first-run setup, and create your projects as usual.
@@ -232,10 +232,9 @@ More details:
 Workers and the control plane check each other's version when a worker connects. The rule compares
 `X.Y`:
 
-- Before 1.0, a worker's `0.Y` must equal the control plane's (`0.3.1` and `0.3.4` work together;
-  `0.3.x` and `0.4.x` do not).
-- From 1.0, the major versions must match, and the worker may run the same minor or one minor
-  older than the control plane, never newer.
+- The major versions must match, and the worker may run the same minor or one minor older than
+  the control plane, never newer (`1.2.x` and `1.3.x` work together; `1.1.x` and `1.3.x` do not,
+  nor do `1.x` and `2.x`).
 
 A refused worker shows as **Incompatible** on the Nodes page and logs a message with both versions.
 It keeps serving the snapshot it has, without new changes, and retries every 60 s.
@@ -263,9 +262,10 @@ Upgrade the **control plane first**, then **each worker in turn**:
    Wait until it is synced, then **Resume** it and move on to the next worker. A restarted worker
    is still draining until you resume it.
 
-Before 1.0, a minor upgrade (`0.3` to `0.4`) makes the old workers Incompatible from the moment the
-control plane is upgraded until they are upgraded. They keep serving, but flag changes do not reach
-them in between, so upgrade them right away. Patch upgrades (`0.3.1` to `0.3.4`) have no such gap.
+A major upgrade (`1.x` to `2.x`), or a jump of more than one minor, makes the old workers
+Incompatible from the moment the control plane is upgraded until they are upgraded. They keep
+serving, but flag changes do not reach them in between, so upgrade them right away. Patch upgrades
+and an upgrade by one minor (`1.2` to `1.3`) have no such gap.
 
 ## Metrics
 

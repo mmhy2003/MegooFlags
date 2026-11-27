@@ -1,7 +1,7 @@
 # Roadmap
 
-MegooFlags stays on `0.Y.Z` releases until `v1.0.0`, the GA release. This roadmap follows the release
-plan of the product requirements; the dates depend on the GA checklist, not on a calendar.
+MegooFlags reached GA with `v1.0.0`. This roadmap follows the release plan of the product
+requirements; later phases have no fixed dates.
 
 ## Done for GA (`v1.0.0`)
 

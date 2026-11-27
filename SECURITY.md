@@ -2,9 +2,8 @@
 
 ## Supported versions
 
-Security fixes go into the latest release. Before 1.0.0, only the latest `0.Y.Z` release is supported:
-upgrade to it to get a fix. The SDKs, the CLI and the Terraform provider follow the same rule, each for
-its own latest release.
+Security fixes go into the latest release: upgrade to it to get a fix. The SDKs, the CLI and the
+Terraform provider follow the same rule, each for its own latest release.
 
 ## Reporting a vulnerability
 
