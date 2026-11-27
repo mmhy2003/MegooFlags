@@ -17,6 +17,8 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - API logs are JSON lines on stdout, with one access-log line per request. Set `MEGOOFLAGS_LOG_LEVEL` to change the level.
 - The guides moved from `docs/` to the docs site at https://mmhy2003.github.io/MegooFlags/.
 - A new link for someone who never joined is an invitation again, not a password reset.
+- Remote evaluation is faster: at 2000 requests per second on one API container with 8 workers, OFREP answers with p99 20.4 ms and `/sdk/v1/evaluate` with p99 35.8 ms, both without errors (before: 266.1 ms, and 29.6 s with errors at only 1331 requests per second).
+- Flag changes reach SDKs across API replicas faster: p95 1.58 s over three replicas (before: 5.31 s).
 
 ### Added
 - docker-compose.control-plane.yml for the control plane of a multi-node deployment.
@@ -70,7 +72,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - `POST /api/projects/{project}/environments/{env}/evaluate` evaluates flags for a context with the new reference evaluation engine. The evaluation spec, ruleset format and SDK conformance suite are published in `spec/`. Regular expressions in `matches` clauses must now use the portable RE2/Python subset: lookaround, backreferences, atomic groups, possessive quantifiers and conditionals are refused.
 - SDK keys: per-environment server and client keys, created, listed and revoked under `/api/projects/{project}/environments/{env}/sdk-keys`. The secret is shown only once.
 - SDK delivery API under `/sdk/v1`: ruleset download for server keys with `ETag` and `If-None-Match`, remote evaluation that gives client keys values only (client keys are rate-limited), server-sent events streaming with a heartbeat and a polling fallback, and flag changes, the kill switch included, reaching every API replica within seconds.
-- **Known gap:** remote evaluation does not yet meet its p99 target of 50 ms at 2k requests per second per container. A local run with 8 workers and the load generator on the same host measured p50 11 ms and p99 266–505 ms, whether the project had 10 or 10,000 flags. The remaining tail will be profiled in a follow-up task.
+- Remote evaluation meets its target of p99 under 50 ms at 2000 requests per second per container: OFREP p99 20.4 ms and `/sdk/v1/evaluate` p99 35.8 ms with 8 workers; see https://mmhy2003.github.io/MegooFlags/deploy/performance/.
 - OpenFeature Remote Evaluation Protocol (OFREP) under `/ofrep/v1`, with server or client keys.
 - Exposure events and evaluation counts through `POST /sdk/v1/events`. The evaluation context is stored only with `MEGOOFLAGS_PERSIST_CONTEXT=true`, and exposures are deleted after `MEGOOFLAGS_EXPOSURE_RETENTION_DAYS` (default 30).
 - Settings `MEGOOFLAGS_VALKEY_URL`, `MEGOOFLAGS_PERSIST_CONTEXT`, `MEGOOFLAGS_EXPOSURE_RETENTION_DAYS`, `MEGOOFLAGS_CLIENT_RATE_LIMIT_PER_MINUTE`, `MEGOOFLAGS_SSE_HEARTBEAT_SECONDS`, `MEGOOFLAGS_STREAM_RECHECK_SECONDS` and `MEGOOFLAGS_API_WORKERS`, documented in `deploy/.env.example`.
