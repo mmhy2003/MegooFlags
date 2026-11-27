@@ -6,7 +6,7 @@ mounted, and the OpenFeature React hooks (re-exported from `@openfeature/react-s
 its children. Values are evaluated by the server for the context you pass, with a client key, so no
 targeting rule ever reaches the browser.
 
-Status: 0.1.0, Alpha: the API may still change. Works with React 18 and 19.
+Status: 0.1.0, Beta: the API may still change before 1.0.0. Works with React 18 and 19.
 
 ## Install
 

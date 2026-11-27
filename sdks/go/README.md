@@ -6,7 +6,7 @@ and p99 is under 1 ms on a 10 000-flag ruleset. It follows changes over SSE with
 keeps serving when the server is unreachable, and sends evaluation counts and exposures in the
 background.
 
-Status: 0.1.0, Alpha.
+Status: 0.1.0, Beta.
 
 ## Install
 

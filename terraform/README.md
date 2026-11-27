@@ -3,6 +3,8 @@
 Manage [MegooFlags](https://github.com/mmhy2003/MegooFlags) projects, environments, flags, targeting,
 segments and SDK keys with Terraform. The provider uses the management REST API and an API token.
 
+Status: 0.1.0, Beta: the features are complete and tested, and resources and attributes may still change before 1.0.0. The provider is versioned apart from the server.
+
 ## Install
 
 The provider is not in the Terraform Registry. Each release, tagged `terraform/vX.Y.Z`, is on the

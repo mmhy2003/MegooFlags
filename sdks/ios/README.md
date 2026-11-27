@@ -6,7 +6,7 @@ receives the values the server evaluated, so no targeting rule ever reaches the 
 changes over SSE with a polling fallback, caches the last values on the device, can start from
 bootstrap values, and sends exposures in batches.
 
-Status: 0.1.0, Alpha: the API may still change. Requires iOS 15 or macOS 12 and Swift 6.1 (Xcode 16.4).
+Status: 0.1.0, Beta: the API may still change before 1.0.0. Requires iOS 15 or macOS 12 and Swift 6.1 (Xcode 16.4).
 
 ## Install
 
