@@ -113,7 +113,7 @@ From [`perf/REPORT.md`](../perf/REPORT.md) (the `full` run of 2026-11-27 on 16 C
 |---|---|---|---|
 | Local evaluation, Go, Node.js, Python, Java, .NET, Ruby, PHP | p99 < 1 ms | every SDK's guard passed (highest p99: Node.js, 1 ms) | pass |
 | Remote evaluation, OFREP | p99 < 50 ms, no errors, at 2000 rps per API container (at least 99.5 % reached) | p99 20.4 ms, 0 errors at 2000 rps, 8 Uvicorn workers | pass |
-| Remote evaluation, `/sdk/v1/evaluate` | p99 < 50 ms, no errors, at 2000 rps per API container (at least 99.5 % reached) | p99 35.8 ms, 0 errors at 2000 rps, 8 Uvicorn workers | pass |
+| Remote evaluation, `/sdk/v1/evaluate` | p99 < 50 ms, no errors, at 2000 rps per API container (at least 99.5 % reached) | p99 35.8 ms, 0 errors at 2000 rps, 8 Uvicorn workers (at `0.1.0`; at `1.0.0`, see section 4) | accepted difference (section 4) |
 | Propagation across API replicas | p95 < 5 s | p95 1.58 s, 0 of 600 updates missed | pass |
 | Propagation to worker nodes | p95 < 5 s | p95 0.47 s, 0 of 600 updates missed | pass |
 | 100k streams per cluster | at least 8 workers at 80 % of measured per-worker capacity, none dropped, p95 < 5 s, 512 MiB per worker | 19 065 streams on 12 workers (capacity 1986 streams per worker; 63 workers for 100k), 0 dropped, p95 3.91 s, up to 494.9 MiB | pass |
@@ -241,6 +241,14 @@ both SSO and RBAC in full for free. Flagsmith and GrowthBook narrowed the gap on
 - **Remote rate and single-node targets changed.** The maintainer accepted on 2026-11-26 that the remote
   rows pass at 99.5 % of 2000 rps (the load generator's measured rate always lands just under the rate it
   sends), and that the single node passes at p95 < 50 ms and p99 < 150 ms instead of p99 < 50 ms.
+- **`/sdk/v1/evaluate` at `1.0.0` is checked by a remote-only run, not a full run.** Three `full` runs at
+  `1.0.0` on 2026-11-27 and 2026-11-28 failed this gate, with p99 57.9 ms, 82.0 ms and 85.6 ms at 2000 rps
+  (a remote-only run reached 128.3 ms): full garbage collections of the 10k-flag ruleset paused a worker for
+  300–500 ms. The fix (`api/src/megooflags_api/services/ruleset_cache.py`) freezes rulesets of 1000 flags or
+  more after a full build, at most once a minute, on standalone nodes and control planes. It was checked
+  only with `MF_PERF_ONLY=remote` runs: p99 33.1 ms with the first version and 23.2 ms with the final one
+  (OFREP 21.4 ms), 0 errors at 2000 rps. The maintainer chose on 2026-11-28 not to repeat the full run, so
+  `perf/results` holds no 1.0.0 results and the other rows cite the `0.1.0` run.
 - **Docs on GitHub Pages.** The site is at https://mmhy2003.github.io/MegooFlags/, built from `site/` by
   `.github/workflows/docs.yml`.
 
