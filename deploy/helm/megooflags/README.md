@@ -91,8 +91,9 @@ it takes two releases, because the node tokens exist only once the control plane
    ```
 
    `--wait` returns once every worker has its first snapshot. Each replica `workers-megooflags-worker-<n>`
-   uses token `n` and keeps its snapshots on its own volume. To add a worker, add a node on the Nodes
-   page and its token at the end of the list. A replica whose token is missing (for example
+   (see [Names](#names) for long release names) uses token `n` and keeps its snapshots on its own
+   volume. To add a worker, add a node on the Nodes page and its token at the end of the list. A
+   replica whose token is missing (for example
    `worker.replicas: 3` with an `existingSecret` that has two tokens) exits with a message that
    names the missing key; the others keep serving.
 
@@ -137,13 +138,33 @@ Every top-level value, with its default. `values.yaml` has the nested keys and
 | `externalDatabase` | none | `url`, used when `postgresql.enabled` is false: `postgresql+asyncpg://user:password@host:5432/db`. |
 | `valkey` | enabled, `valkey/valkey:8`, no persistence | The bundled Valkey: `enabled`, `image`, `resources`. It holds nothing that needs a backup. |
 | `externalValkey` | none | `url`, used when `valkey.enabled` is false: `redis://host:6379/0`. |
-| `worker` | none | For `role: worker`: `controlPlaneUrl` (required), `nodeTokens` (one replica per token), `replicas` (only with `existingSecret`), `controlPlaneInsecure`, `controlPlaneCa` (`configMap` or `secret`, and `key`), `persistence.size` (1Gi) and `persistence.storageClass`, and the pod keys of `api`. |
+| `worker` | none | For `role: worker`: `controlPlaneUrl` (required), `nodeTokens` (one replica per token), `replicas` (0, or the number of `nodeTokens`; set it only with an `existingSecret` and no `nodeTokens`), `controlPlaneInsecure`, `controlPlaneCa` (`configMap` or `secret`, and `key`), `persistence.size` (1Gi) and `persistence.storageClass`, and the pod keys of `api`. |
 | `ingress` | off | `enabled`, `className`, `annotations`, `host`, `tls`. See [Routing](#routing). |
 | `httpRoute` | off | `enabled`, `parentRefs`, `hostnames`, `apiResponseHeaders` (true), `timeouts.request` (`"0s"`). See [Routing](#routing). |
 | `metrics` | off | `serviceMonitor.enabled`, `serviceMonitor.interval` (30s), `serviceMonitor.labels`. See [Metrics](#metrics). |
 
 A missing or wrong value fails `helm install` with a message that names it, before anything is
 created.
+
+## Names
+
+Every resource name starts with the release's base name: the release name when it contains
+`megooflags`, else `<release>-megooflags`. The base name is cut to 41 characters, and a `-` or `.`
+left at its end is dropped, so that the longest names (the `<base>-postgresql` StatefulSet, the
+`<base>-migrate-<revision>` Jobs and the `<base>-worker-<n>` pods) stay within the Kubernetes
+limits. For example, the release `payments-production-eu-west-1-flags-primary` (43 characters) gets
+the base name `payments-production-eu-west-1-flags-prima`, and its API Service is
+`payments-production-eu-west-1-flags-prima-api`.
+
+Keep release names at 30 characters or fewer and nothing is cut: release `cp` gives
+`cp-megooflags-api`, `cp-megooflags-web` and so on, as in the examples on this page. Two long
+release names with the same first 41 characters cannot share a namespace: the second install fails,
+because its resources already exist and belong to the other release. To see the real names of a
+release:
+
+```bash
+kubectl get all -n megooflags -l app.kubernetes.io/instance=<release>
+```
 
 ## Secrets and `existingSecret`
 
@@ -177,6 +198,10 @@ The chart routes the same paths as the Compose bundles' Caddyfiles
 - control plane and single node: `/api`, `/sdk`, `/ofrep`, `/healthz` and `/readyz` go to the API,
   everything else to the web UI;
 - workers: `/sdk`, `/ofrep`, `/healthz` and `/readyz`, nothing else.
+
+In the Ingress, `/healthz` and `/readyz` are `Prefix` paths (Traefik would otherwise send `/readyz`
+to the web UI), so `/healthz/x` reaches the API, which answers 404. In the HTTPRoute they match
+exactly.
 
 Turn on an Ingress (`ingress.enabled`), a Gateway API HTTPRoute (`httpRoute.enabled`), both, or
 neither if you route some other way.
@@ -278,8 +303,9 @@ from the addresses in `config.FORWARDED_ALLOW_IPS` (private ranges by default).
 ## Metrics
 
 The API and the workers serve Prometheus metrics on `/metrics` (port `http`, 8000). The chart never
-routes `/metrics`, so it is reachable only inside the cluster. With the Prometheus Operator, turn on
-a ServiceMonitor for the api or worker Service:
+routes `/metrics`, so it is reachable only inside the cluster. On a control plane or single node,
+`/metrics` on the public address falls to the web UI, which answers 404. With the Prometheus
+Operator, turn on a ServiceMonitor for the api or worker Service:
 
 ```yaml
 metrics:
@@ -289,6 +315,8 @@ metrics:
     labels:
       release: kube-prometheus-stack   # whatever your Prometheus selects on
 ```
+
+A label in `serviceMonitor.labels` replaces a chart label with the same key.
 
 The metrics are listed in
 [Observability](https://mmhy2003.github.io/MegooFlags/deploy/observability/#prometheus-metrics).
