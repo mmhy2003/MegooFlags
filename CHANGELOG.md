@@ -16,6 +16,7 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 - A new link for someone who never joined is an invitation again, not a password reset.
 - Remote evaluation is faster: at 2000 requests per second on one API container with 8 workers, OFREP answers with p99 20.4 ms and `/sdk/v1/evaluate` with p99 35.8 ms, both without errors (before: 266.1 ms, and 29.6 s with errors at only 1331 requests per second).
 - Flag changes reach SDKs across API replicas faster: p95 1.58 s over three replicas (before: 5.31 s).
+- Fewer latency spikes on projects with many flags: each API worker now keeps its ruleset out of Python's garbage collector after a full rebuild, so full collections no longer pause the worker for hundreds of milliseconds under load (with 10 000 flags, `/sdk/v1/evaluate` p99 at 2000 requests per second dropped from 82 to 33 ms in a remote-only run).
 
 ### Added
 - `/api/*` requires authentication. Open `/setup` right after the first start to create the first admin (until then anyone who can reach the instance can), then create service tokens (`POST /api/tokens`) for scripts and CI.

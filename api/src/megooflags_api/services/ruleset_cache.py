@@ -8,11 +8,19 @@ rebuilds, so no SDK request waits for the check. A Valkey change message invalid
 of its project at once: the next lookup waits for a fresh check instead of serving the old entry.
 When only flag_environment versions moved, a rebuild reloads just the changed flags and patches
 their fragments into the old body, which gives the same bytes, ETag and ruleset as a full build.
+
+With `freeze_full_builds`, a full build moves every object alive at that moment out of the cyclic
+garbage collector's reach (`gc.freeze`). A 10k-flag ruleset holds hundreds of thousands of
+objects, and each full collection walked them all, pausing the worker for hundreds of
+milliseconds several times a minute under load. Each full build unfreezes and collects first, so
+cyclic garbage frozen by the previous one is reclaimed then. Patches do not freeze: their few new
+objects stay with the collector.
 """
 
 import asyncio
 import contextlib
 import dataclasses
+import gc
 import hashlib
 import json
 import logging
@@ -149,6 +157,13 @@ def _only_versions_moved(old: str, new: str) -> bool:
     return old.split("|")[1:] == new.split("|")[1:]
 
 
+def _freeze_long_lived() -> None:
+    """Reclaim what the last freeze kept, then freeze every object alive now."""
+    gc.unfreeze()
+    gc.collect()
+    gc.freeze()
+
+
 def from_body(body: bytes) -> CachedRuleset:
     """A ruleset from the JSON bytes SDKs download, with the same ETag the cache gives them."""
     etag = _etag(body)
@@ -170,8 +185,10 @@ class RulesetCache:
         sessionmaker: async_sessionmaker[AsyncSession] | None = None,
         max_environments: int = 256,
         clock: Callable[[], float] = time.monotonic,
+        freeze_full_builds: bool = False,
     ) -> None:
         self._sessionmaker = sessionmaker
+        self.freeze_full_builds = freeze_full_builds
         self._max = max_environments
         self._clock = clock
         self._entries: OrderedDict[uuid.UUID, _Entry] = OrderedDict()
@@ -324,6 +341,7 @@ class RulesetCache:
                     "incremental ruleset rebuild failed; rebuilding in full",
                     extra={"environment_id": environment.id},
                 )
+        full = built is None
         if built is None:
             parts = await build_parts(session, environment)
             # Parsing, encoding and hashing 10k flags takes hundreds of milliseconds: keep them
@@ -338,6 +356,8 @@ class RulesetCache:
         self._entries.move_to_end(environment.id)
         while len(self._entries) > self._max:
             self._entries.popitem(last=False)
+        if full and self.freeze_full_builds:
+            _freeze_long_lived()
         return cached
 
     async def _incremental(

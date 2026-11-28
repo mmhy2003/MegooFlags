@@ -1,11 +1,13 @@
 import asyncio
+import gc
 import hashlib
 import json
 import random
 import re
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+import weakref
+from collections.abc import Awaitable, Callable, Iterator
 from typing import Any
 
 import httpx
@@ -901,3 +903,78 @@ async def test_many_changed_flags_take_the_full_build(
 
     assert spy.flags == []
     assert spy.parts == 2  # the persistent cache, then the fresh one
+
+
+@pytest.fixture
+def unfreeze() -> Iterator[None]:
+    yield
+    gc.unfreeze()
+
+
+def collector_tracks(obj: object) -> bool:
+    """`obj` is in a generation the cyclic collector scans, not in the frozen one."""
+    return any(o is obj for o in gc.get_objects())
+
+
+class Cycle:
+    def __init__(self) -> None:
+        self.me = self
+
+
+async def test_full_build_freezes_the_ruleset(
+    app: FastAPI, api: httpx.AsyncClient, unfreeze: None
+) -> None:
+    await setup_demo(api)
+
+    ruleset = await cached(app, RulesetCache(freeze_full_builds=True))
+
+    assert not collector_tracks(ruleset.flags)
+
+
+async def test_cache_does_not_freeze_by_default(app: FastAPI, api: httpx.AsyncClient) -> None:
+    await setup_demo(api)
+
+    ruleset = await cached(app, RulesetCache())
+
+    assert collector_tracks(ruleset.flags)
+
+
+async def test_next_full_build_reclaims_what_the_last_one_froze(
+    app: FastAPI, api: httpx.AsyncClient, unfreeze: None
+) -> None:
+    await setup_demo(api)
+    cache = RulesetCache(freeze_full_builds=True)
+    cycle = Cycle()
+    alive = weakref.ref(cycle)
+    await cached(app, cache)  # freezes the cycle with everything else
+    del cycle
+    gc.collect()
+    assert alive() is not None  # frozen: the collector no longer sees it
+
+    await create_flag(api, key="new")  # a new flag: a full build
+    ruleset = await cached(app, cache)
+
+    assert "new" in ruleset.flags
+    assert alive() is None
+
+
+async def test_incremental_rebuild_does_not_freeze(
+    app: FastAPI, api: httpx.AsyncClient, unfreeze: None
+) -> None:
+    await setup_demo(api)
+    cache = RulesetCache(freeze_full_builds=True)
+    await cached(app, cache)
+    r = await api.post(f"{PRODUCTION}/toggle", json={"enabled": False})
+    assert r.status_code == 200, r.text
+
+    ruleset = await cached(app, cache)
+
+    assert ruleset.flags["color"].enabled is False
+    assert collector_tracks(ruleset.flags)
+
+
+def test_served_app_freezes_full_builds() -> None:
+    from megooflags_api import main
+
+    assert main.app.state.ruleset_cache.freeze_full_builds is True
+    assert RulesetCache().freeze_full_builds is False

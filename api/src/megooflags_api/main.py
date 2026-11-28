@@ -122,9 +122,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(
-    settings: Settings | None = None, *, cluster_transport: httpx.AsyncBaseTransport | None = None
+    settings: Settings | None = None,
+    *,
+    cluster_transport: httpx.AsyncBaseTransport | None = None,
+    freeze_full_builds: bool = False,
 ) -> FastAPI:
-    """The API for the settings' role; `cluster_transport` is a worker's link (for tests)."""
+    """The API for the settings' role; `cluster_transport` is a worker's link (for tests).
+
+    `freeze_full_builds` is on for the served app only: freezing collects the whole heap, which
+    would slow every test that builds a ruleset (see services.ruleset_cache).
+    """
     settings = settings or get_settings()
     configure_logging(settings)
     if settings.role == "worker":
@@ -144,7 +151,9 @@ def create_app(
     # Created on first use by services.sso_providers.get_sso_http.
     app.state.sso_http = None
     app.state.oidc_cache = OidcCache()
-    app.state.ruleset_cache = RulesetCache(app.state.sessionmaker)
+    app.state.ruleset_cache = RulesetCache(
+        app.state.sessionmaker, freeze_full_builds=freeze_full_builds
+    )
     app.state.key_resolver = KeyResolver()
     app.state.auth_throttle = AuthThrottle(app.state.valkey)
     app.state.rate_limiter = RateLimiter(app.state.valkey, settings.client_rate_limit_per_minute)
@@ -219,4 +228,4 @@ def create_app(
     return app
 
 
-app = create_app()
+app = create_app(freeze_full_builds=True)
