@@ -1,15 +1,14 @@
 {{- if .Values.metrics.serviceMonitor.enabled }}
 {{- $monitor := .Values.metrics.serviceMonitor }}
+{{- /* One map, so a user label with a chart label's key replaces it instead of repeating it. */}}
+{{- $labels := mergeOverwrite (include "megooflags.labels" . | fromYaml) (deepCopy (default dict $monitor.labels)) }}
 # Scrapes /metrics of the api (or worker) Service for the Prometheus Operator.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: {{ include "megooflags.fullname" . }}
   labels:
-    {{- include "megooflags.labels" . | nindent 4 }}
-    {{- with $monitor.labels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
+    {{- toYaml $labels | nindent 4 }}
 spec:
   selector:
     matchLabels:

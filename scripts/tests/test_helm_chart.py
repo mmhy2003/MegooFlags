@@ -978,6 +978,33 @@ def test_service_monitor(tmp_path: Path, role: str, component: str) -> None:
     assert matched == [f"mf-megooflags-{component}"]
 
 
+def test_service_monitor_user_labels_replace_chart_labels(tmp_path: Path) -> None:
+    labels = {"app.kubernetes.io/name": "custom", "release": "prom"}
+    monitor = {"serviceMonitor": {"enabled": True, "labels": labels}}
+    values = {**_role_values("control-plane"), "metrics": monitor}
+    result = _helm(values, tmp_path, "--show-only", "templates/servicemonitor.yaml")
+    assert result.returncode == 0, result.stderr
+    # yaml.safe_load keeps the last of two equal keys, so count them in the text (metadata labels
+    # are indented by 4, the selector's by 6).
+    assert len(re.findall(r"^    app\.kubernetes\.io/name:", result.stdout, re.M)) == 1
+    assert len(re.findall(r"^    release:", result.stdout, re.M)) == 1
+    doc = yaml.safe_load(result.stdout)
+    metadata = doc["metadata"]["labels"]
+    assert metadata["app.kubernetes.io/name"] == "custom"
+    assert metadata["release"] == "prom"
+    assert metadata["app.kubernetes.io/instance"] == "mf"
+    assert metadata["app.kubernetes.io/managed-by"] == "Helm"
+    assert metadata["app.kubernetes.io/version"] == _app_version()
+    assert metadata["helm.sh/chart"].startswith("megooflags-")
+    assert doc["spec"]["selector"] == {
+        "matchLabels": {
+            "app.kubernetes.io/name": "megooflags",
+            "app.kubernetes.io/instance": "mf",
+            "app.kubernetes.io/component": "api",
+        }
+    }
+
+
 ROLES = ["standalone", "control-plane", "worker"]
 
 
