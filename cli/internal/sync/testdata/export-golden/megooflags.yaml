@@ -1,0 +1,14 @@
+apiVersion: megooflags/v1
+project:
+  key: shop
+  name: Shop
+  description: The web shop
+environments:
+  - key: development
+    name: Development
+    description: ""
+    approvals_required: 0
+  - key: production
+    name: Production
+    description: Live traffic
+    approvals_required: 1

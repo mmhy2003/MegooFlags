@@ -1,0 +1,11 @@
+# Profiling (scripts/perf.sh with MF_PERF_PROFILE=1): py-spy in a sidecar that shares the api
+# container's PID namespace, so nothing is added to the shipped image. Needs one api replica.
+services:
+  pyspy:
+    image: python:3.12-slim
+    pid: "service:api"
+    cap_add: [SYS_PTRACE]
+    entrypoint: ["sh", "-c", "pip install --no-cache-dir 'py-spy>=0.4,<0.5' && exec sleep infinity"]
+    volumes:
+      - ${MF_PERF_PROFILE_DIR:-/tmp/megooflags-perf-profiles}:/out
+    depends_on: [api]

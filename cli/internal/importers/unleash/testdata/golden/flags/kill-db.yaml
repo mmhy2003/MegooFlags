@@ -1,0 +1,31 @@
+name: kill-db
+description: ""
+type: boolean
+tags: []
+variations:
+  - key: "true"
+    name: ""
+    description: ""
+    value: true
+  - key: "false"
+    name: ""
+    description: ""
+    value: false
+off_variation: "false"
+permanent: true
+archived: false
+environments:
+  development:
+    enabled: false
+    targets: []
+    rules: []
+    fallthrough:
+      variation: "true"
+    prerequisites: []
+  prod:
+    enabled: true
+    targets: []
+    rules: []
+    fallthrough:
+      variation: "true"
+    prerequisites: []

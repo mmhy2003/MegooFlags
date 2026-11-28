@@ -1,0 +1,399 @@
+package sync
+
+import (
+	"cmp"
+	"encoding/json"
+	"fmt"
+	"io"
+	"maps"
+	"reflect"
+	"slices"
+	"strings"
+
+	"github.com/mmhy2003/MegooFlags/cli/client"
+	"github.com/mmhy2003/MegooFlags/cli/internal/flagfiles"
+)
+
+// Op is what a change does.
+type Op string
+
+const (
+	OpCreate  Op = "create"
+	OpUpdate  Op = "update"
+	OpArchive Op = "archive"
+	OpRestore Op = "restore"
+	OpDelete  Op = "delete"
+)
+
+// Kind is what a change applies to.
+type Kind string
+
+const (
+	KindProject       Kind = "project"
+	KindEnvironment   Kind = "environment"
+	KindSegment       Kind = "segment"
+	KindSegmentConfig Kind = "segment_config"
+	KindFlag          Kind = "flag"
+	KindLifecycle     Kind = "lifecycle"
+	KindVariation     Kind = "variation"
+	KindConfig        Kind = "config"
+)
+
+// Change is one step that brings the server in line with the files. Key is
+// the resource's key (the flag's for variations and configs), Env the
+// environment of a config and Variation the variation's key. Fields names
+// the parts that differ in an update and Summary says what differs, for
+// people. The pointer that matches Kind carries the files' version.
+type Change struct {
+	Op        Op
+	Kind      Kind
+	Key       string
+	Env       string
+	Variation string
+	Fields    []string
+	Summary   string
+
+	Project        *flagfiles.ProjectMeta
+	Environment    *flagfiles.Environment
+	Segment        *flagfiles.Segment
+	Flag           *flagfiles.Flag
+	VariationValue *client.Variation
+	Config         *flagfiles.FlagEnv
+}
+
+// Plan is the changes in the order Apply runs them.
+type Plan struct {
+	Changes []Change
+}
+
+// Options limits a Diff. Envs, when set, limits the flag configs compared
+// to those environments. Prune archives live flags and deletes segments
+// that the files do not have.
+type Options struct {
+	Envs  []string
+	Prune bool
+}
+
+// Diff compares files with server, the server's Snapshot, and returns what
+// to change on the server, in apply order: the project, its environments,
+// segments, flags, new and changed variations, configs, removed variations,
+// archived flags and, with Prune, the flags and segments missing from the
+// files.
+// Environments only on the server are never removed. A flag's config is
+// compared only in the environments its file lists (and Envs allows).
+// Values are compared by meaning, so 1 equals 1.0, the lists the files
+// keep sorted are compared as sets, and targets and rollouts are compared
+// in the form the server normalises them to.
+func Diff(files, server *flagfiles.Dir, opts Options) Plan {
+	var p Plan
+	add := func(c Change) {
+		if c.Summary == "" {
+			c.Summary = strings.Join(c.Fields, ", ")
+		}
+		p.Changes = append(p.Changes, c)
+	}
+
+	if fields := differing(
+		part{"name", files.Project.Project.Name, server.Project.Project.Name},
+		part{"description", files.Project.Project.Description, server.Project.Project.Description},
+	); len(fields) > 0 {
+		project := files.Project.Project
+		add(Change{Op: OpUpdate, Kind: KindProject, Key: project.Key, Fields: fields, Project: &project})
+	}
+
+	for _, e := range files.Project.Environments {
+		i := slices.IndexFunc(server.Project.Environments, func(s flagfiles.Environment) bool { return s.Key == e.Key })
+		if i < 0 {
+			add(Change{Op: OpCreate, Kind: KindEnvironment, Key: e.Key, Environment: &e})
+			continue
+		}
+		s := server.Project.Environments[i]
+		if fields := differing(
+			part{"name", e.Name, s.Name},
+			part{"description", e.Description, s.Description},
+			part{"approvals_required", e.ApprovalsRequired, s.ApprovalsRequired},
+		); len(fields) > 0 {
+			add(Change{Op: OpUpdate, Kind: KindEnvironment, Key: e.Key, Fields: fields, Environment: &e})
+		}
+	}
+
+	segmentKeys := slices.Sorted(maps.Keys(files.Segments))
+	for _, key := range segmentKeys {
+		s := files.Segments[key]
+		old, ok := server.Segments[key]
+		if !ok {
+			add(Change{Op: OpCreate, Kind: KindSegment, Key: key, Segment: &s})
+		} else if fields := differing(
+			part{"name", s.Name, old.Name},
+			part{"description", s.Description, old.Description},
+		); len(fields) > 0 {
+			add(Change{Op: OpUpdate, Kind: KindSegment, Key: key, Fields: fields, Segment: &s})
+		}
+	}
+	for _, key := range segmentKeys {
+		s, old := files.Segments[key], server.Segments[key]
+		if fields := differing(
+			part{"included", sortedStrings(s.Included), sortedStrings(old.Included)},
+			part{"excluded", sortedStrings(s.Excluded), sortedStrings(old.Excluded)},
+			part{"rules", s.Rules, old.Rules},
+		); len(fields) > 0 {
+			add(Change{Op: OpUpdate, Kind: KindSegmentConfig, Key: key, Fields: fields, Segment: &s})
+		}
+	}
+
+	flagKeys := slices.Sorted(maps.Keys(files.Flags))
+	for _, key := range flagKeys {
+		f := files.Flags[key]
+		old, ok := server.Flags[key]
+		if !ok {
+			add(Change{Op: OpCreate, Kind: KindFlag, Key: key, Flag: &f})
+		} else if fields := differing(
+			part{"name", f.Name, old.Name},
+			part{"description", f.Description, old.Description},
+			part{"type", f.Type, old.Type},
+			part{"tags", sortedStrings(f.Tags), sortedStrings(old.Tags)},
+			part{"owner", f.Owner, old.Owner},
+			part{"off_variation", f.OffVariation, old.OffVariation},
+		); len(fields) > 0 {
+			// Apply refuses a changed type: the flag must be deleted and recreated.
+			add(Change{Op: OpUpdate, Kind: KindFlag, Key: key, Fields: fields, Flag: &f})
+		}
+		// The API shows an archived flag's lifecycle as "archived", so its
+		// permanent mark is unknown: it is set again with a restore.
+		if old.Archived && !f.Archived || !old.Archived && f.Permanent != old.Permanent {
+			add(Change{Op: OpUpdate, Kind: KindLifecycle, Key: key, Summary: lifecycle(f.Permanent), Flag: &f})
+		}
+		if !f.Archived && old.Archived {
+			add(Change{Op: OpRestore, Kind: KindFlag, Key: key, Summary: string(OpRestore), Flag: &f})
+		}
+	}
+
+	for _, key := range flagKeys {
+		old, ok := server.Flags[key]
+		if !ok {
+			continue // created with its variations
+		}
+		for _, v := range files.Flags[key].Variations {
+			i := slices.IndexFunc(old.Variations, func(o client.Variation) bool { return o.Key == v.Key })
+			if i < 0 {
+				add(Change{Op: OpCreate, Kind: KindVariation, Key: key, Variation: v.Key, VariationValue: &v})
+				continue
+			}
+			o := old.Variations[i]
+			if fields := differing(
+				part{"name", v.Name, o.Name},
+				part{"description", v.Description, o.Description},
+				part{"value", v.Value, o.Value},
+			); len(fields) > 0 {
+				add(Change{Op: OpUpdate, Kind: KindVariation, Key: key, Variation: v.Key, Fields: fields, VariationValue: &v})
+			}
+		}
+	}
+
+	for _, key := range flagKeys {
+		f, old := files.Flags[key], server.Flags[key]
+		for _, env := range slices.Sorted(maps.Keys(f.Environments)) {
+			if len(opts.Envs) > 0 && !slices.Contains(opts.Envs, env) {
+				continue
+			}
+			e, s := f.Environments[env], old.Environments[env]
+			if fields := differing(
+				part{"enabled", e.Enabled, s.Enabled},
+				part{"targets", canonicalTargets(e.Targets), canonicalTargets(s.Targets)},
+				part{"rules", canonicalRules(e.Rules), canonicalRules(s.Rules)},
+				part{"fallthrough", canonicalServe(e.Fallthrough), canonicalServe(s.Fallthrough)},
+				part{"prerequisites", e.Prerequisites, s.Prerequisites},
+			); len(fields) > 0 {
+				add(Change{Op: OpUpdate, Kind: KindConfig, Key: key, Env: env, Fields: fields, Config: &e})
+			}
+		}
+	}
+
+	for _, key := range flagKeys {
+		vs := files.Flags[key].Variations
+		for _, o := range server.Flags[key].Variations {
+			if !slices.ContainsFunc(vs, func(v client.Variation) bool { return v.Key == o.Key }) {
+				add(Change{Op: OpDelete, Kind: KindVariation, Key: key, Variation: o.Key})
+			}
+		}
+	}
+
+	// Archives come after the configs, which may drop a prerequisite on the
+	// flag: the API refuses to archive a flag that is still one.
+	for _, key := range flagKeys {
+		if f := files.Flags[key]; f.Archived && !server.Flags[key].Archived {
+			add(Change{Op: OpArchive, Kind: KindFlag, Key: key, Summary: string(OpArchive), Flag: &f})
+		}
+	}
+
+	if opts.Prune {
+		for _, key := range slices.Sorted(maps.Keys(server.Flags)) {
+			if _, ok := files.Flags[key]; !ok && !server.Flags[key].Archived {
+				add(Change{Op: OpArchive, Kind: KindFlag, Key: key, Summary: string(OpArchive)})
+			}
+		}
+		for _, key := range slices.Sorted(maps.Keys(server.Segments)) {
+			if _, ok := files.Segments[key]; !ok {
+				add(Change{Op: OpDelete, Kind: KindSegment, Key: key})
+			}
+		}
+	}
+	return p
+}
+
+// Print writes one line per change: "+ flag new-checkout",
+// "~ config new-checkout [production]: rules, fallthrough",
+// "- variation new-checkout/old". Creates and restores are "+", archives
+// and deletes "-", and updates "~".
+func (p Plan) Print(w io.Writer) {
+	for _, c := range p.Changes {
+		fmt.Fprintln(w, c)
+	}
+}
+
+// String is the change's line in Print.
+func (c Change) String() string {
+	sign := "~"
+	switch c.Op {
+	case OpCreate, OpRestore:
+		sign = "+"
+	case OpArchive, OpDelete:
+		sign = "-"
+	}
+	line := sign + " " + string(c.Kind) + " " + c.Key
+	if c.Variation != "" {
+		line += "/" + c.Variation
+	}
+	if c.Env != "" {
+		line += " [" + c.Env + "]"
+	}
+	if c.Summary != "" {
+		line += ": " + c.Summary
+	}
+	return line
+}
+
+func lifecycle(permanent bool) string {
+	if permanent {
+		return "permanent"
+	}
+	return "temporary"
+}
+
+// part is one named component, from the files and from the server.
+type part struct {
+	name          string
+	files, server any
+}
+
+// differing lists the names of the parts that differ.
+func differing(parts ...part) []string {
+	var names []string
+	for _, p := range parts {
+		if !sameMeaning(p.files, p.server) {
+			names = append(names, p.name)
+		}
+	}
+	return names
+}
+
+// sameMeaning compares a and b as JSON values, so that numbers compare by
+// value whatever their Go type. A null or empty list, and a field that is
+// null or an empty list, mean "none" and are equal.
+func sameMeaning(a, b any) bool {
+	return reflect.DeepEqual(jsonValue(a), jsonValue(b))
+}
+
+func jsonValue(v any) any {
+	b, err := json.Marshal(v)
+	if err != nil {
+		// Values come from YAML or JSON and always encode; compare as text if not.
+		return fmt.Sprintf("%#v", v)
+	}
+	var out any
+	if err := json.Unmarshal(b, &out); err != nil {
+		return string(b)
+	}
+	return dropEmpty(out)
+}
+
+// dropEmpty turns empty lists into nil and leaves out object fields that are
+// nil after that.
+func dropEmpty(v any) any {
+	switch v := v.(type) {
+	case []any:
+		if len(v) == 0 {
+			return nil
+		}
+		for i, e := range v {
+			v[i] = dropEmpty(e)
+		}
+	case map[string]any:
+		for k, e := range v {
+			if e = dropEmpty(e); e == nil {
+				delete(v, k)
+			} else {
+				v[k] = e
+			}
+		}
+	}
+	return v
+}
+
+// canonicalTargets merges the lists of each variation and sorts the
+// variations and their values, as the server keeps them (it orders
+// variations by their position, but the order means nothing).
+func canonicalTargets(targets []client.Target) []client.Target {
+	values := map[string][]string{}
+	for _, t := range targets {
+		values[t.Variation] = append(values[t.Variation], t.Values...)
+	}
+	var out []client.Target
+	for _, k := range slices.Sorted(maps.Keys(values)) {
+		if len(values[k]) > 0 {
+			out = append(out, client.Target{Variation: k, Values: sortedStrings(values[k])})
+		}
+	}
+	return out
+}
+
+// canonicalRollout sorts the weights by variation and fills in the
+// server's default bucket_by, "key".
+func canonicalRollout(r *client.Rollout) *client.Rollout {
+	if r == nil {
+		return nil
+	}
+	out := client.Rollout{BucketBy: cmp.Or(r.BucketBy, "key"), Weights: slices.Clone(r.Weights)}
+	slices.SortStableFunc(out.Weights, func(a, b client.Weight) int { return cmp.Compare(a.Variation, b.Variation) })
+	return &out
+}
+
+func canonicalServe(s client.Serve) client.Serve {
+	s.Rollout = canonicalRollout(s.Rollout)
+	return s
+}
+
+// canonicalRules sorts the values of in_segment clauses, as the files keep
+// them, and makes rollouts canonical, so that their order makes no
+// difference.
+func canonicalRules(rules []client.Rule) []client.Rule {
+	out := make([]client.Rule, len(rules))
+	for i, r := range rules {
+		r.Rollout = canonicalRollout(r.Rollout)
+		cs := slices.Clone(r.Clauses)
+		for j, c := range cs {
+			if c.Operator == "in_segment" {
+				cs[j].Values = slices.SortedFunc(slices.Values(c.Values), func(a, b any) int {
+					return cmp.Compare(fmt.Sprint(a), fmt.Sprint(b))
+				})
+			}
+		}
+		r.Clauses = cs
+		out[i] = r
+	}
+	return out
+}
+
+func sortedStrings(s []string) []string {
+	return slices.Sorted(slices.Values(s))
+}

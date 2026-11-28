@@ -1,0 +1,47 @@
+name: dark_mode
+description: ""
+type: boolean
+tags: []
+variations:
+  - key: "true"
+    name: ""
+    description: ""
+    value: true
+  - key: "false"
+    name: ""
+    description: ""
+    value: false
+off_variation: "false"
+permanent: false
+archived: false
+environments:
+  development:
+    enabled: true
+    targets: []
+    rules: []
+    fallthrough:
+      variation: "true"
+    prerequisites: []
+  prod:
+    enabled: true
+    targets: []
+    rules:
+      - description: ""
+        clauses:
+          - attribute: key
+            operator: in_segment
+            values:
+              - power_users
+            negate: false
+        variation: "false"
+      - description: ""
+        clauses:
+          - attribute: key
+            operator: in_segment
+            values:
+              - beta-users
+            negate: false
+        variation: "true"
+    fallthrough:
+      variation: "false"
+    prerequisites: []

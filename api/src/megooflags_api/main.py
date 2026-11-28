@@ -1,0 +1,231 @@
+import asyncio
+import logging
+from collections.abc import AsyncIterator, Coroutine
+from contextlib import asynccontextmanager
+from typing import Any
+
+import httpx
+from fastapi import Depends, FastAPI
+
+from megooflags_api import __version__, metrics
+from megooflags_api.auth.principal import get_principal
+from megooflags_api.auth.sso.oidc import OidcCache
+from megooflags_api.auth.throttle import AuthThrottle
+from megooflags_api.cors import SdkCorsMiddleware
+from megooflags_api.crypto import SecretBox, require_secret_key
+from megooflags_api.db import create_engine, create_sessionmaker
+from megooflags_api.errors import install_error_handlers
+from megooflags_api.logging import AccessLogMiddleware, configure_logging
+from megooflags_api.routers import (
+    account,
+    api_tokens,
+    audit,
+    auth,
+    change_requests,
+    cluster,
+    environments,
+    evaluate,
+    flag_environments,
+    flags,
+    health,
+    integrations,
+    nodes,
+    ofrep,
+    projects,
+    roles,
+    rollouts,
+    schedules,
+    sdk,
+    sdk_keys,
+    segments,
+    setup,
+    sso,
+    system,
+    teams,
+    users,
+)
+from megooflags_api.services.changes import ChangeBus
+from megooflags_api.services.cluster.node_hub import NodeHub
+from megooflags_api.services.cluster.signing import SnapshotSigner
+from megooflags_api.services.delivery import db_delivery
+from megooflags_api.services.events import (
+    EvaluationCounter,
+    EventsBodyLimitMiddleware,
+    run_retention,
+)
+from megooflags_api.services.integrations.worker import DeliveryWorker
+from megooflags_api.services.rate_limit import RateLimiter
+from megooflags_api.services.ruleset_cache import RulesetCache
+from megooflags_api.services.scheduler import Scheduler
+from megooflags_api.services.sdk_keys import KeyResolver
+from megooflags_api.services.streams import StreamHub
+from megooflags_api.services.worker.app import create_worker_app
+from megooflags_api.settings import Settings, get_settings
+from megooflags_api.tracing import configure_tracing
+from megooflags_api.valkey import check_valkey, create_valkey
+
+logger = logging.getLogger(__name__)
+
+
+def _signer(app: FastAPI) -> SnapshotSigner:
+    """The lifespan refuses to start without a secret key, so a serving app has a signer."""
+    signer: SnapshotSigner | None = app.state.snapshot_signer
+    assert signer is not None
+    return signer
+
+
+def background_jobs(app: FastAPI) -> list[Coroutine[Any, Any, None]]:
+    jobs = [
+        app.state.change_bus.run(),
+        app.state.stream_hub.run_recheck_loop(app.state.settings.stream_recheck_seconds),
+        app.state.evaluation_counter.run(app.state.sessionmaker),
+        run_retention(app.state.sessionmaker, app.state.settings.exposure_retention_days),
+    ]
+    if app.state.settings.role == "control-plane":
+        jobs.append(app.state.node_hub.run_recheck_loop(app.state.settings.stream_recheck_seconds))
+    if app.state.settings.scheduler_enabled:
+        jobs.append(app.state.scheduler.run())
+        jobs.append(app.state.delivery_worker.run())
+    return jobs
+
+
+async def shutdown_jobs(app: FastAPI) -> None:
+    await app.state.evaluation_counter.flush(app.state.sessionmaker)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    require_secret_key(app.state.settings)
+    await check_valkey(app.state.valkey, app.state.settings.valkey_url)
+    try:
+        await health.warn_if_no_user(app.state.sessionmaker)
+    except Exception:
+        # The database may not be reachable yet; /readyz repeats the check.
+        logger.debug("cannot check for users at startup", exc_info=True)
+    tasks = [asyncio.create_task(job) for job in background_jobs(app)]
+    try:
+        yield
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await app.state.ruleset_cache.aclose()
+        await shutdown_jobs(app)
+        await app.state.valkey.aclose()
+        if app.state.sso_http is not None:
+            await app.state.sso_http.aclose()
+        if app.state.tracer_provider is not None:
+            app.state.tracer_provider.shutdown()
+        await app.state.scheduler.close()
+        await app.state.engine.dispose()
+        metrics.worker_exited()
+
+
+def create_app(
+    settings: Settings | None = None,
+    *,
+    cluster_transport: httpx.AsyncBaseTransport | None = None,
+    freeze_full_builds: bool = False,
+) -> FastAPI:
+    """The API for the settings' role; `cluster_transport` is a worker's link (for tests).
+
+    `freeze_full_builds` is on for the served app only: freezing collects the whole heap, which
+    would slow every test that builds a ruleset (see services.ruleset_cache).
+    """
+    settings = settings or get_settings()
+    configure_logging(settings)
+    if settings.role == "worker":
+        return create_worker_app(settings, transport=cluster_transport)
+    app = FastAPI(title="MegooFlags API", version=__version__, lifespan=lifespan)
+    app.state.settings = settings
+    # None without a key, so export_openapi works; the lifespan refuses to start without one.
+    app.state.secret_box = (
+        SecretBox(settings.secret_key.get_secret_value()) if settings.secret_key else None
+    )
+    app.state.snapshot_signer = (
+        SnapshotSigner(settings.secret_key.get_secret_value()) if settings.secret_key else None
+    )
+    app.state.engine = create_engine(settings)
+    app.state.sessionmaker = create_sessionmaker(app.state.engine)
+    app.state.valkey = create_valkey(settings.valkey_url)
+    # Created on first use by services.sso_providers.get_sso_http.
+    app.state.sso_http = None
+    app.state.oidc_cache = OidcCache()
+    app.state.ruleset_cache = RulesetCache(
+        app.state.sessionmaker, freeze_full_builds=freeze_full_builds
+    )
+    app.state.key_resolver = KeyResolver()
+    app.state.auth_throttle = AuthThrottle(app.state.valkey)
+    app.state.rate_limiter = RateLimiter(app.state.valkey, settings.client_rate_limit_per_minute)
+    app.state.change_bus = ChangeBus(app.state.valkey, settings.valkey_url)
+    app.state.change_bus.on_project.append(app.state.ruleset_cache.invalidate)
+    app.state.change_bus.on_key_revoked.append(app.state.key_resolver.forget)
+    app.state.stream_hub = StreamHub(app.state.sessionmaker, app.state.ruleset_cache)
+    app.state.change_bus.on_project.append(app.state.stream_hub.notify_project)
+    app.state.change_bus.on_key_revoked.append(app.state.stream_hub.notify_key_revoked)
+    app.state.change_bus.on_resubscribe.append(app.state.stream_hub.recheck_all)
+    app.state.node_hub = NodeHub(
+        app.state.sessionmaker, app.state.ruleset_cache, lambda: _signer(app)
+    )
+    app.state.change_bus.on_project.append(app.state.node_hub.notify_project)
+    app.state.change_bus.on_node.append(app.state.node_hub.notify_node)
+    app.state.change_bus.on_resubscribe.append(app.state.node_hub.recheck_all)
+    app.state.evaluation_counter = EvaluationCounter()
+    app.state.delivery = db_delivery(app)
+    app.state.scheduler = Scheduler(
+        app.state.engine,
+        app.state.sessionmaker,
+        app.state.change_bus,
+        interval=settings.scheduler_interval_seconds,
+        settings=settings,
+    )
+    app.state.delivery_worker = DeliveryWorker(
+        app.state.sessionmaker,
+        settings,
+        app.state.secret_box,
+        is_leader=lambda: app.state.scheduler.is_leader,
+    )
+    install_error_handlers(app)
+    app.add_middleware(EventsBodyLimitMiddleware)
+    app.add_middleware(AccessLogMiddleware)
+    app.add_middleware(metrics.MetricsMiddleware)
+    app.add_middleware(SdkCorsMiddleware)
+    app.include_router(health.router)
+    app.include_router(metrics.router)
+    # Routes match in order and these are the hot paths: first, they skip every /api router.
+    app.include_router(sdk.router)
+    app.include_router(ofrep.router)
+    # Public or self-checking routes (PUBLIC_ROUTES): no get_principal on the router.
+    app.include_router(setup.router, prefix="/api")
+    app.include_router(auth.router, prefix="/api")
+    app.include_router(users.public_router, prefix="/api")
+    app.include_router(account.router, prefix="/api")
+    app.include_router(sso.flow_router, prefix="/api")
+    app.include_router(cluster.router, prefix="/api")
+    for module in (
+        projects,
+        environments,
+        flags,
+        flag_environments,
+        schedules,
+        rollouts,
+        change_requests,
+        segments,
+        evaluate,
+        sdk_keys,
+        integrations,
+        roles,
+        users,
+        teams,
+        api_tokens,
+        audit,
+        nodes,
+        system,
+    ):
+        app.include_router(module.router, prefix="/api", dependencies=[Depends(get_principal)])
+    app.include_router(sso.admin_router, prefix="/api", dependencies=[Depends(get_principal)])
+    app.state.tracer_provider = configure_tracing(app, app.state.engine)
+    return app
+
+
+app = create_app(freeze_full_builds=True)

@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://megooflags.dev/spec/ruleset.schema.json",
+  "title": "MegooFlags ruleset",
+  "description": "Everything an SDK needs to evaluate every flag of one environment. See evaluation.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "project", "environment", "flags", "segments"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "project": { "type": "string" },
+    "environment": { "type": "string" },
+    "flags": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/flag" }
+    },
+    "segments": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/segment" }
+    }
+  },
+  "$defs": {
+    "key": { "type": "string", "minLength": 1 },
+    "scalar": { "type": ["string", "number", "boolean"] },
+    "flag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "type",
+        "enabled",
+        "version",
+        "variations",
+        "off_variation",
+        "prerequisites",
+        "targets",
+        "rules",
+        "fallthrough"
+      ],
+      "properties": {
+        "key": { "$ref": "#/$defs/key" },
+        "type": { "enum": ["boolean", "string", "number", "json"] },
+        "enabled": { "type": "boolean" },
+        "version": { "type": "integer", "minimum": 1 },
+        "variations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "value"],
+            "properties": {
+              "key": { "$ref": "#/$defs/key" },
+              "value": true
+            }
+          }
+        },
+        "off_variation": { "type": ["string", "null"] },
+        "prerequisites": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["flag", "variation"],
+            "properties": {
+              "flag": { "$ref": "#/$defs/key" },
+              "variation": { "$ref": "#/$defs/key" }
+            }
+          }
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["variation", "values"],
+            "properties": {
+              "variation": { "$ref": "#/$defs/key" },
+              "values": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string" }
+              }
+            }
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/rule" }
+        },
+        "fallthrough": { "$ref": "#/$defs/serve" }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description", "clauses", "serve"],
+      "properties": {
+        "description": { "type": "string" },
+        "clauses": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/clause" }
+        },
+        "serve": { "$ref": "#/$defs/serve" }
+      }
+    },
+    "clause": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attribute", "operator", "values", "negate"],
+      "properties": {
+        "attribute": { "type": "string", "minLength": 1 },
+        "operator": {
+          "enum": [
+            "in",
+            "not_in",
+            "contains",
+            "starts_with",
+            "ends_with",
+            "matches",
+            "lt",
+            "lte",
+            "gt",
+            "gte",
+            "semver_eq",
+            "semver_lt",
+            "semver_gt",
+            "before",
+            "after",
+            "in_segment"
+          ]
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/scalar" }
+        },
+        "negate": { "type": "boolean" }
+      }
+    },
+    "serve": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["variation"],
+          "properties": { "variation": { "$ref": "#/$defs/key" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rollout"],
+          "properties": { "rollout": { "$ref": "#/$defs/rollout" } }
+        }
+      ]
+    },
+    "rollout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bucket_by", "weights"],
+      "properties": {
+        "bucket_by": { "type": "string", "minLength": 1 },
+        "weights": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["variation", "weight"],
+            "properties": {
+              "variation": { "$ref": "#/$defs/key" },
+              "weight": { "type": "integer", "minimum": 0, "maximum": 100000 }
+            }
+          }
+        }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["included", "excluded", "rules"],
+      "properties": {
+        "included": { "type": "array", "items": { "type": "string" } },
+        "excluded": { "type": "array", "items": { "type": "string" } },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["clauses"],
+            "properties": {
+              "clauses": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/clause" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

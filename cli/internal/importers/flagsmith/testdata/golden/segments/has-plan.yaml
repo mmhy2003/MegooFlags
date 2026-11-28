@@ -1,0 +1,12 @@
+name: Has Plan
+description: ""
+included: []
+excluded: []
+rules:
+  - description: ""
+    clauses:
+      - attribute: country
+        operator: in
+        values:
+          - se
+        negate: false

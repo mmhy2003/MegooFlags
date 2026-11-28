@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "project": "sdk-go",
+  "environment": "test",
+  "flags": {
+    "bool-flag": {
+      "key": "bool-flag", "type": "boolean", "enabled": true, "version": 1,
+      "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+      "off_variation": "off", "prerequisites": [], "targets": [],
+      "rules": [
+        {
+          "description": "pro plan",
+          "clauses": [{"attribute": "plan", "operator": "in", "values": ["pro"], "negate": false}],
+          "serve": {"variation": "on"}
+        }
+      ],
+      "fallthrough": {"variation": "off"}
+    },
+    "targeted": {
+      "key": "targeted", "type": "string", "enabled": true, "version": 1,
+      "variations": [{"key": "alice", "value": "hello alice"}, {"key": "other", "value": "hello"}],
+      "off_variation": "other", "prerequisites": [],
+      "targets": [{"variation": "alice", "values": ["alice"]}],
+      "rules": [],
+      "fallthrough": {"variation": "other"}
+    },
+    "string-flag": {
+      "key": "string-flag", "type": "string", "enabled": true, "version": 1,
+      "variations": [{"key": "blue", "value": "blue"}, {"key": "red", "value": "red"}],
+      "off_variation": "red", "prerequisites": [], "targets": [], "rules": [],
+      "fallthrough": {"variation": "blue"}
+    },
+    "int-flag": {
+      "key": "int-flag", "type": "number", "enabled": true, "version": 1,
+      "variations": [{"key": "three", "value": 3}, {"key": "zero", "value": 0}],
+      "off_variation": "zero", "prerequisites": [], "targets": [], "rules": [],
+      "fallthrough": {"variation": "three"}
+    },
+    "float-flag": {
+      "key": "float-flag", "type": "number", "enabled": true, "version": 1,
+      "variations": [{"key": "half", "value": 2.5}, {"key": "zero", "value": 0}],
+      "off_variation": "zero", "prerequisites": [], "targets": [], "rules": [],
+      "fallthrough": {"variation": "half"}
+    },
+    "json-flag": {
+      "key": "json-flag", "type": "json", "enabled": true, "version": 1,
+      "variations": [{"key": "cfg", "value": {"limit": 10, "tags": ["a", "b"]}}, {"key": "empty", "value": {}}],
+      "off_variation": "empty", "prerequisites": [], "targets": [], "rules": [],
+      "fallthrough": {"variation": "cfg"}
+    },
+    "prereq-off": {
+      "key": "prereq-off", "type": "boolean", "enabled": false, "version": 1,
+      "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+      "off_variation": "off", "prerequisites": [], "targets": [], "rules": [],
+      "fallthrough": {"variation": "on"}
+    },
+    "needs-prereq": {
+      "key": "needs-prereq", "type": "boolean", "enabled": true, "version": 1,
+      "variations": [{"key": "on", "value": true}, {"key": "off", "value": false}],
+      "off_variation": "off",
+      "prerequisites": [{"flag": "prereq-off", "variation": "on"}],
+      "targets": [], "rules": [],
+      "fallthrough": {"variation": "on"}
+    }
+  },
+  "segments": {}
+}

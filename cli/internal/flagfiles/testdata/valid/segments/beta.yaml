@@ -1,0 +1,15 @@
+name: Beta
+description: Beta testers
+included:
+  - u1
+  - u2
+excluded:
+  - u9
+rules:
+  - description: Staff email
+    clauses:
+      - attribute: email
+        operator: ends_with
+        values:
+          - '@example.com'
+        negate: false

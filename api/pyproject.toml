@@ -1,0 +1,75 @@
+[project]
+name = "megooflags-api"
+version = "1.0.0"
+description = "MegooFlags API server"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "sqlalchemy[asyncio]>=2.0.36",
+  "asyncpg>=0.30",
+  "alembic>=1.14",
+  "prometheus-client>=0.26.0",
+  "opentelemetry-sdk>=1.45.2",
+  "opentelemetry-exporter-otlp-proto-http>=1.45.2",
+  "opentelemetry-instrumentation-fastapi>=0.66b2",
+  "opentelemetry-instrumentation-sqlalchemy>=0.66b2",
+  "valkey>=6.1",
+  "cryptography>=50.0.2",
+  "argon2-cffi>=25.1.0",
+  "pyotp>=2.10.0",
+  "webauthn>=3.0.1",
+  "authlib>=1.9.5",
+  "joserfc>=1.8.0",
+  "httpx>=0.28.1",
+  "python3-saml>=1.16.0",
+  "httpcore>=1.0.9",
+  "orjson>=3.11",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.28",
+    "jsonschema>=4.26.0",
+    "cbor2>=6.2.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/megooflags_api"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+
+[tool.mypy]
+strict = true
+files = ["src"]
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+  # python3-saml 1.16, the latest release, still calls datetime.utcnow() and utcfromtimestamp().
+  "ignore:datetime.datetime.utc:DeprecationWarning:onelogin.saml2.utils",
+]
+
+[tool.uv]
+# Built from source against the system libxml2, so lxml and xmlsec agree on it (a mismatch makes
+# xmlsec fail at import). Needs libxml2-dev libxslt1-dev libxmlsec1-dev pkg-config.
+no-binary-package = ["lxml", "xmlsec"]

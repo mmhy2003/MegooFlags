@@ -1,0 +1,18 @@
+[services.db]
+description = "PostgreSQL and Valkey for scripts/check_migrations.sh and the web e2e"
+compose = ["scripts/test-services/db.yml"]
+ports = ["PG_PORT", "VALKEY_PORT"]
+
+[services.db.env]
+MEGOOFLAGS_DATABASE_URL = "postgresql+asyncpg://megooflags:megooflags@localhost:${PG_PORT}/megooflags"
+MEGOOFLAGS_VALKEY_URL = "redis://localhost:${VALKEY_PORT}/0"
+
+[services.api]
+description = "PostgreSQL, Valkey and Keycloak for the full api test suite"
+compose = ["scripts/test-services/db.yml", "scripts/test-services/keycloak.yml"]
+ports = ["PG_PORT", "VALKEY_PORT", "KEYCLOAK_PORT"]
+
+[services.api.env]
+MEGOOFLAGS_DATABASE_URL = "postgresql+asyncpg://megooflags:megooflags@localhost:${PG_PORT}/megooflags"
+MEGOOFLAGS_VALKEY_URL = "redis://localhost:${VALKEY_PORT}/0"
+MEGOOFLAGS_KEYCLOAK_URL = "http://localhost:${KEYCLOAK_PORT}"

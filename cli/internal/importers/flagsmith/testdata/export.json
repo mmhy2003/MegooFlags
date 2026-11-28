@@ -1,0 +1,135 @@
+{
+  "environments": {
+    "Development": {
+      "api_key": "dev-key",
+      "name": "Development",
+      "feature_states": [
+        {"feature": {"id": 1, "name": "dark_mode", "type": "STANDARD"}, "enabled": true, "feature_state_value": null, "feature_segment": null, "multivariate_feature_state_values": []},
+        {"feature": {"id": 2, "name": "Checkout Theme", "type": "MULTIVARIATE"}, "enabled": true, "feature_state_value": "blue", "feature_segment": null, "multivariate_feature_state_values": []},
+        {"feature": {"id": 3, "name": "max_items", "type": "STANDARD"}, "enabled": false, "feature_state_value": 10, "feature_segment": null, "multivariate_feature_state_values": []}
+      ],
+      "identity_overrides": [],
+      "project": {
+        "name": "Web",
+        "segments": [
+          {"id": 1, "name": "Beta Users", "rules": [{"type": "ALL", "conditions": [], "rules": [
+            {"type": "ANY", "rules": [], "conditions": [
+              {"operator": "EQUAL", "property_": "plan", "value": "pro"},
+              {"operator": "EQUAL", "property_": "plan", "value": "enterprise"}
+            ]},
+            {"type": "ANY", "rules": [], "conditions": [
+              {"operator": "REGEX", "property_": "identifier", "value": ".*@example\\.com$"}
+            ]}
+          ]}], "feature_states": []},
+          {"id": 2, "name": "power_users", "rules": [{"type": "ALL", "conditions": [], "rules": [
+            {"type": "ALL", "rules": [], "conditions": [
+              {"operator": "GREATER_THAN_INCLUSIVE", "property_": "age", "value": "18"},
+              {"operator": "LESS_THAN", "property_": "logins", "value": "100"},
+              {"operator": "LESS_THAN_INCLUSIVE", "property_": "score", "value": "9.5"},
+              {"operator": "IN", "property_": "country", "value": "SE, NO,DK"},
+              {"operator": "NOT_CONTAINS", "property_": "email", "value": "+test"}
+            ]},
+            {"type": "NONE", "rules": [], "conditions": [
+              {"operator": "NOT_EQUAL", "property_": "status", "value": "active"},
+              {"operator": "CONTAINS", "property_": "email", "value": "@competitor.com"},
+              {"operator": "GREATER_THAN", "property_": "strikes", "value": "3"}
+            ]}
+          ]}], "feature_states": []},
+          {"id": 3, "name": "Has Plan", "rules": [{"type": "ALL", "conditions": [], "rules": [
+            {"type": "ANY", "rules": [], "conditions": [
+              {"operator": "IS_SET", "property_": "plan", "value": null},
+              {"operator": "IS_NOT_SET", "property_": "trial", "value": null},
+              {"operator": "EQUAL", "property_": "country", "value": "se"}
+            ]}
+          ]}], "feature_states": [
+            {"feature": {"id": 3, "name": "max_items", "type": "STANDARD"}, "enabled": true, "feature_state_value": 50, "feature_segment": {"priority": 0}, "multivariate_feature_state_values": []}
+          ]},
+          {"id": 4, "name": "Sampled", "rules": [{"type": "ALL", "rules": [], "conditions": [
+            {"operator": "MODULO", "property_": "user_id", "value": "2|0"},
+            {"operator": "PERCENTAGE_SPLIT", "property_": "", "value": "10"}
+          ]}], "feature_states": []},
+          {"id": 5, "name": "deep", "rules": [{"type": "ALL", "conditions": [], "rules": [
+            {"type": "ANY", "conditions": [], "rules": [
+              {"type": "ALL", "rules": [], "conditions": [{"operator": "EQUAL", "property_": "plan", "value": "pro"}]}
+            ]}
+          ]}], "feature_states": []},
+          {"id": 6, "name": "everyone", "rules": [], "feature_states": []}
+        ]
+      }
+    },
+    "Production": {
+      "api_key": "prod-key",
+      "name": "Production",
+      "feature_states": [
+        {"feature": {"id": 1, "name": "dark_mode", "type": "STANDARD"}, "enabled": false, "feature_state_value": "", "feature_segment": null, "multivariate_feature_state_values": []},
+        {"feature": {"id": 2, "name": "Checkout Theme", "type": "MULTIVARIATE"}, "enabled": true, "feature_state_value": "blue", "feature_segment": null, "multivariate_feature_state_values": [
+          {"percentage_allocation": 30, "multivariate_feature_option": {"id": 11, "value": "green"}},
+          {"percentage_allocation": 20.5, "multivariate_feature_option": {"id": 12, "value": "red"}}
+        ]},
+        {"feature": {"id": 3, "name": "max_items", "type": "STANDARD"}, "enabled": true, "feature_state_value": 25, "feature_segment": null, "multivariate_feature_state_values": []}
+      ],
+      "identity_overrides": [
+        {"identifier": "alice@example.com", "identity_features": [
+          {"feature": {"id": 1, "name": "dark_mode", "type": "STANDARD"}, "enabled": true, "feature_state_value": null, "multivariate_feature_state_values": []}
+        ]},
+        {"identifier": "bob", "identity_features": [
+          {"feature": {"id": 1, "name": "dark_mode", "type": "STANDARD"}, "enabled": true, "feature_state_value": null, "multivariate_feature_state_values": []},
+          {"feature": {"id": 2, "name": "Checkout Theme", "type": "MULTIVARIATE"}, "enabled": true, "feature_state_value": "red", "multivariate_feature_state_values": []}
+        ]}
+      ],
+      "project": {
+        "name": "Web",
+        "segments": [
+          {"id": 1, "name": "Beta Users", "rules": [{"type": "ALL", "conditions": [], "rules": [
+            {"type": "ANY", "rules": [], "conditions": [
+              {"operator": "EQUAL", "property_": "plan", "value": "pro"},
+              {"operator": "EQUAL", "property_": "plan", "value": "enterprise"}
+            ]},
+            {"type": "ANY", "rules": [], "conditions": [
+              {"operator": "REGEX", "property_": "identifier", "value": ".*@example\\.com$"}
+            ]}
+          ]}], "feature_states": [
+            {"feature": {"id": 1, "name": "dark_mode", "type": "STANDARD"}, "enabled": true, "feature_state_value": null, "feature_segment": {"priority": 1}, "multivariate_feature_state_values": []},
+            {"feature": {"id": 2, "name": "Checkout Theme", "type": "MULTIVARIATE"}, "enabled": true, "feature_state_value": "green", "feature_segment": {"priority": 1}, "multivariate_feature_state_values": []}
+          ]},
+          {"id": 2, "name": "power_users", "rules": [{"type": "ALL", "conditions": [], "rules": [
+            {"type": "ALL", "rules": [], "conditions": [
+              {"operator": "GREATER_THAN_INCLUSIVE", "property_": "age", "value": "18"},
+              {"operator": "LESS_THAN", "property_": "logins", "value": "100"},
+              {"operator": "LESS_THAN_INCLUSIVE", "property_": "score", "value": "9.5"},
+              {"operator": "IN", "property_": "country", "value": "SE, NO,DK"},
+              {"operator": "NOT_CONTAINS", "property_": "email", "value": "+test"}
+            ]},
+            {"type": "NONE", "rules": [], "conditions": [
+              {"operator": "NOT_EQUAL", "property_": "status", "value": "active"},
+              {"operator": "CONTAINS", "property_": "email", "value": "@competitor.com"},
+              {"operator": "GREATER_THAN", "property_": "strikes", "value": "3"}
+            ]}
+          ]}], "feature_states": [
+            {"feature": {"id": 1, "name": "dark_mode", "type": "STANDARD"}, "enabled": false, "feature_state_value": null, "feature_segment": {"priority": 0}, "multivariate_feature_state_values": []},
+            {"feature": {"id": 2, "name": "Checkout Theme", "type": "MULTIVARIATE"}, "enabled": true, "feature_state_value": "purple", "feature_segment": {"priority": 0}, "multivariate_feature_state_values": []}
+          ]},
+          {"id": 3, "name": "Has Plan", "rules": [{"type": "ALL", "conditions": [], "rules": [
+            {"type": "ANY", "rules": [], "conditions": [
+              {"operator": "IS_SET", "property_": "plan", "value": null},
+              {"operator": "IS_NOT_SET", "property_": "trial", "value": null},
+              {"operator": "EQUAL", "property_": "country", "value": "se"}
+            ]}
+          ]}], "feature_states": [
+            {"feature": {"id": 2, "name": "Checkout Theme", "type": "MULTIVARIATE"}, "enabled": false, "feature_state_value": "blue", "feature_segment": {"priority": 2}, "multivariate_feature_state_values": []}
+          ]},
+          {"id": 4, "name": "Sampled", "rules": [{"type": "ALL", "rules": [], "conditions": [
+            {"operator": "MODULO", "property_": "user_id", "value": "2|0"},
+            {"operator": "PERCENTAGE_SPLIT", "property_": "", "value": "10"}
+          ]}], "feature_states": []},
+          {"id": 5, "name": "deep", "rules": [{"type": "ALL", "conditions": [], "rules": [
+            {"type": "ANY", "conditions": [], "rules": [
+              {"type": "ALL", "rules": [], "conditions": [{"operator": "EQUAL", "property_": "plan", "value": "pro"}]}
+            ]}
+          ]}], "feature_states": []},
+          {"id": 6, "name": "everyone", "rules": [], "feature_states": []}
+        ]
+      }
+    }
+  }
+}

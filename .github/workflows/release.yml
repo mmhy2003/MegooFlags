@@ -1,0 +1,994 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdks/go/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdks/go/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "cli/v[0-9]+.[0-9]+.[0-9]+"
+      - "cli/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "terraform/v[0-9]+.[0-9]+.[0-9]+"
+      - "terraform/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-node/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-node/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-python/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-python/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-java/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-java/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-dotnet/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-dotnet/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-ruby/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-ruby/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-php/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-php/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-js/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-js/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-react/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-react/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-react-native/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-react-native/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-ios/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-ios/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-android/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-android/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+      - "sdk-flutter/v[0-9]+.[0-9]+.[0-9]+"
+      - "sdk-flutter/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_PREFIX: ghcr.io/mmhy2003/megooflags
+
+jobs:
+  meta:
+    # Platform tags only. ci, build, merge and release need meta, so they skip on SDK tags.
+    if: startsWith(github.ref_name, 'v')
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      image_version: ${{ steps.meta.outputs.image_version }}
+      tags: ${{ steps.meta.outputs.tags }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tag is on main
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *-rc.*)
+              echo "$GITHUB_REF_NAME is a release candidate; the main-branch check is skipped."
+              ;;
+            *)
+              if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+                echo "::error::$GITHUB_REF_NAME must point to a commit on main"
+                exit 1
+              fi
+              echo "$GITHUB_REF_NAME is on main."
+              ;;
+          esac
+      - name: Tag matches VERSION
+        run: python3 scripts/check_version.py --tag "$GITHUB_REF_NAME"
+      - id: meta
+        name: Image tags and release notes
+        run: python3 scripts/release_meta.py --tag "$GITHUB_REF_NAME" --notes-out release-notes.md >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
+          retention-days: 1
+
+  ci:
+    needs: meta
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  build:
+    needs: [meta, ci]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      # arm64 builds on a native ubuntu-24.04-arm runner (QEMU is slow for Next.js).
+      # Fallback if ubuntu-24.04-arm is unavailable for this repo: set the arm64 row's
+      # runner to ubuntu-24.04 and add docker/setup-qemu-action@v3 before setup-buildx-action.
+      matrix:
+        image: [api, web]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image }}
+          platforms: linux/${{ matrix.arch }}
+          build-args: |
+            VERSION=${{ needs.meta.outputs.image_version }}
+            REVISION=${{ github.sha }}
+          outputs: type=image,name=${{ env.IMAGE_PREFIX }}-${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=release-${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.image }}-${{ matrix.arch }}
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.image }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: [meta, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image: [api, web]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/digests
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
+          TAGS: ${{ needs.meta.outputs.tags }}
+        run: |
+          args=()
+          IFS=',' read -ra tags <<<"$TAGS"
+          for t in "${tags[@]}"; do args+=(-t "$IMAGE:$t"); done
+          sources=()
+          for d in *; do sources+=("$IMAGE@sha256:$d"); done
+          docker buildx imagetools create "${args[@]}" "${sources[@]}"
+      - name: Inspect
+        run: docker buildx imagetools inspect "${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:${{ needs.meta.outputs.image_version }}"
+
+  # The Helm chart, versioned like the images: oci://ghcr.io/mmhy2003/charts/megooflags.
+  chart:
+    needs: [meta, merge]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.meta.outputs.image_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Package
+        run: helm package deploy/helm/megooflags --version "$VERSION" --app-version "$VERSION" --destination dist
+      - name: Push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          helm push "dist/megooflags-$VERSION.tgz" oci://ghcr.io/mmhy2003/charts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chart
+          path: dist/megooflags-*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: [meta, merge, chart]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+      - uses: actions/download-artifact@v4
+        with:
+          name: chart
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+        run: |
+          flags=()
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "MegooFlags $GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            "${flags[@]}" \
+            deploy/docker-compose.yml deploy/Caddyfile deploy/.env.example \
+            deploy/docker-compose.control-plane.yml \
+            deploy/docker-compose.worker.yml deploy/Caddyfile.worker deploy/.env.worker.example \
+            "megooflags-${{ needs.meta.outputs.image_version }}.tgz"
+
+  sdk-go-release:
+    if: startsWith(github.ref_name, 'sdks/go/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sdks/go/go.mod
+          cache-dependency-path: sdks/go/go.sum
+      - name: Tag matches version.go
+        run: |
+          v="${GITHUB_REF_NAME#sdks/go/v}"
+          grep -q "const Version = \"${v%%-rc.*}\"" version.go || { echo "::error::tag does not match version.go"; exit 1; }
+      - run: go vet ./...
+      - run: go test -race -count=1 ./...
+      - run: go test -count=1 -run TestConformance ./...
+      - name: Warm the Go module proxy
+        run: |
+          v="${GITHUB_REF_NAME#sdks/go/v}"
+          for i in 1 2 3 4 5; do
+            if GOPROXY=https://proxy.golang.org GOFLAGS=-mod=mod go list -m "github.com/mmhy2003/MegooFlags/sdks/go@v${v}"; then exit 0; fi
+            echo "proxy attempt $i failed; retrying in 10 s"
+            sleep 10
+          done
+          echo "::error::proxy.golang.org did not resolve github.com/mmhy2003/MegooFlags/sdks/go@v${v}"
+          exit 1
+
+  # The CLI and the Terraform provider ship as GitHub release files only (cross-built archives plus
+  # SHA256SUMS, from scripts/go_release.py), always as pre-releases while they are 0.x.
+  cli-release:
+    if: startsWith(github.ref_name, 'cli/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag is on main
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *-rc.*)
+              echo "$GITHUB_REF_NAME is a release candidate; the main-branch check is skipped."
+              ;;
+            *)
+              if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+                echo "::error::$GITHUB_REF_NAME must point to a commit on main"
+                exit 1
+              fi
+              echo "$GITHUB_REF_NAME is on main."
+              ;;
+          esac
+      - name: Tag matches version
+        run: |
+          v="${GITHUB_REF_NAME#cli/v}"
+          grep -q "const Version = \"${v%%-rc.*}\"" cli/internal/buildinfo/version.go || { echo "::error::tag does not match cli/internal/buildinfo/version.go"; exit 1; }
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+      - run: go vet ./...
+        working-directory: cli
+      - run: go test -race -count=1 ./...
+        working-directory: cli
+      - name: Build the archives
+        run: python3 scripts/go_release.py --kind cli --version "${GITHUB_REF_NAME#cli/v}" --out dist
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#cli/v}"
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "MegooFlags CLI $v" \
+            --notes "See CHANGELOG.md and cli/README.md." \
+            --latest=false --prerelease
+
+  terraform-release:
+    if: startsWith(github.ref_name, 'terraform/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag is on main
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *-rc.*)
+              echo "$GITHUB_REF_NAME is a release candidate; the main-branch check is skipped."
+              ;;
+            *)
+              if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+                echo "::error::$GITHUB_REF_NAME must point to a commit on main"
+                exit 1
+              fi
+              echo "$GITHUB_REF_NAME is on main."
+              ;;
+          esac
+      - name: Tag matches version
+        run: |
+          v="${GITHUB_REF_NAME#terraform/v}"
+          grep -q "const Version = \"${v%%-rc.*}\"" terraform/internal/provider/version.go || { echo "::error::tag does not match terraform/internal/provider/version.go"; exit 1; }
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: terraform/go.mod
+          cache-dependency-path: terraform/go.sum
+      - run: go vet ./...
+        working-directory: terraform
+      - run: go test -race -count=1 ./...
+        working-directory: terraform
+      - name: Build the archives
+        run: python3 scripts/go_release.py --kind terraform --version "${GITHUB_REF_NAME#terraform/v}" --out dist
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#terraform/v}"
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "MegooFlags Terraform provider $v" \
+            --notes "See CHANGELOG.md and terraform/README.md." \
+            --latest=false --prerelease
+
+  # SDK releases (sdks/RELEASING.md): sdk-tag checks that the tag is on main, then each
+  # sdk-<lang>-release job checks the tag against the SDK's manifest, runs the checks, and builds and
+  # uploads the package. Publishing happens only when the repository variable SDK_PUBLISH_<LANG> is
+  # "true" and the tag is not a release candidate. For the registries with trusted publishing, a
+  # separate sdk-<lang>-publish job holds id-token: write and only downloads the built artifact, so
+  # no third-party install or build code runs with it.
+  # The npm client packages must be released in the order js, react, react-native (each depends on
+  # the previous one's published version).
+
+  sdk-tag:
+    if: startsWith(github.ref_name, 'sdk-')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag is on main
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *-rc.*)
+              echo "$GITHUB_REF_NAME is a release candidate; the main-branch check is skipped."
+              ;;
+            *)
+              if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+                echo "::error::$GITHUB_REF_NAME must point to a commit on main"
+                exit 1
+              fi
+              echo "$GITHUB_REF_NAME is on main."
+              ;;
+          esac
+
+  sdk-node-release:
+    if: startsWith(github.ref_name, 'sdk-node/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/node
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches package.json
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk node --tag "$GITHUB_REF_NAME"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/node/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: sdks/node/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack --pack-destination out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-node
+          path: sdks/node/out/*.tgz
+          if-no-files-found: error
+
+  sdk-node-publish:
+    needs: sdk-node-release
+    if: vars.SDK_PUBLISH_NODE == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-node
+          path: out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm
+        # Trusted publishing (OIDC) needs npm 11.5.1 or later; no token.
+        run: |
+          npm install -g npm@^11.5.1
+          npm publish out/*.tgz --access public
+
+  sdk-python-release:
+    if: startsWith(github.ref_name, 'sdk-python/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/python
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches pyproject.toml
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk python --tag "$GITHUB_REF_NAME"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          enable-cache: true
+          cache-dependency-glob: sdks/python/uv.lock
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-python
+          path: sdks/python/dist/*
+          if-no-files-found: error
+
+  sdk-python-publish:
+    needs: sdk-python-release
+    if: vars.SDK_PUBLISH_PYTHON == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-python
+          path: dist
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+  sdk-java-release:
+    if: startsWith(github.ref_name, 'sdk-java/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/java
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches pom.xml
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk java --tag "$GITHUB_REF_NAME"
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: sdks/java/pom.xml
+          # Names of the environment variables that hold the Central Portal token, not the values.
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+      - run: mvn -B -ntp verify
+      - run: mvn -B -ntp -Prelease -Dgpg.skip=true package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-java
+          path: sdks/java/target/*.jar
+          if-no-files-found: error
+      - name: Publish to Maven Central
+        if: vars.SDK_PUBLISH_JAVA == 'true' && !contains(github.ref_name, '-rc.')
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          MAVEN_GPG_KEY: ${{ secrets.GPG_SIGNING_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: mvn -B -ntp -Prelease -DskipTests deploy
+
+  sdk-dotnet-release:
+    if: startsWith(github.ref_name, 'sdk-dotnet/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/dotnet
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches MegooFlags.csproj
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk dotnet --tag "$GITHUB_REF_NAME"
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet format --verify-no-changes
+      - run: dotnet build -c Release
+      - run: dotnet test -c Release --no-build --filter "Category!=P99&Category!=E2E"
+      - run: dotnet pack src/MegooFlags -c Release -o out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-dotnet
+          path: sdks/dotnet/out/*.nupkg
+          if-no-files-found: error
+
+  sdk-dotnet-publish:
+    needs: sdk-dotnet-release
+    if: vars.SDK_PUBLISH_DOTNET == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-dotnet
+          path: out
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+      - id: nuget
+        name: NuGet login (trusted publishing)
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+      - name: Publish to NuGet
+        env:
+          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
+        run: dotnet nuget push out/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json
+
+  sdk-ruby-release:
+    if: startsWith(github.ref_name, 'sdk-ruby/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/ruby
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches version.rb
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk ruby --tag "$GITHUB_REF_NAME"
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          working-directory: sdks/ruby
+      - run: bundle exec rubocop
+      - run: bundle exec rake test
+      - run: gem build megooflags.gemspec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-ruby
+          path: sdks/ruby/*.gem
+          if-no-files-found: error
+
+  sdk-ruby-publish:
+    needs: sdk-ruby-release
+    if: vars.SDK_PUBLISH_RUBY == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-ruby
+          path: out
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+      - name: RubyGems credentials (trusted publishing)
+        uses: rubygems/configure-rubygems-credentials@v2.1.0
+      - name: Publish to RubyGems
+        run: gem push out/megooflags-*.gem
+
+  sdk-php-release:
+    if: startsWith(github.ref_name, 'sdk-php/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/php
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # No GITHUB_TOKEN header in .git/config: it would override the split token on the push,
+          # and composer install runs third-party code.
+          persist-credentials: false
+      - name: Tag matches Version.php
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk php --tag "$GITHUB_REF_NAME"
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: curl, json
+          coverage: none
+          tools: composer
+      - run: composer install --no-interaction --no-progress
+      - run: composer validate --strict
+      - run: composer cs
+      - run: composer stan
+      - run: composer test
+      - name: composer archive
+        # Composer cannot read the version from an sdk-php/v* tag, so give it the tag's.
+        run: COMPOSER_ROOT_VERSION="${GITHUB_REF_NAME#sdk-php/v}" composer archive --format=zip --dir=out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-php
+          path: sdks/php/out/*.zip
+          if-no-files-found: error
+      - name: Publish to the Packagist split repository
+        if: vars.SDK_PUBLISH_PHP == 'true' && !contains(github.ref_name, '-rc.')
+        working-directory: .
+        # Packagist reads the read-only split repository: sdks/php as its root, tagged vX.Y.Z.
+        env:
+          SDK_PHP_SPLIT_TOKEN: ${{ secrets.SDK_PHP_SPLIT_TOKEN }}
+          SPLIT_REPO: ${{ vars.SDK_PHP_SPLIT_REPO || 'mmhy2003/megooflags-php' }}
+        run: |
+          version="${GITHUB_REF_NAME#sdk-php/}"
+          git subtree split --prefix=sdks/php -b sdk-php-split
+          git push "https://x-access-token:${SDK_PHP_SPLIT_TOKEN}@github.com/${SPLIT_REPO}.git" \
+            sdk-php-split:refs/heads/main "sdk-php-split:refs/tags/${version}"
+
+  sdk-js-release:
+    if: startsWith(github.ref_name, 'sdk-js/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/js
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches package.json
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk js --tag "$GITHUB_REF_NAME"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/js/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: sdks/js/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack --pack-destination out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-js
+          path: sdks/js/out/*.tgz
+          if-no-files-found: error
+
+  sdk-js-publish:
+    needs: sdk-js-release
+    if: vars.SDK_PUBLISH_JS == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-js
+          path: out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm
+        # Trusted publishing (OIDC) needs npm 11.5.1 or later; no token.
+        run: |
+          npm install -g npm@^11.5.1
+          npm publish out/*.tgz --access public
+
+  sdk-react-release:
+    if: startsWith(github.ref_name, 'sdk-react/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/react
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches package.json
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk react --tag "$GITHUB_REF_NAME"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/react/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: |
+            sdks/js/pnpm-lock.yaml
+            sdks/react/pnpm-lock.yaml
+      - name: Build @megooflags/js
+        run: pnpm --dir ../js install --frozen-lockfile && pnpm --dir ../js build
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack --pack-destination out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-react
+          path: sdks/react/out/*.tgz
+          if-no-files-found: error
+
+  sdk-react-publish:
+    needs: sdk-react-release
+    if: vars.SDK_PUBLISH_REACT == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-react
+          path: out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm
+        # Trusted publishing (OIDC) needs npm 11.5.1 or later; no token.
+        run: |
+          npm install -g npm@^11.5.1
+          npm publish out/*.tgz --access public
+
+  sdk-react-native-release:
+    if: startsWith(github.ref_name, 'sdk-react-native/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/react-native
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches package.json
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk react-native --tag "$GITHUB_REF_NAME"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sdks/react-native/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: |
+            sdks/js/pnpm-lock.yaml
+            sdks/react/pnpm-lock.yaml
+            sdks/react-native/pnpm-lock.yaml
+      - name: Build @megooflags/js
+        run: pnpm --dir ../js install --frozen-lockfile && pnpm --dir ../js build
+      - name: Build @megooflags/react
+        run: pnpm --dir ../react install --frozen-lockfile && pnpm --dir ../react build
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack --pack-destination out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-react-native
+          path: sdks/react-native/out/*.tgz
+          if-no-files-found: error
+
+  sdk-react-native-publish:
+    needs: sdk-react-native-release
+    if: vars.SDK_PUBLISH_REACT_NATIVE == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-react-native
+          path: out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm
+        # Trusted publishing (OIDC) needs npm 11.5.1 or later; no token.
+        run: |
+          npm install -g npm@^11.5.1
+          npm publish out/*.tgz --access public
+
+  sdk-ios-release:
+    if: startsWith(github.ref_name, 'sdk-ios/v')
+    needs: sdk-tag
+    runs-on: macos-15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches Version.swift
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk ios --tag "$GITHUB_REF_NAME"
+      - name: Xcode 16.4 (Swift 6.1)
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      - run: swift format lint --strict --recursive Sources Tests Package.swift
+      - run: swift build
+      - run: swift test --filter MegooFlagsTests
+
+  sdk-ios-publish:
+    needs: sdk-ios-release
+    if: vars.SDK_PUBLISH_IOS == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # No GITHUB_TOKEN header in .git/config: it would override the split token on the push.
+          persist-credentials: false
+      - name: Publish to the SwiftPM split repository
+        # SwiftPM reads the read-only split repository: sdks/ios as its root, tagged X.Y.Z (no "v").
+        env:
+          SDK_IOS_SPLIT_TOKEN: ${{ secrets.SDK_IOS_SPLIT_TOKEN }}
+          SPLIT_REPO: ${{ vars.SDK_IOS_SPLIT_REPO || 'mmhy2003/megooflags-swift' }}
+        run: |
+          version="${GITHUB_REF_NAME#sdk-ios/v}"
+          git subtree split --prefix=sdks/ios -b sdk-ios-split
+          git push "https://x-access-token:${SDK_IOS_SPLIT_TOKEN}@github.com/${SPLIT_REPO}.git" \
+            sdk-ios-split:refs/heads/main "sdk-ios-split:refs/tags/${version}"
+
+  sdk-android-release:
+    if: startsWith(github.ref_name, 'sdk-android/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/android
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches gradle.properties
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk android --tag "$GITHUB_REF_NAME"
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew spotlessCheck lint testDebugUnitTest assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-android
+          path: sdks/android/build/outputs/aar/*.aar
+          if-no-files-found: error
+      - name: Publish to Maven Central
+        if: vars.SDK_PUBLISH_ANDROID == 'true' && !contains(github.ref_name, '-rc.')
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_PASSPHRASE }}
+        run: ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache
+
+  sdk-flutter-release:
+    if: startsWith(github.ref_name, 'sdk-flutter/v')
+    needs: sdk-tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/flutter
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches pubspec.yaml
+        working-directory: .
+        run: python3 scripts/check_sdk_version.py --sdk flutter --tag "$GITHUB_REF_NAME"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.38.x
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed .
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter pub publish --dry-run
+
+  sdk-flutter-publish:
+    # pub.dev publishes from the source (it has no artifact upload), so this job runs pub get with the
+    # OIDC token; the only dependencies are openfeature_dart_client_sdk, http and shared_preferences.
+    needs: sdk-flutter-release
+    if: vars.SDK_PUBLISH_FLUTTER == 'true' && !contains(github.ref_name, '-rc.')
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: sdks/flutter
+    steps:
+      - uses: actions/checkout@v4
+      # Configures the pub.dev OIDC credentials (trusted publishing); no token.
+      - uses: dart-lang/setup-dart@v1
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.38.x
+      - name: Publish to pub.dev
+        run: flutter pub get && flutter pub publish --force

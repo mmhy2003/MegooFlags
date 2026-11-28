@@ -1,0 +1,4 @@
+{"environment": "production", "enabled": true, "version": 4, "targets": [],
+ "rules": [{"id": "6f1c2a4e-0000-4000-8000-000000000001", "description": "Mobile", "clauses": [{"attribute": "device", "operator": "eq", "values": ["mobile"], "negate": false}], "variation": null, "rollout": {"bucket_by": "key", "weights": [{"variation": "hello", "weight": 40000}, {"variation": "welcome", "weight": 60000}]}}],
+ "fallthrough": {"variation": null, "rollout": {"bucket_by": "key", "weights": [{"variation": "welcome", "weight": 25000}, {"variation": "hello", "weight": 75000}]}},
+ "prerequisites": [], "updated_at": "2026-01-04T00:00:00Z"}

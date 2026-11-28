@@ -1,0 +1,23 @@
+# PostgreSQL and Valkey for the api tests, scripts/check_migrations.sh and the web e2e
+# (megoocolab.toml; the runner picks the ports).
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: megooflags
+      POSTGRES_PASSWORD: megooflags
+      POSTGRES_DB: megooflags
+    ports: ["127.0.0.1:${PG_PORT}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U megooflags -d megooflags"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  valkey:
+    image: valkey/valkey:8
+    ports: ["127.0.0.1:${VALKEY_PORT}:6379"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 30

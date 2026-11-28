@@ -1,0 +1,27 @@
+# MegooFlags: Caddy in front of three worker nodes.
+# flags.example.com is your SDK hostname: Caddy gets its certificate automatically. To use your
+# own, add `tls /etc/caddy/tls/fullchain.pem /etc/caddy/tls/privkey.pem` to the site block.
+# worker-1, worker-2 and worker-3 are placeholders: use your workers' hostnames or addresses.
+
+flags.example.com {
+	@sdk path /sdk/* /ofrep/*
+	handle @sdk {
+		reverse_proxy worker-1:80 worker-2:80 worker-3:80 {
+			lb_policy round_robin
+			# A worker is taken out while it is not ready, draining or revoked (503 from /readyz).
+			health_uri /readyz
+			health_interval 5s
+			health_timeout 2s
+			fail_duration 10s
+			# Server-sent events: flush every write, and wait well beyond the 15 s heartbeat.
+			flush_interval -1
+			transport http {
+				read_timeout 1h
+			}
+		}
+	}
+	# Everything else (the UI, /api/*, /metrics) stays on the control plane.
+	handle {
+		respond 404
+	}
+}

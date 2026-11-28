@@ -1,0 +1,66 @@
+# Flags as code: apply flags/ to MegooFlags when it changes on main.
+# Copy to .github/workflows/ in the repository that holds flags/. Set the
+# MEGOOFLAGS_URL and MEGOOFLAGS_PROJECT variables and the MEGOOFLAGS_API_TOKEN
+# secret. Changes to environments that require approvals become change
+# requests: `megooflags apply --change-requests` still exits 0 and prints
+# "opened change request <id>" for each, which this workflow lists in the job
+# summary.
+name: MegooFlags apply
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "flags/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: megooflags-apply
+  cancel-in-progress: false
+
+env:
+  MEGOOFLAGS_CLI_VERSION: 0.1.0
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    env:
+      MEGOOFLAGS_URL: ${{ vars.MEGOOFLAGS_URL }}
+      MEGOOFLAGS_API_TOKEN: ${{ secrets.MEGOOFLAGS_API_TOKEN }}
+      MEGOOFLAGS_PROJECT: ${{ vars.MEGOOFLAGS_PROJECT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the MegooFlags CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP"
+          gh release download "cli/v$MEGOOFLAGS_CLI_VERSION" --repo mmhy2003/MegooFlags \
+            --pattern "megooflags_${MEGOOFLAGS_CLI_VERSION}_linux_amd64.tar.gz" --pattern SHA256SUMS --clobber
+          sha256sum --check --ignore-missing SHA256SUMS
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "megooflags_${MEGOOFLAGS_CLI_VERSION}_linux_amd64.tar.gz" -C "$RUNNER_TEMP/bin" megooflags
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Apply flags/ to MegooFlags
+        shell: bash
+        run: |
+          set -o pipefail
+          status=0
+          megooflags apply --dir flags --change-requests 2>&1 | tee apply.txt || status=$?
+          {
+            echo "## MegooFlags apply"
+            echo
+            if grep -q '^opened change request ' apply.txt; then
+              echo "Some changes need approval. Review the opened change requests in MegooFlags:"
+              echo
+            fi
+            echo '```'
+            cat apply.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

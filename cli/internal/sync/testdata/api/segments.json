@@ -1,0 +1,4 @@
+{"items": [
+  {"key": "beta", "name": "Beta", "description": "Beta testers", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"},
+  {"key": "staff", "name": "Staff", "description": "", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"}
+ ], "next_cursor": null}

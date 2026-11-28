@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "description": "Segments (T-4): in_segment with excluded, then included, then the segment rules; several segments, negate and unknown segment keys.",
+  "ruleset": {
+    "schema_version": 1,
+    "project": "conformance",
+    "environment": "test",
+    "flags": {
+      "in-beta": {
+        "key": "in-beta",
+        "type": "string",
+        "enabled": true,
+        "version": 1,
+        "variations": [{"key": "on", "value": "on"}, {"key": "off", "value": "off"}],
+        "off_variation": "off",
+        "prerequisites": [],
+        "targets": [],
+        "rules": [
+          {
+            "description": "beta segment",
+            "clauses": [{"attribute": "key", "operator": "in_segment", "values": ["beta"], "negate": false}],
+            "serve": {"variation": "on"}
+          }
+        ],
+        "fallthrough": {"variation": "off"}
+      },
+      "any-segment": {
+        "key": "any-segment",
+        "type": "string",
+        "enabled": true,
+        "version": 1,
+        "variations": [{"key": "on", "value": "on"}, {"key": "off", "value": "off"}],
+        "off_variation": "off",
+        "prerequisites": [],
+        "targets": [],
+        "rules": [
+          {
+            "description": "beta or gamma",
+            "clauses": [{"attribute": "key", "operator": "in_segment", "values": ["beta", "gamma"], "negate": false}],
+            "serve": {"variation": "on"}
+          }
+        ],
+        "fallthrough": {"variation": "off"}
+      },
+      "not-beta": {
+        "key": "not-beta",
+        "type": "string",
+        "enabled": true,
+        "version": 1,
+        "variations": [{"key": "on", "value": "on"}, {"key": "off", "value": "off"}],
+        "off_variation": "off",
+        "prerequisites": [],
+        "targets": [],
+        "rules": [
+          {
+            "description": "not in beta",
+            "clauses": [{"attribute": "key", "operator": "in_segment", "values": ["beta"], "negate": true}],
+            "serve": {"variation": "on"}
+          }
+        ],
+        "fallthrough": {"variation": "off"}
+      },
+      "unknown-segment": {
+        "key": "unknown-segment",
+        "type": "string",
+        "enabled": true,
+        "version": 1,
+        "variations": [{"key": "on", "value": "on"}, {"key": "off", "value": "off"}],
+        "off_variation": "off",
+        "prerequisites": [],
+        "targets": [],
+        "rules": [
+          {
+            "description": "a segment that does not exist",
+            "clauses": [{"attribute": "key", "operator": "in_segment", "values": ["nope"], "negate": false}],
+            "serve": {"variation": "on"}
+          }
+        ],
+        "fallthrough": {"variation": "off"}
+      }
+    },
+    "segments": {
+      "beta": {
+        "included": ["u1", "u2"],
+        "excluded": ["u2", "u3"],
+        "rules": [{"clauses": [{"attribute": "plan", "operator": "in", "values": ["pro"], "negate": false}]}]
+      },
+      "gamma": {
+        "included": ["g1"],
+        "excluded": [],
+        "rules": []
+      }
+    }
+  },
+  "tests": [
+    {"name": "included", "flag": "in-beta", "context": {"key": "u1"}, "default": "x",
+     "expected": {"value": "on", "variant": "on", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 0}}},
+    {"name": "excluded-beats-included", "flag": "in-beta", "context": {"key": "u2"}, "default": "x",
+     "expected": {"value": "off", "variant": "off", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "excluded-beats-rules", "flag": "in-beta", "context": {"key": "u3", "plan": "pro"}, "default": "x",
+     "expected": {"value": "off", "variant": "off", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "segment-rule-match", "flag": "in-beta", "context": {"key": "u9", "plan": "pro"}, "default": "x",
+     "expected": {"value": "on", "variant": "on", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 0}}},
+    {"name": "no-match", "flag": "in-beta", "context": {"key": "u9", "plan": "free"}, "default": "x",
+     "expected": {"value": "off", "variant": "off", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "any-segment-second", "flag": "any-segment", "context": {"key": "g1"}, "default": "x",
+     "expected": {"value": "on", "variant": "on", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 0}}},
+    {"name": "any-segment-first", "flag": "any-segment", "context": {"key": "u1"}, "default": "x",
+     "expected": {"value": "on", "variant": "on", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 0}}},
+    {"name": "any-segment-none", "flag": "any-segment", "context": {"key": "u9"}, "default": "x",
+     "expected": {"value": "off", "variant": "off", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "negated-outside", "flag": "not-beta", "context": {"key": "u9"}, "default": "x",
+     "expected": {"value": "on", "variant": "on", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 0}}},
+    {"name": "negated-inside", "flag": "not-beta", "context": {"key": "u1"}, "default": "x",
+     "expected": {"value": "off", "variant": "off", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "unknown-segment-is-a-miss", "flag": "unknown-segment", "context": {"key": "u1", "plan": "pro"}, "default": "x",
+     "expected": {"value": "off", "variant": "off", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "no-key-uses-rules", "flag": "in-beta", "context": {"plan": "pro"}, "default": "x",
+     "expected": {"value": "on", "variant": "on", "reason": "TARGETING_MATCH", "error_code": null, "metadata": {"rule_index": 0}}},
+    {"name": "no-key-no-rule-match", "flag": "in-beta", "context": {}, "default": "x",
+     "expected": {"value": "off", "variant": "off", "reason": "DEFAULT", "error_code": null, "metadata": {}}},
+    {"name": "number-key-not-included", "flag": "in-beta", "context": {"key": 1}, "default": "x",
+     "expected": {"value": "off", "variant": "off", "reason": "DEFAULT", "error_code": null, "metadata": {}}}
+  ]
+}

@@ -1,0 +1,92 @@
+{{- if and (ne .Values.role "worker") .Values.postgresql.enabled }}
+{{- $fullname := include "megooflags.fullname" . }}
+{{- $persistence := .Values.postgresql.persistence }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullname }}-postgresql
+  labels:
+    {{- include "megooflags.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  serviceName: {{ $fullname }}-postgresql
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "megooflags.selectorLabels" (dict "ctx" $ "component" "postgresql") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "megooflags.selectorLabels" (dict "ctx" $ "component" "postgresql") | nindent 8 }}
+    spec:
+      {{- include "megooflags.podSecurityAs" (dict "ctx" $ "uid" 999) | nindent 6 }}
+      containers:
+        - name: postgresql
+          image: {{ .Values.postgresql.image }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USER
+              value: megooflags
+            - name: POSTGRES_DB
+              value: megooflags
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "megooflags.secretName" . }}
+                  key: POSTGRES_PASSWORD
+            # A subdirectory: the volume's root may hold lost+found, which initdb refuses.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - megooflags
+                - -d
+                - megooflags
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          {{- with .Values.postgresql.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- include "megooflags.containerSecurity" . | nindent 10 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "megooflags.selectorLabels" (dict "ctx" $ "component" "postgresql") | nindent 10 }}
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- with $persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-postgresql
+  labels:
+    {{- include "megooflags.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "megooflags.selectorLabels" (dict "ctx" $ "component" "postgresql") | nindent 4 }}
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+      protocol: TCP
+{{- end }}

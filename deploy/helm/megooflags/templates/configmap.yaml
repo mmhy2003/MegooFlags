@@ -1,0 +1,30 @@
+{{- include "megooflags.validate" . -}}
+{{- $worker := eq .Values.role "worker" -}}
+{{- $controlPlaneOnly := list "MEGOOFLAGS_PUBLIC_URL" "MEGOOFLAGS_PERSIST_CONTEXT" "MEGOOFLAGS_EXPOSURE_RETENTION_DAYS" "MEGOOFLAGS_STREAM_RECHECK_SECONDS" "MEGOOFLAGS_API_WORKERS" "MEGOOFLAGS_WEBHOOK_ALLOW_PRIVATE" "MEGOOFLAGS_WEBHOOK_TIMEOUT_SECONDS" "MEGOOFLAGS_WEBHOOK_RETENTION_DAYS" "MEGOOFLAGS_UPDATE_CHECK" -}}
+{{- $workerOnly := list "MEGOOFLAGS_WORKER_BUFFER_MAX_MB" "MEGOOFLAGS_WORKER_DRAIN_GRACE_SECONDS" -}}
+{{- $dropped := ternary $controlPlaneOnly $workerOnly $worker -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "megooflags.configName" . }}
+  labels:
+    {{- include "megooflags.labels" . | nindent 4 }}
+data:
+  MEGOOFLAGS_ROLE: {{ .Values.role | quote }}
+  {{- range $key, $value := .Values.config }}
+  {{- if not (has $key $dropped) }}
+  {{- if and (eq $key "OTEL_SERVICE_NAME") (eq (toString $value) "") }}
+  {{ $key }}: {{ ternary "megooflags-worker" "megooflags-api" $worker | quote }}
+  {{- else }}
+  {{ $key }}: {{ $value | toString | quote }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+  {{- if $worker }}
+  {{- $ca := .Values.worker.controlPlaneCa }}
+  MEGOOFLAGS_CONTROL_PLANE_URL: {{ .Values.worker.controlPlaneUrl | quote }}
+  MEGOOFLAGS_CONTROL_PLANE_INSECURE: {{ .Values.worker.controlPlaneInsecure | toString | quote }}
+  {{- if or $ca.configMap $ca.secret }}
+  MEGOOFLAGS_CONTROL_PLANE_CA_FILE: {{ printf "/etc/megooflags/certs/%s" $ca.key | quote }}
+  {{- end }}
+  {{- end }}

@@ -1,0 +1,9 @@
+# Failure-suite control plane (scripts/cluster_test.sh), on top of docker-compose.control-plane.yml
+# and compose.ci.yml (local images, HTTPS on host port 8443). Caddy serves HTTPS from its internal CA
+# for cp.megooflags.internal, the alias the workers use on the megooflags-cluster network, and for
+# localhost, the name the failure runner uses from the host. The script attaches Caddy to that
+# network itself: see `join` in cluster_test.sh.
+services:
+  caddy:
+    environment:
+      MEGOOFLAGS_SITE_ADDRESS: cp.megooflags.internal, localhost

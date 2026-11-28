@@ -1,0 +1,140 @@
+import megooflags_api.models  # noqa: F401
+from megooflags_api.db import Base
+from megooflags_api.models.enums import (
+    ApiTokenKind,
+    ChangeRequestKind,
+    ChangeRequestStatus,
+    DeliveryStatus,
+    EventGroup,
+    FlagLifecycle,
+    FlagType,
+    InstanceRole,
+    IntegrationKind,
+    InvitationPurpose,
+    NodeStatus,
+    Operator,
+    ReviewDecision,
+    RolloutStatus,
+    ScheduledAction,
+    ScheduleStatus,
+    ScopeKind,
+    SdkKeyKind,
+    SessionState,
+    SsoProtocol,
+    SubjectKind,
+    UserStatus,
+)
+
+
+def test_metadata_has_all_tables() -> None:
+    assert set(Base.metadata.tables) == {
+        "project",
+        "environment",
+        "flag",
+        "variation",
+        "flag_environment",
+        "flag_target",
+        "flag_rule",
+        "rollout_weight",
+        "clause",
+        "clause_segment",
+        "flag_prerequisite",
+        "segment",
+        "segment_target",
+        "segment_rule",
+        "sdk_key",
+        "exposure_event",
+        "evaluation_count",
+        "user",
+        "team",
+        "team_member",
+        "role",
+        "role_binding",
+        "org_settings",
+        "session",
+        "api_token",
+        "audit_entry",
+        "invitation",
+        "totp_credential",
+        "recovery_code",
+        "webauthn_credential",
+        "sso_provider",
+        "sso_group_mapping",
+        "user_identity",
+        "change_request",
+        "change_request_review",
+        "change_request_comment",
+        "scheduled_change",
+        "progressive_rollout",
+        "integration",
+        "integration_environment",
+        "integration_outbox",
+        "integration_delivery",
+        "node",
+        "node_token",
+        "environment_snapshot",
+        "node_event_batch",
+        "update_status",
+    }
+
+
+def test_enum_values() -> None:
+    assert [t.value for t in FlagType] == ["boolean", "string", "number", "json"]
+    assert [o.value for o in Operator] == [
+        "in",
+        "not_in",
+        "contains",
+        "starts_with",
+        "ends_with",
+        "matches",
+        "lt",
+        "lte",
+        "gt",
+        "gte",
+        "semver_eq",
+        "semver_lt",
+        "semver_gt",
+        "before",
+        "after",
+        "in_segment",
+    ]
+    assert [k.value for k in SdkKeyKind] == ["server", "client"]
+    assert [s.value for s in UserStatus] == ["active", "disabled"]
+    assert [k.value for k in SubjectKind] == ["user", "team", "service_token"]
+    assert [s.value for s in ScopeKind] == ["org", "project", "environment"]
+    assert [s.value for s in SessionState] == ["pending_mfa", "enrol_mfa", "active"]
+    assert [k.value for k in ApiTokenKind] == ["service", "personal"]
+    assert [p.value for p in InvitationPurpose] == ["invite", "reset"]
+    assert [p.value for p in SsoProtocol] == ["oidc", "saml"]
+    assert [s.value for s in FlagLifecycle] == ["new", "active", "permanent", "stale"]
+    assert [a.value for a in ScheduledAction] == ["enable", "disable", "set_rollout"]
+    assert [s.value for s in ScheduleStatus] == ["pending", "done", "failed", "cancelled"]
+    assert [s.value for s in RolloutStatus] == [
+        "active",
+        "paused",
+        "completed",
+        "aborted",
+        "failed",
+        "cancelled",
+    ]
+    assert [k.value for k in ChangeRequestKind] == ["config", "toggle", "schedule", "rollout"]
+    assert [s.value for s in ChangeRequestStatus] == [
+        "open",
+        "applied",
+        "rejected",
+        "cancelled",
+        "failed",
+    ]
+    assert [d.value for d in ReviewDecision] == ["approve", "reject"]
+    assert [k.value for k in IntegrationKind] == ["webhook", "slack", "teams"]
+    assert [s.value for s in DeliveryStatus] == ["pending", "delivered", "failed"]
+    assert [g.value for g in EventGroup] == ["flags", "targeting", "segments", "change_requests"]
+    assert [r.value for r in InstanceRole] == ["standalone", "control-plane", "worker"]
+    assert [s.value for s in NodeStatus] == [
+        "pending",
+        "healthy",
+        "stale",
+        "draining",
+        "incompatible",
+        "revoked",
+    ]

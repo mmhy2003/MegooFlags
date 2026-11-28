@@ -1,0 +1,195 @@
+"use client";
+
+import { useState } from "react";
+
+import { AccessRows } from "@/components/access/access-rows";
+import { ScopePicker } from "@/components/access/scope-picker";
+import { ConfirmDialog } from "@/components/patterns/confirm-dialog";
+import { DataList, type Column } from "@/components/patterns/data-list";
+import { ResponsiveDialog } from "@/components/patterns/responsive-dialog";
+import { RolloutSlider } from "@/components/patterns/rollout-slider";
+import { StatusPill, type Status } from "@/components/patterns/status-pill";
+import { Toggle } from "@/components/patterns/toggle";
+import { UpdatePill } from "@/components/shell/version-footer";
+import { Button } from "@/components/ui/button";
+import { DialogClose } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import type { AccessRow, ScopeValue } from "@/lib/access/bindings";
+
+type SampleFlag = {
+  key: string;
+  status: Status;
+  summary: string;
+  updated: string;
+  owner: string;
+};
+
+const FLAGS: SampleFlag[] = [
+  {
+    key: "new-checkout",
+    status: "on",
+    summary: "25 % rollout · 2 rules",
+    updated: "2 hours ago",
+    owner: "Ada Admin",
+  },
+  {
+    key: "dark-mode",
+    status: "off",
+    summary: "Serves false to everyone",
+    updated: "Yesterday",
+    owner: "Vic Viewer",
+  },
+  {
+    key: "pricing-copy",
+    status: "stale",
+    summary: "No evaluations in 30 days",
+    updated: "3 months ago",
+    owner: "Pat Prefs",
+  },
+];
+
+const COLUMNS: Column<SampleFlag>[] = [
+  {
+    id: "key",
+    header: "Key",
+    priority: "key",
+    cell: (flag) => <span className="font-mono break-all">{flag.key}</span>,
+  },
+  {
+    id: "status",
+    header: "Status",
+    priority: "status",
+    cell: (flag) => <StatusPill status={flag.status} />,
+  },
+  {
+    id: "summary",
+    header: "Targeting",
+    priority: "main",
+    cell: (flag) => flag.summary,
+  },
+  {
+    id: "updated",
+    header: "Updated",
+    priority: "extra",
+    cell: (flag) => flag.updated,
+  },
+  {
+    id: "owner",
+    header: "Owner",
+    priority: "extra",
+    cell: (flag) => flag.owner,
+  },
+];
+
+export function DataListSample() {
+  return (
+    <DataList
+      columns={COLUMNS}
+      rows={FLAGS}
+      rowKey={(flag) => flag.key}
+      caption="Sample flags"
+    />
+  );
+}
+
+export function ToggleSample() {
+  const [on, setOn] = useState(true);
+  return (
+    <div className="flex flex-wrap gap-4">
+      <Toggle
+        checked={on}
+        onCheckedChange={setOn}
+        label="new-checkout in production"
+      />
+      <Toggle
+        checked={false}
+        onCheckedChange={() => {}}
+        label="dark-mode in production (disabled)"
+        disabled
+      />
+    </div>
+  );
+}
+
+export function RolloutSample() {
+  const [value, setValue] = useState(25);
+  return (
+    <RolloutSlider
+      value={value}
+      onValueChange={setValue}
+      label="new-checkout rollout"
+    />
+  );
+}
+
+export function DialogSample() {
+  return (
+    <ResponsiveDialog
+      trigger={<Button variant="outline">Open sample dialog</Button>}
+      title="Sample dialog"
+      description="A full-screen sheet on narrow screens, a centred box from 768 px."
+      footer={<DialogClose render={<Button />}>Done</DialogClose>}
+    >
+      <Input aria-label="Note" placeholder="Type a note" />
+      <p className="text-muted-foreground">
+        Fold or unfold the device while this dialog is open: it changes shape
+        but stays open, and the note keeps what you typed. Long content scrolls
+        inside the dialog rather than the page behind it, and the bottom edge
+        keeps clear of the home indicator on phones that have one. This
+        paragraph is long on purpose, so that the sheet has something to scroll
+        on the smallest cover screens.
+      </p>
+    </ResponsiveDialog>
+  );
+}
+
+export function ConfirmSample() {
+  const [confirmed, setConfirmed] = useState(false);
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <ConfirmDialog
+        trigger={<Button variant="destructive">Kill new-checkout</Button>}
+        title="Kill new-checkout?"
+        description="Every environment serves the off variation until you turn it back on."
+        confirmLabel="Kill"
+        destructive
+        onConfirm={() => setConfirmed(true)}
+      />
+      {confirmed && <span>Confirmed</span>}
+    </div>
+  );
+}
+
+export function AccessSample() {
+  const [rows, setRows] = useState<AccessRow[]>([
+    { role: "viewer", scope: "org", project: null, env: null },
+  ]);
+  const [scope, setScope] = useState<ScopeValue>({
+    scope: "org",
+    project: null,
+    env: null,
+  });
+  return (
+    <div className="flex flex-col gap-6">
+      <AccessRows value={rows} onChange={setRows} idPrefix="kit-access" />
+      <fieldset className="flex flex-col gap-3">
+        <legend className="mb-1 text-sm font-medium">Scope</legend>
+        <ScopePicker value={scope} onChange={setScope} idPrefix="kit-scope" />
+      </fieldset>
+    </div>
+  );
+}
+
+const SAMPLE_UPDATE = {
+  version: "1.1.0",
+  url: "https://github.com/mmhy2003/MegooFlags/releases/tag/v1.1.0",
+};
+
+export function UpdatePillSample() {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <UpdatePill update={SAMPLE_UPDATE} collapsed={false} />
+      <UpdatePill update={SAMPLE_UPDATE} collapsed />
+    </div>
+  );
+}

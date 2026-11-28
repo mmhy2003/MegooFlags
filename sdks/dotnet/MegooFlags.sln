@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{C9BAB131-1CA4-44AE-8B01-37D8C196EE7E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MegooFlags", "src\MegooFlags\MegooFlags.csproj", "{BA3073B9-D51B-423A-AF5A-619BA952641B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{E4FF7364-3365-4CA0-AD74-544F2C5B3E57}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MegooFlags.Tests", "tests\MegooFlags.Tests\MegooFlags.Tests.csproj", "{37509F08-18B1-49FF-AD3E-5315B5866C06}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BA3073B9-D51B-423A-AF5A-619BA952641B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BA3073B9-D51B-423A-AF5A-619BA952641B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BA3073B9-D51B-423A-AF5A-619BA952641B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BA3073B9-D51B-423A-AF5A-619BA952641B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{37509F08-18B1-49FF-AD3E-5315B5866C06}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{37509F08-18B1-49FF-AD3E-5315B5866C06}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{37509F08-18B1-49FF-AD3E-5315B5866C06}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{37509F08-18B1-49FF-AD3E-5315B5866C06}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{BA3073B9-D51B-423A-AF5A-619BA952641B} = {C9BAB131-1CA4-44AE-8B01-37D8C196EE7E}
+		{37509F08-18B1-49FF-AD3E-5315B5866C06} = {E4FF7364-3365-4CA0-AD74-544F2C5B3E57}
+	EndGlobalSection
+EndGlobal

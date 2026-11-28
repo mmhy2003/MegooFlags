@@ -1,0 +1,64 @@
+{{- if and (ne .Values.role "worker") .Values.valkey.enabled }}
+{{- $fullname := include "megooflags.fullname" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-valkey
+  labels:
+    {{- include "megooflags.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "megooflags.selectorLabels" (dict "ctx" $ "component" "valkey") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "megooflags.selectorLabels" (dict "ctx" $ "component" "valkey") | nindent 8 }}
+    spec:
+      {{- include "megooflags.podSecurityAs" (dict "ctx" $ "uid" 999) | nindent 6 }}
+      containers:
+        - name: valkey
+          image: {{ .Values.valkey.image }}
+          imagePullPolicy: IfNotPresent
+          # A cache and a pub/sub bus only: nothing to persist, as in Compose.
+          args:
+            - valkey-server
+            - --save
+            - ""
+            - --appendonly
+            - "no"
+          ports:
+            - name: valkey
+              containerPort: 6379
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+                - valkey-cli
+                - ping
+            periodSeconds: 5
+          {{- with .Values.valkey.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- include "megooflags.containerSecurity" . | nindent 10 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-valkey
+  labels:
+    {{- include "megooflags.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "megooflags.selectorLabels" (dict "ctx" $ "component" "valkey") | nindent 4 }}
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: valkey
+      protocol: TCP
+{{- end }}

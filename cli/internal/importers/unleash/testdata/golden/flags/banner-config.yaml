@@ -1,0 +1,45 @@
+name: Banner Config
+description: Banner settings
+type: json
+tags: []
+variations:
+  - key: v1
+    name: v1
+    description: ""
+    value:
+      color: red
+      size: 2
+  - key: plain
+    name: plain
+    description: ""
+    value: x
+  - key: disabled
+    name: ""
+    description: ""
+    value: ""
+off_variation: disabled
+permanent: false
+archived: false
+environments:
+  development:
+    enabled: true
+    targets: []
+    rules: []
+    fallthrough:
+      rollout:
+        bucket_by: key
+        weights:
+          - variation: v1
+            weight: 100000
+          - variation: plain
+            weight: 0
+    prerequisites:
+      - flag: checkout-theme
+        variation: blue
+  prod:
+    enabled: false
+    targets: []
+    rules: []
+    fallthrough:
+      variation: disabled
+    prerequisites: []

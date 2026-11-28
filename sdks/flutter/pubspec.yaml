@@ -1,0 +1,25 @@
+name: megooflags
+description: >-
+  MegooFlags client SDK for Flutter: an OpenFeature provider that evaluates flags on the server with a
+  client key, follows changes over SSE, caches values on the device and sends exposures in batches.
+version: 0.1.0
+repository: https://github.com/mmhy2003/MegooFlags/tree/main/sdks/flutter
+
+environment:
+  sdk: ^3.10.0
+  flutter: ">=3.38.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.4.0
+  openfeature_dart_client_sdk: ">=0.0.1 <0.1.0"
+  shared_preferences: ^2.5.0
+
+dev_dependencies:
+  crypto: ^3.0.6
+  fake_async: ^1.3.0
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+  shared_preferences_platform_interface: ^2.4.0

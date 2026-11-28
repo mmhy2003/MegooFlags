@@ -1,0 +1,52 @@
+name: SDK e2e stack
+description: Build the api and web images, start the compose stack and mint an API token for an SDK end-to-end test.
+inputs:
+  project:
+    description: Compose project name, for example megooflags-sdk-node
+    required: true
+runs:
+  using: composite
+  steps:
+    - id: v
+      shell: bash
+      run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+    - uses: docker/setup-buildx-action@v3
+    - uses: docker/build-push-action@v6
+      with:
+        context: api
+        load: true
+        tags: megooflags-api:ci
+        build-args: |
+          VERSION=${{ steps.v.outputs.version }}
+          REVISION=${{ github.sha }}
+        cache-from: type=gha,scope=api
+    - uses: docker/build-push-action@v6
+      with:
+        context: web
+        load: true
+        tags: megooflags-web:ci
+        build-args: |
+          VERSION=${{ steps.v.outputs.version }}
+          REVISION=${{ github.sha }}
+        cache-from: type=gha,scope=web
+    - name: Stack
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.project }}
+      run: |
+        # Exported for the later steps too: compose needs the secret key for logs and down.
+        {
+          echo "MEGOOFLAGS_SITE_ADDRESS="
+          echo "MEGOOFLAGS_SECRET_KEY=ci-sdk-e2e-secret-key-not-used-elsewhere-0123456789"
+        } >> "$GITHUB_ENV"
+        export MEGOOFLAGS_SITE_ADDRESS="" MEGOOFLAGS_SECRET_KEY=ci-sdk-e2e-secret-key-not-used-elsewhere-0123456789
+        docker compose -p "$PROJECT" -f deploy/docker-compose.yml -f deploy/compose.ci.yml up -d --wait --wait-timeout 180 caddy
+    - name: API token
+      shell: bash
+      run: |
+        token="$(bash scripts/sdk_e2e_token.sh http://localhost:8080)"
+        echo "::add-mask::$token"
+        {
+          echo "MEGOOFLAGS_E2E_URL=http://localhost:8080"
+          echo "MEGOOFLAGS_API_TOKEN=$token"
+        } >> "$GITHUB_ENV"

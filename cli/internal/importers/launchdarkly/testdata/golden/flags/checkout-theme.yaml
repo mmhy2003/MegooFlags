@@ -1,0 +1,89 @@
+name: Checkout theme
+description: ""
+type: string
+tags: []
+variations:
+  - key: blue
+    name: Blue
+    description: ""
+    value: blue
+  - key: green
+    name: Green
+    description: The new one
+    value: green
+  - key: v2
+    name: ""
+    description: ""
+    value: dark
+  - key: blue-2
+    name: Blue
+    description: ""
+    value: navy
+off_variation: v2
+permanent: true
+archived: false
+environments:
+  production:
+    enabled: true
+    targets: []
+    rules:
+      - description: New app versions
+        clauses:
+          - attribute: version
+            operator: semver_gt
+            values:
+              - 2.0.0
+            negate: false
+        rollout:
+          bucket_by: email
+          weights:
+            - variation: blue
+              weight: 50000
+            - variation: green
+              weight: 50000
+      - description: Minors
+        clauses:
+          - attribute: age
+            operator: gte
+            values:
+              - 18
+            negate: true
+          - attribute: country
+            operator: starts_with
+            values:
+              - U
+            negate: false
+          - attribute: name
+            operator: matches
+            values:
+              - ^a
+            negate: false
+        variation: blue-2
+    fallthrough:
+      rollout:
+        bucket_by: key
+        weights:
+          - variation: blue
+            weight: 40000
+          - variation: green
+            weight: 30000
+          - variation: v2
+            weight: 30000
+          - variation: blue-2
+            weight: 0
+    prerequisites:
+      - flag: newcheckout
+        variation: "true"
+  staging:
+    enabled: true
+    targets:
+      - variation: v2
+        values:
+          - qa1
+          - qa2
+    rules: []
+    fallthrough:
+      variation: blue
+    prerequisites:
+      - flag: newcheckout
+        variation: "false"

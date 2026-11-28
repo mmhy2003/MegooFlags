@@ -1,0 +1,793 @@
+{
+  "schema_version": 1,
+  "kind": "resolution",
+  "description": "Stored evaluate results mapped to OpenFeature resolution details",
+  "tests": [
+    {
+      "name": "boolean-served-from-network",
+      "results": [
+        {
+          "key": "f",
+          "value": true,
+          "variant": "on",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "boolean",
+      "default": false,
+      "expected": {
+        "value": true,
+        "variant": "on",
+        "reason": "TARGETING_MATCH",
+        "error_code": null
+      }
+    },
+    {
+      "name": "string-served-from-network",
+      "results": [
+        {
+          "key": "f",
+          "value": "blue",
+          "variant": "blue",
+          "reason": "SPLIT",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "string",
+      "default": "red",
+      "expected": {
+        "value": "blue",
+        "variant": "blue",
+        "reason": "SPLIT",
+        "error_code": null
+      }
+    },
+    {
+      "name": "integer-served-from-network",
+      "results": [
+        {
+          "key": "f",
+          "value": 42,
+          "variant": "answer",
+          "reason": "DEFAULT",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "integer",
+      "default": 0,
+      "expected": {
+        "value": 42,
+        "variant": "answer",
+        "reason": "DEFAULT",
+        "error_code": null
+      }
+    },
+    {
+      "name": "number-served-from-network",
+      "results": [
+        {
+          "key": "f",
+          "value": 2.5,
+          "variant": "fast",
+          "reason": "STATIC",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "number",
+      "default": 0,
+      "expected": {
+        "value": 2.5,
+        "variant": "fast",
+        "reason": "STATIC",
+        "error_code": null
+      }
+    },
+    {
+      "name": "object-served-from-network",
+      "results": [
+        {
+          "key": "f",
+          "value": {
+            "theme": "dark",
+            "size": 3
+          },
+          "variant": "dark",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "object",
+      "default": {},
+      "expected": {
+        "value": {
+          "theme": "dark",
+          "size": 3
+        },
+        "variant": "dark",
+        "reason": "TARGETING_MATCH",
+        "error_code": null
+      }
+    },
+    {
+      "name": "boolean-served-from-cache",
+      "results": [
+        {
+          "key": "f",
+          "value": true,
+          "variant": "on",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "cache",
+      "flag": "f",
+      "type": "boolean",
+      "default": false,
+      "expected": {
+        "value": true,
+        "variant": "on",
+        "reason": "CACHED",
+        "error_code": null
+      }
+    },
+    {
+      "name": "string-served-from-cache",
+      "results": [
+        {
+          "key": "f",
+          "value": "blue",
+          "variant": "blue",
+          "reason": "SPLIT",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "cache",
+      "flag": "f",
+      "type": "string",
+      "default": "red",
+      "expected": {
+        "value": "blue",
+        "variant": "blue",
+        "reason": "CACHED",
+        "error_code": null
+      }
+    },
+    {
+      "name": "integer-served-from-cache",
+      "results": [
+        {
+          "key": "f",
+          "value": 42,
+          "variant": "answer",
+          "reason": "DEFAULT",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "cache",
+      "flag": "f",
+      "type": "integer",
+      "default": 0,
+      "expected": {
+        "value": 42,
+        "variant": "answer",
+        "reason": "CACHED",
+        "error_code": null
+      }
+    },
+    {
+      "name": "number-served-from-cache",
+      "results": [
+        {
+          "key": "f",
+          "value": 2.5,
+          "variant": "fast",
+          "reason": "STATIC",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "cache",
+      "flag": "f",
+      "type": "number",
+      "default": 0,
+      "expected": {
+        "value": 2.5,
+        "variant": "fast",
+        "reason": "CACHED",
+        "error_code": null
+      }
+    },
+    {
+      "name": "object-served-from-cache",
+      "results": [
+        {
+          "key": "f",
+          "value": {
+            "theme": "dark",
+            "size": 3
+          },
+          "variant": "dark",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "cache",
+      "flag": "f",
+      "type": "object",
+      "default": {},
+      "expected": {
+        "value": {
+          "theme": "dark",
+          "size": 3
+        },
+        "variant": "dark",
+        "reason": "CACHED",
+        "error_code": null
+      }
+    },
+    {
+      "name": "prerequisite-failed-passed-through",
+      "results": [
+        {
+          "key": "f",
+          "value": false,
+          "variant": "off",
+          "reason": "PREREQUISITE_FAILED",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "boolean",
+      "default": true,
+      "expected": {
+        "value": false,
+        "variant": "off",
+        "reason": "PREREQUISITE_FAILED",
+        "error_code": null
+      }
+    },
+    {
+      "name": "null-variant-without-error-returns-default",
+      "results": [
+        {
+          "key": "f",
+          "value": null,
+          "variant": null,
+          "reason": "DISABLED",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "string",
+      "default": "fallback",
+      "expected": {
+        "value": "fallback",
+        "variant": null,
+        "reason": "DISABLED",
+        "error_code": null
+      }
+    },
+    {
+      "name": "stored-type-mismatch",
+      "results": [
+        {
+          "key": "f",
+          "value": null,
+          "variant": null,
+          "reason": "ERROR",
+          "error_code": "TYPE_MISMATCH",
+          "error_message": "the flag's value is not a string"
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "string",
+      "default": "fallback",
+      "expected": {
+        "value": "fallback",
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "TYPE_MISMATCH"
+      }
+    },
+    {
+      "name": "stored-parse-error",
+      "results": [
+        {
+          "key": "f",
+          "value": null,
+          "variant": null,
+          "reason": "ERROR",
+          "error_code": "PARSE_ERROR",
+          "error_message": "the ruleset could not be parsed"
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "string",
+      "default": "fallback",
+      "expected": {
+        "value": "fallback",
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "PARSE_ERROR"
+      }
+    },
+    {
+      "name": "stored-invalid-context",
+      "results": [
+        {
+          "key": "f",
+          "value": null,
+          "variant": null,
+          "reason": "ERROR",
+          "error_code": "INVALID_CONTEXT",
+          "error_message": "the context is not an object"
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "string",
+      "default": "fallback",
+      "expected": {
+        "value": "fallback",
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "INVALID_CONTEXT"
+      }
+    },
+    {
+      "name": "stored-general",
+      "results": [
+        {
+          "key": "f",
+          "value": null,
+          "variant": null,
+          "reason": "ERROR",
+          "error_code": "GENERAL",
+          "error_message": "something went wrong"
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "string",
+      "default": "fallback",
+      "expected": {
+        "value": "fallback",
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "GENERAL"
+      }
+    },
+    {
+      "name": "stored-type-mismatch-from-cache",
+      "results": [
+        {
+          "key": "f",
+          "value": null,
+          "variant": null,
+          "reason": "ERROR",
+          "error_code": "TYPE_MISMATCH",
+          "error_message": "the flag's value is not a string"
+        }
+      ],
+      "source": "cache",
+      "flag": "f",
+      "type": "string",
+      "default": "fallback",
+      "expected": {
+        "value": "fallback",
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "TYPE_MISMATCH"
+      }
+    },
+    {
+      "name": "stored-parse-error-from-cache",
+      "results": [
+        {
+          "key": "f",
+          "value": null,
+          "variant": null,
+          "reason": "ERROR",
+          "error_code": "PARSE_ERROR",
+          "error_message": "the ruleset could not be parsed"
+        }
+      ],
+      "source": "cache",
+      "flag": "f",
+      "type": "string",
+      "default": "fallback",
+      "expected": {
+        "value": "fallback",
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "PARSE_ERROR"
+      }
+    },
+    {
+      "name": "stored-invalid-context-from-cache",
+      "results": [
+        {
+          "key": "f",
+          "value": null,
+          "variant": null,
+          "reason": "ERROR",
+          "error_code": "INVALID_CONTEXT",
+          "error_message": "the context is not an object"
+        }
+      ],
+      "source": "cache",
+      "flag": "f",
+      "type": "string",
+      "default": "fallback",
+      "expected": {
+        "value": "fallback",
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "INVALID_CONTEXT"
+      }
+    },
+    {
+      "name": "stored-general-from-cache",
+      "results": [
+        {
+          "key": "f",
+          "value": null,
+          "variant": null,
+          "reason": "ERROR",
+          "error_code": "GENERAL",
+          "error_message": "something went wrong"
+        }
+      ],
+      "source": "cache",
+      "flag": "f",
+      "type": "string",
+      "default": "fallback",
+      "expected": {
+        "value": "fallback",
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "GENERAL"
+      }
+    },
+    {
+      "name": "unknown-stored-error-code-is-general",
+      "results": [
+        {
+          "key": "f",
+          "value": null,
+          "variant": null,
+          "reason": "ERROR",
+          "error_code": "SOMETHING_NEW",
+          "error_message": "a future error"
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "boolean",
+      "default": true,
+      "expected": {
+        "value": true,
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "GENERAL"
+      }
+    },
+    {
+      "name": "boolean-read-of-string-is-type-mismatch",
+      "results": [
+        {
+          "key": "f",
+          "value": "yes",
+          "variant": "v",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "boolean",
+      "default": false,
+      "expected": {
+        "value": false,
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "TYPE_MISMATCH"
+      }
+    },
+    {
+      "name": "string-read-of-number-is-type-mismatch",
+      "results": [
+        {
+          "key": "f",
+          "value": 5,
+          "variant": "v",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "string",
+      "default": "red",
+      "expected": {
+        "value": "red",
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "TYPE_MISMATCH"
+      }
+    },
+    {
+      "name": "number-read-of-boolean-is-type-mismatch",
+      "results": [
+        {
+          "key": "f",
+          "value": true,
+          "variant": "v",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "number",
+      "default": 0.5,
+      "expected": {
+        "value": 0.5,
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "TYPE_MISMATCH"
+      }
+    },
+    {
+      "name": "object-read-of-string-is-type-mismatch",
+      "results": [
+        {
+          "key": "f",
+          "value": "dark",
+          "variant": "v",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "object",
+      "default": {
+        "theme": "light"
+      },
+      "expected": {
+        "value": {
+          "theme": "light"
+        },
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "TYPE_MISMATCH"
+      }
+    },
+    {
+      "name": "integer-read-of-fraction-is-type-mismatch",
+      "results": [
+        {
+          "key": "f",
+          "value": 1.5,
+          "variant": "v",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "integer",
+      "default": 7,
+      "expected": {
+        "value": 7,
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "TYPE_MISMATCH"
+      }
+    },
+    {
+      "name": "integer-read-of-out-of-range-is-type-mismatch",
+      "results": [
+        {
+          "key": "f",
+          "value": 1e+20,
+          "variant": "v",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "integer",
+      "default": 7,
+      "expected": {
+        "value": 7,
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "TYPE_MISMATCH"
+      }
+    },
+    {
+      "name": "integer-read-of-3-served",
+      "results": [
+        {
+          "key": "f",
+          "value": 3,
+          "variant": "three",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "integer",
+      "default": 0,
+      "expected": {
+        "value": 3,
+        "variant": "three",
+        "reason": "TARGETING_MATCH",
+        "error_code": null
+      }
+    },
+    {
+      "name": "integer-read-of-3.0-served",
+      "results": [
+        {
+          "key": "f",
+          "value": 3.0,
+          "variant": "three",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "integer",
+      "default": 0,
+      "expected": {
+        "value": 3,
+        "variant": "three",
+        "reason": "TARGETING_MATCH",
+        "error_code": null
+      }
+    },
+    {
+      "name": "number-read-of-integer-served",
+      "results": [
+        {
+          "key": "f",
+          "value": 3,
+          "variant": "three",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "number",
+      "default": 0.5,
+      "expected": {
+        "value": 3,
+        "variant": "three",
+        "reason": "TARGETING_MATCH",
+        "error_code": null
+      }
+    },
+    {
+      "name": "object-read-of-object-served",
+      "results": [
+        {
+          "key": "f",
+          "value": {
+            "layout": {
+              "columns": 2,
+              "items": [
+                "a",
+                "b"
+              ]
+            },
+            "enabled": true,
+            "label": null
+          },
+          "variant": "grid",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "f",
+      "type": "object",
+      "default": {},
+      "expected": {
+        "value": {
+          "layout": {
+            "columns": 2,
+            "items": [
+              "a",
+              "b"
+            ]
+          },
+          "enabled": true,
+          "label": null
+        },
+        "variant": "grid",
+        "reason": "TARGETING_MATCH",
+        "error_code": null
+      }
+    },
+    {
+      "name": "flag-missing-is-flag-not-found",
+      "results": [
+        {
+          "key": "other",
+          "value": true,
+          "variant": "on",
+          "reason": "TARGETING_MATCH",
+          "error_code": null,
+          "error_message": null
+        }
+      ],
+      "source": "network",
+      "flag": "missing",
+      "type": "boolean",
+      "default": false,
+      "expected": {
+        "value": false,
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "FLAG_NOT_FOUND"
+      }
+    },
+    {
+      "name": "no-results-is-provider-not-ready",
+      "results": null,
+      "source": "network",
+      "flag": "f",
+      "type": "boolean",
+      "default": true,
+      "expected": {
+        "value": true,
+        "variant": null,
+        "reason": "ERROR",
+        "error_code": "PROVIDER_NOT_READY"
+      }
+    }
+  ]
+}

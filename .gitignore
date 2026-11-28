@@ -1,0 +1,34 @@
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+out/
+
+# Environment
+.env
+!.env.example
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/
+
+# Go CLI and Terraform provider
+cli/bin/
+cli/dist/
+terraform/bin/
+terraform/dist/
+.terraform/
+*.tfstate*
+terraform/internal/**/.terraform.lock.hcl
+
+# Load test results of the tiny profile (scripts/perf.sh tiny) and of MF_PERF_ONLY runs
+perf/results/tiny.json
+perf/results/only.json
