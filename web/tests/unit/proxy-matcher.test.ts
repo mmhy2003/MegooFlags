@@ -10,6 +10,12 @@ describe("proxy matcher", () => {
     expect(matcher.test("/api/x")).toBe(false);
   });
 
+  it("skips the health and metrics paths", () => {
+    expect(matcher.test("/healthz")).toBe(false);
+    expect(matcher.test("/readyz")).toBe(false);
+    expect(matcher.test("/metrics")).toBe(false);
+  });
+
   it("runs on pages", () => {
     expect(matcher.test("/sign-in")).toBe(true);
     expect(matcher.test("/projects/demo/flags")).toBe(true);

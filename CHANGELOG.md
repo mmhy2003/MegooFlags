@@ -6,6 +6,15 @@ and this project follows the versioning rules in [AGENTS.md](AGENTS.md).
 
 ## [Unreleased]
 
+### Changed
+- Helm chart: resource names are built from at most 41 characters of the base name (`<release>-megooflags`, or the release name when it contains `megooflags`), so that the longest names fit the Kubernetes limits. This only affects a 1.0.0 install whose base name has 42 characters or more and works today, which is possible only with an external database or a worker release. The upgrade creates its resources under the shorter names and removes the old ones. Before upgrading, update whatever names the old Services: `worker.controlPlaneUrl` of worker releases, and the URLs in an `existingSecret`. After upgrading a worker release, delete the old `data-<old name>-worker-<n>` volumes. See https://mmhy2003.github.io/MegooFlags/deploy/kubernetes/#names.
+- Helm chart: `helm install` and `helm upgrade` fail when `worker.replicas` is set and differs from the number of `worker.nodeTokens`.
+
+### Fixed
+- Helm chart: release names of up to 53 characters install; before, names of about 50 characters gave resource names over the Kubernetes limits.
+- Helm chart: a `metrics.serviceMonitor.labels` key that repeats a chart label replaces it, instead of producing a duplicate key that broke the manifest.
+- The web app answers `/metrics` with 404 instead of redirecting to sign-in.
+
 ## [1.0.0] - 2026-11-27
 
 ### Changed

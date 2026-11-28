@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 import yaml
@@ -54,20 +55,22 @@ def _run_helm(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["helm", *args], capture_output=True, text=True, check=False)
 
 
-def _helm(values: dict[str, Any], tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def _helm(
+    values: dict[str, Any], tmp_path: Path, *args: str, release: str = "mf"
+) -> subprocess.CompletedProcess[str]:
     path = tmp_path / "values.json"
     path.write_text(json.dumps(values), encoding="utf-8")
-    return _run_helm("template", "mf", str(CHART), "--namespace", "mf", "-f", str(path), *args)
+    return _run_helm("template", release, str(CHART), "--namespace", "mf", "-f", str(path), *args)
 
 
-def render(tmp_path: Path, values: dict[str, Any]) -> list[dict[str, Any]]:
-    result = _helm(values, tmp_path)
+def render(tmp_path: Path, values: dict[str, Any], release: str = "mf") -> list[dict[str, Any]]:
+    result = _helm(values, tmp_path, release=release)
     assert result.returncode == 0, result.stderr
     return [doc for doc in yaml.safe_load_all(result.stdout) if doc is not None]
 
 
-def render_error(tmp_path: Path, values: dict[str, Any]) -> str:
-    result = _helm(values, tmp_path)
+def render_error(tmp_path: Path, values: dict[str, Any], release: str = "mf") -> str:
+    result = _helm(values, tmp_path, release=release)
     assert result.returncode != 0, result.stdout
     return result.stderr
 
@@ -175,6 +178,31 @@ def _role_values(role: str) -> dict[str, Any]:
             "worker.nodeTokens is required when role is worker (one token per replica, "
             "from the Nodes page), or set existingSecret and worker.replicas",
             id="existing-secret-without-replicas",
+        ),
+        pytest.param(
+            {
+                "role": "worker",
+                "worker": {
+                    "controlPlaneUrl": "https://cp.example.com",
+                    "nodeTokens": ["mf_node_a", "mf_node_b"],
+                    "replicas": 3,
+                },
+            },
+            "worker.replicas (3) must equal the number of worker.nodeTokens (2), or be left at 0",
+            id="replicas-differ-from-tokens",
+        ),
+        pytest.param(
+            {
+                "role": "worker",
+                "existingSecret": "tokens",
+                "worker": {
+                    "controlPlaneUrl": "https://cp.example.com",
+                    "nodeTokens": ["mf_node_a", "mf_node_b"],
+                    "replicas": 3,
+                },
+            },
+            "worker.replicas (3) must equal the number of worker.nodeTokens (2), or be left at 0",
+            id="replicas-differ-from-tokens-existing-secret",
         ),
     ],
 )
@@ -665,6 +693,10 @@ def test_worker_replicas_follow_tokens(tmp_path: Path) -> None:
     assert _worker_set(render(tmp_path, values))["spec"]["replicas"] == 3
 
 
+def test_worker_replicas_equal_to_tokens(tmp_path: Path) -> None:
+    assert _worker_set(render(tmp_path, _workers(replicas=2)))["spec"]["replicas"] == 2
+
+
 def test_worker_existing_secret_replicas(tmp_path: Path) -> None:
     values = {**_workers(nodeTokens=[], replicas=4), "existingSecret": "tokens"}
     docs = render(tmp_path, values)
@@ -975,7 +1007,105 @@ def test_service_monitor(tmp_path: Path, role: str, component: str) -> None:
     assert matched == [f"mf-megooflags-{component}"]
 
 
+def test_service_monitor_user_labels_replace_chart_labels(tmp_path: Path) -> None:
+    labels = {"app.kubernetes.io/name": "custom", "release": "prom"}
+    monitor = {"serviceMonitor": {"enabled": True, "labels": labels}}
+    values = {**_role_values("control-plane"), "metrics": monitor}
+    result = _helm(values, tmp_path, "--show-only", "templates/servicemonitor.yaml")
+    assert result.returncode == 0, result.stderr
+    # yaml.safe_load keeps the last of two equal keys, so count them in the text (metadata labels
+    # are indented by 4, the selector's by 6).
+    assert len(re.findall(r"^    app\.kubernetes\.io/name:", result.stdout, re.M)) == 1
+    assert len(re.findall(r"^    release:", result.stdout, re.M)) == 1
+    doc = yaml.safe_load(result.stdout)
+    metadata = doc["metadata"]["labels"]
+    assert metadata["app.kubernetes.io/name"] == "custom"
+    assert metadata["release"] == "prom"
+    assert metadata["app.kubernetes.io/instance"] == "mf"
+    assert metadata["app.kubernetes.io/managed-by"] == "Helm"
+    assert metadata["app.kubernetes.io/version"] == _app_version()
+    assert metadata["helm.sh/chart"].startswith("megooflags-")
+    assert doc["spec"]["selector"] == {
+        "matchLabels": {
+            "app.kubernetes.io/name": "megooflags",
+            "app.kubernetes.io/instance": "mf",
+            "app.kubernetes.io/component": "api",
+        }
+    }
+
+
 ROLES = ["standalone", "control-plane", "worker"]
+
+
+LONG_RELEASES = [
+    pytest.param("a-fifty-character-release-name-for-the-chart-tests", id="50"),
+    pytest.param("megooflags-" + "b" * 42, id="53-with-megooflags"),
+]
+
+
+def _everything(role: str) -> dict[str, Any]:
+    return {
+        **(WORKERS if role == "worker" else _role_values(role)),
+        "ingress": {"enabled": True},
+        "httpRoute": {"enabled": True, "parentRefs": [{"name": "gw"}]},
+        "metrics": {"serviceMonitor": {"enabled": True}},
+    }
+
+
+def _of_kind(docs: list[dict[str, Any]], kind: str) -> list[dict[str, Any]]:
+    return [doc for doc in docs if doc["kind"] == kind]
+
+
+@pytest.mark.parametrize("release", LONG_RELEASES)
+@pytest.mark.parametrize("role", ROLES)
+def test_long_release_names_fit(tmp_path: Path, role: str, release: str) -> None:
+    docs = render(tmp_path, _everything(role), release=release)
+    for kind, name in by_kind(docs):
+        # A StatefulSet's name goes into the 63-character controller-revision-hash label with
+        # "-<hash of up to 10>".
+        assert len(name) <= (52 if kind == "StatefulSet" else 63), (kind, name)
+    for job in _of_kind(docs, "Job"):
+        name = job["metadata"]["name"]
+        assert name.endswith("-migrate-1")
+        assert len(name) - 1 + 5 <= 63, name  # room for a 5-digit revision
+    for statefulset in _of_kind(docs, "StatefulSet"):
+        assert len(statefulset["metadata"]["name"] + "-99999") <= 63  # pod names, hostnames
+    for doc in docs:
+        labels = doc["metadata"].get("labels", {})
+        assert labels.get("app.kubernetes.io/instance", release) == release
+    services = {doc["metadata"]["name"] for doc in _of_kind(docs, "Service")}
+    for statefulset in _of_kind(docs, "StatefulSet"):
+        assert statefulset["spec"]["serviceName"] in services
+    (ingress,) = _of_kind(docs, "Ingress")
+    for path in ingress["spec"]["rules"][0]["http"]["paths"]:
+        assert path["backend"]["service"]["name"] in services
+    (route,) = _of_kind(docs, "HTTPRoute")
+    for rule in route["spec"]["rules"]:
+        for backend in rule["backendRefs"]:
+            assert backend["name"] in services
+    if role != "worker":
+        (secret,) = _of_kind(docs, "Secret")
+        for key in ("MEGOOFLAGS_DATABASE_URL", "MEGOOFLAGS_VALKEY_URL"):
+            assert urlsplit(secret["stringData"][key]).hostname in services, key
+        deployments = _of_kind(docs, "Deployment")
+        web = next(d for d in deployments if d["metadata"]["name"].endswith("-web"))
+        env = {e["name"]: e.get("value") for e in _container(web["spec"]["template"], "web")["env"]}
+        assert urlsplit(env["MEGOOFLAGS_API_URL"]).hostname in services
+
+
+def test_cut_base_name_has_no_trailing_dash(tmp_path: Path) -> None:
+    # The 41st character of "<release>-megooflags" is "-" (and the 40th as well).
+    docs = render(tmp_path, _everything("standalone"), release="c" * 39 + "--d")
+    names = [name for _, name in by_kind(docs)]
+    assert not [name for name in names if "--" in name]
+    assert ("Secret", "c" * 39) in by_kind(docs)
+
+
+def test_base_name_of_41_characters_is_not_cut(tmp_path: Path) -> None:
+    release = "e" * 30  # "<release>-megooflags" has exactly 41 characters
+    docs = render(tmp_path, {"secretKey": SECRET}, release=release)
+    assert ("ConfigMap", f"{release}-megooflags-config") in by_kind(docs)
+    assert ("StatefulSet", f"{release}-megooflags-postgresql") in by_kind(docs)
 
 
 @pytest.mark.parametrize("role", ROLES)

@@ -6,16 +6,16 @@ The chart name.
 {{- end -}}
 
 {{/*
-The release's base name: the release name when it already contains "megooflags",
-else "<release>-megooflags", cut to 63 characters.
+The release's base name: the release name when it already contains "megooflags", else
+"<release>-megooflags", cut to 41 characters and without trailing "-" or ".". 41 leaves room for
+the longest suffix on a StatefulSet ("-postgresql", 11), whose name may have 52 characters because
+Kubernetes adds "-<hash>" (up to 11) in the 63-character controller-revision-hash label. It also
+leaves room for "-migrate-<revision>" and the worker pods' "-worker-<ordinal>".
 */}}
 {{- define "megooflags.fullname" -}}
 {{- $name := include "megooflags.name" . -}}
-{{- if contains $name .Release.Name -}}
-{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
-{{- else -}}
-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
+{{- $base := ternary .Release.Name (printf "%s-%s" .Release.Name $name) (contains $name .Release.Name) -}}
+{{- regexReplaceAll "[-.]+$" ($base | trunc 41) "" -}}
 {{- end -}}
 
 {{/*
@@ -146,8 +146,9 @@ affinity:
 {{- end -}}
 
 {{/*
-The paths routed to the API, as deploy/Caddyfile and deploy/Caddyfile.worker route them
-("/x/*" is a prefix). Workers serve no /api. A YAML list of {type, path}.
+The paths routed to the API, with the types deploy/Caddyfile and deploy/Caddyfile.worker give them
+("/x/*" is a prefix). Workers serve no /api. A YAML list of {type, path}. The HTTPRoute uses the
+types as they are; the Ingress makes every path Prefix (see ingress.yaml).
 */}}
 {{- define "megooflags.apiPaths" -}}
 {{- if ne .Values.role "worker" }}
