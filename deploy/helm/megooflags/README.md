@@ -18,7 +18,7 @@ helm install megooflags oci://ghcr.io/mmhy2003/charts/megooflags --version <v> \
   --set secretKey=$(openssl rand -hex 32)
 ```
 
-`<v>` is a release such as `0.1.0` (see the
+`<v>` is a release such as `1.0.0` (see the
 [release notes](https://mmhy2003.github.io/MegooFlags/project/release-notes/)). Keep the secret key:
 it encrypts SSO and TOTP secrets in the database, and a restored database is unreadable without it.
 Use a values file or `existingSecret` (see [Secrets](#secrets-and-existingsecret)) rather than
@@ -311,8 +311,9 @@ With workers, upgrade **the control-plane release first, then the worker release
 never accepts an older control plane (see
 [Rolling upgrades](https://mmhy2003.github.io/MegooFlags/deploy/multi-node/#rolling-upgrades)). The
 StatefulSet replaces the workers one at a time; a stopped worker closes its SDK streams within a few
-seconds and the SDKs reconnect to the others. Before 1.0, a minor upgrade makes the old workers
-Incompatible until they are upgraded, so upgrade them right away.
+seconds and the SDKs reconnect to the others. A worker may run one minor older than the control
+plane, so upgrading by one minor leaves the old workers in sync; a major upgrade, or a jump of more
+than one minor, makes them Incompatible until they are upgraded, so upgrade them right away.
 
 **If a migration fails**, the Job fails, the new API pods stay in their init container, the old ones
 keep serving, and `helm upgrade --wait` fails. The Job's log says why:

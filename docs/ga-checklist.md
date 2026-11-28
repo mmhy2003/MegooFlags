@@ -2,12 +2,13 @@
 
 This checklist decides whether `v1.0.0` can be tagged. It is built from the product requirements
 ("PRD: MegooFlags — Open Source Feature Flag Platform", revision 2, in the Knowledge Base) and checked
-against the code at `0.1.0` on 2026-11-18. Statuses are **done**, **partial** or **missing**. Evidence is a
+against the code at `1.0.0` on 2026-11-27. Statuses are **done**, **partial** or **missing**. Evidence is a
 file, a test or a `ci.yml` job; the API tests run in the `api-test` job and the web end-to-end tests in
 the `web` job.
 
-**Verdict: blockers closed.** Section 6 has no open blocker; the maintainer steps in section 5 remain before
-`v1.0.0` is tagged.
+**Verdict: ready.** Every row in sections 1 and 2 is done or an accepted difference in section 4, and
+section 6 has no open blocker. The maintainer steps in section 5 remain: the maintainer merges and tags
+`v1.0.0`.
 
 ## 1. P0 requirements
 
@@ -106,13 +107,13 @@ the `web` job.
 ## 2. NFR verdicts
 
 From [`perf/REPORT.md`](../perf/REPORT.md) (the `full` run of 2026-11-27 on 16 CPUs and 32 GB, results in
-`perf/results/0.1.0.json`):
+`perf/results/0.1.0.json`; the maintainer chose on 2026-11-28 not to repeat the full run at `1.0.0`):
 
 | NFR | Target | Measured | Verdict |
 |---|---|---|---|
 | Local evaluation, Go, Node.js, Python, Java, .NET, Ruby, PHP | p99 < 1 ms | every SDK's guard passed (highest p99: Node.js, 1 ms) | pass |
 | Remote evaluation, OFREP | p99 < 50 ms, no errors, at 2000 rps per API container (at least 99.5 % reached) | p99 20.4 ms, 0 errors at 2000 rps, 8 Uvicorn workers | pass |
-| Remote evaluation, `/sdk/v1/evaluate` | p99 < 50 ms, no errors, at 2000 rps per API container (at least 99.5 % reached) | p99 35.8 ms, 0 errors at 2000 rps, 8 Uvicorn workers | pass |
+| Remote evaluation, `/sdk/v1/evaluate` | p99 < 50 ms, no errors, at 2000 rps per API container (at least 99.5 % reached) | p99 35.8 ms, 0 errors at 2000 rps, 8 Uvicorn workers (at `0.1.0`; at `1.0.0`, see section 4) | accepted difference (section 4) |
 | Propagation across API replicas | p95 < 5 s | p95 1.58 s, 0 of 600 updates missed | pass |
 | Propagation to worker nodes | p95 < 5 s | p95 0.47 s, 0 of 600 updates missed | pass |
 | 100k streams per cluster | at least 8 workers at 80 % of measured per-worker capacity, none dropped, p95 < 5 s, 512 MiB per worker | 19 065 streams on 12 workers (capacity 1986 streams per worker; 63 workers for 100k), 0 dropped, p95 3.91 s, up to 494.9 MiB | pass |
@@ -120,8 +121,8 @@ From [`perf/REPORT.md`](../perf/REPORT.md) (the `full` run of 2026-11-27 on 16 C
 | Worker footprint (1 vCPU / 512 MB) | as the 100k scenario | capacity 1986 streams per worker before 90 % of its memory limit; up to 494.9 MiB at 80 % of it | pass |
 | 10k flags per project | the gates above on a 10k-flag project | measured on 10 000 flags; ruleset 4.6 MiB, SDK start 5170.4 ms | as above |
 
-**Time to first flag.** `bash scripts/quickstart_test.sh`, run twice on 2026-11-18, printed
-`quick start: 30s` and `quick start: 29s`: from
+**Time to first flag.** `bash scripts/quickstart_test.sh`, run twice on 2026-11-27, printed
+`quick start: 31s` and `quick start: 31s`: from
 `docker compose up -d` to the first flag evaluated through OFREP, with the images already built locally
 (the `quickstart` job measures the same, and fails at five minutes). Downloading the release images and
 reading the page are not included.
@@ -226,8 +227,9 @@ both SSO and RBAC in full for free. Flagsmith and GrowthBook narrowed the gap on
 - **The bundle also runs Valkey.** PRD 8.2 lists Caddy, web, migrate, API and PostgreSQL; the bundle adds
   Valkey for the fan-out of flag changes between API replicas (open question 4) in
   `deploy/docker-compose.yml`.
-- **SDKs are versioned apart and still Alpha.** Every SDK is at 0.1.0 (Alpha) with its own tags
-  (`sdks/README.md`), which answers open question 6.
+- **SDKs, the CLI and the Terraform provider are versioned apart and are Beta at 0.1.0** (the maintainer's
+  decision of 2026-11-27), each with its own tags (`sdks/README.md`, `sdks/RELEASING.md`), which answers open
+  question 6.
 - **No separate `equals` operator.** T-3's "equals" is `in` with one value
   (`api/src/megooflags_api/models/enums.py`).
 - **Remote evaluation needs 8 Uvicorn workers.** The report's remote runs of 2026-11-27 use 8 workers in
@@ -239,22 +241,32 @@ both SSO and RBAC in full for free. Flagsmith and GrowthBook narrowed the gap on
 - **Remote rate and single-node targets changed.** The maintainer accepted on 2026-11-26 that the remote
   rows pass at 99.5 % of 2000 rps (the load generator's measured rate always lands just under the rate it
   sends), and that the single node passes at p95 < 50 ms and p99 < 150 ms instead of p99 < 50 ms.
+- **`/sdk/v1/evaluate` at `1.0.0` is checked by a remote-only run, not a full run.** Three `full` runs at
+  `1.0.0` on 2026-11-27 and 2026-11-28 failed this gate, with p99 57.9 ms, 82.0 ms and 85.6 ms at 2000 rps
+  (a remote-only run reached 128.3 ms): full garbage collections of the 10k-flag ruleset paused a worker for
+  300–500 ms. The fix (`api/src/megooflags_api/services/ruleset_cache.py`) freezes rulesets of 1000 flags or
+  more after a full build, at most once a minute, on standalone nodes and control planes. It was checked
+  only with `MF_PERF_ONLY=remote` runs: p99 33.1 ms with the first version and 23.2 ms with the final one
+  (OFREP 21.4 ms), 0 errors at 2000 rps. The maintainer chose on 2026-11-28 not to repeat the full run, so
+  `perf/results` holds no 1.0.0 results and the other rows cite the `0.1.0` run.
 - **Docs on GitHub Pages.** The site is at https://mmhy2003.github.io/MegooFlags/, built from `site/` by
   `.github/workflows/docs.yml`.
 
 ## 5. Maintainer steps
 
-1. Enable GitHub Pages with the source "GitHub Actions" (Settings → Pages).
+1. Enable GitHub Pages with the source "GitHub Actions" (Settings → Pages) **before** merging the release
+   pull request: that merge starts `.github/workflows/docs.yml` by itself. If Pages was not enabled in time,
+   run the workflow by hand (Actions → Docs → Run workflow). The README's docs links return 404 until it has
+   run.
 2. Enable private vulnerability reporting (Settings → Code security) and content reports (Settings →
    Moderation options → Reported content), which `SECURITY.md` and `CODE_OF_CONDUCT.md` rely on.
-3. Decide the versions for GA of the SDKs, the CLI and the Terraform provider (all at 0.1.0 today; see
-   `sdks/RELEASING.md` and AGENTS.md section 12).
-4. Update the PRD section 5 matrix in the Knowledge Base with section 3 above.
-5. Run `.github/workflows/docs.yml` once (Actions → Docs → Run workflow). The README links to the docs
-   site return 404 until then.
-6. With the blockers in section 6 closed, bump to 1.0.0 as AGENTS.md section 5 describes (`VERSION`,
-   `api/pyproject.toml`, `web/package.json` and `CHANGELOG.md` in one commit), open the release pull
-   request, and after it merges tag `v1.0.0`.
+3. Update the PRD section 5 matrix in the Knowledge Base with section 3 above.
+4. Merge the MF-460 pull request into `develop`, mark the `Release 1.0.0` pull request ready, and merge it
+   with a merge commit.
+5. Push the tag `v1.0.0` on that merge commit on `main`. Agents never do this.
+6. After the first release, make the GHCR package `charts/megooflags` public, once.
+7. Release the SDKs, the CLI and the Terraform provider separately, when you choose, with their own `0.1.0`
+   tags (`sdks/RELEASING.md`, AGENTS.md section 12).
 
 ## 6. Open blockers
 

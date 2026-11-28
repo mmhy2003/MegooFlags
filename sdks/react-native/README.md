@@ -7,7 +7,7 @@ are evaluated by the server for the context you pass, with a client key, so no t
 reaches the device. They follow changes over SSE with a polling fallback, are cached in AsyncStorage,
 can start from bootstrap values, and exposures are sent in batches.
 
-Status: 0.1.0, Alpha: the API may still change. Works with React Native 0.76 and later, and with
+Status: 0.1.0, Beta: the API may still change before 1.0.0. Works with React Native 0.76 and later, and with
 Expo: the package has no native code of its own.
 
 ## Install

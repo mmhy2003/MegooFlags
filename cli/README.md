@@ -5,6 +5,8 @@ environments, segments and flags, promotion between environments, local developm
 bootstrap file, flags as code (`export`, `diff`, `apply`) and imports from Unleash, Flagsmith and
 LaunchDarkly. It uses only the management REST API and an API token.
 
+Status: 0.1.0, Beta: the features are complete and tested, and the commands and flags may still change before 1.0.0. The CLI is versioned apart from the server.
+
 ```bash
 megooflags login --url https://flags.example.com
 megooflags flag list -p shop

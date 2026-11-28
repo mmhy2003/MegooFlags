@@ -8,7 +8,7 @@ promotion between environments, local development with an SDK bootstrap file, fl
 ([Flags as code](/MegooFlags/use/flags-as-code/)) and imports from other tools ([Importers](/MegooFlags/migrate/overview/)).
 It uses only the management REST API and an API token.
 
-The CLI has its own version (0.1.0), independent of the server.
+The CLI has its own version, 0.1.0 (Beta), independent of the server: the features are complete and tested, and the commands and flags may still change before 1.0.0.
 
 ## Install
 

@@ -9,23 +9,23 @@ the MegooFlags provider answers. Each SDK is versioned on its own, independently
 
 ## The SDKs
 
-| SDK                                            | Package                                                        | Kind   | Evaluation | Status        |
-| ---------------------------------------------- | -------------------------------------------------------------- | ------ | ---------- | ------------- |
-| [Go](/MegooFlags/sdks/go/)                     | `github.com/mmhy2003/MegooFlags/sdks/go` (Go module)           | Server | Local      | 0.1.0 (Alpha) |
-| [Node.js](/MegooFlags/sdks/node/)              | `@megooflags/node` (npm)                                       | Server | Local      | 0.1.0 (Alpha) |
-| [Python](/MegooFlags/sdks/python/)             | `megooflags` (PyPI)                                            | Server | Local      | 0.1.0 (Alpha) |
-| [Java](/MegooFlags/sdks/java/)                 | `io.github.mmhy2003:megooflags` (Maven Central)                | Server | Local      | 0.1.0 (Alpha) |
-| [.NET](/MegooFlags/sdks/dotnet/)               | `MegooFlags` (NuGet)                                           | Server | Local      | 0.1.0 (Alpha) |
-| [Ruby](/MegooFlags/sdks/ruby/)                 | `megooflags` (RubyGems)                                        | Server | Local      | 0.1.0 (Alpha) |
-| [PHP](/MegooFlags/sdks/php/)                   | `megooflags/megooflags` (Packagist)                            | Server | Local      | 0.1.0 (Alpha) |
-| [JavaScript](/MegooFlags/sdks/js/) (browser)   | `@megooflags/js` (npm)                                         | Client | Remote     | 0.1.0 (Alpha) |
-| [React](/MegooFlags/sdks/react/)               | `@megooflags/react` (npm)                                      | Client | Remote     | 0.1.0 (Alpha) |
-| [React Native](/MegooFlags/sdks/react-native/) | `@megooflags/react-native` (npm)                               | Client | Remote     | 0.1.0 (Alpha) |
-| [iOS](/MegooFlags/sdks/ios/)                   | `https://github.com/mmhy2003/megooflags-swift` (Swift Package) | Client | Remote     | 0.1.0 (Alpha) |
-| [Android](/MegooFlags/sdks/android/)           | `io.github.mmhy2003:megooflags-android` (Maven Central)        | Client | Remote     | 0.1.0 (Alpha) |
-| [Flutter](/MegooFlags/sdks/flutter/)           | `megooflags` (pub.dev)                                         | Client | Remote     | 0.1.0 (Alpha) |
+| SDK                                            | Package                                                        | Kind   | Evaluation | Status       |
+| ---------------------------------------------- | -------------------------------------------------------------- | ------ | ---------- | ------------ |
+| [Go](/MegooFlags/sdks/go/)                     | `github.com/mmhy2003/MegooFlags/sdks/go` (Go module)           | Server | Local      | 0.1.0 (Beta) |
+| [Node.js](/MegooFlags/sdks/node/)              | `@megooflags/node` (npm)                                       | Server | Local      | 0.1.0 (Beta) |
+| [Python](/MegooFlags/sdks/python/)             | `megooflags` (PyPI)                                            | Server | Local      | 0.1.0 (Beta) |
+| [Java](/MegooFlags/sdks/java/)                 | `io.github.mmhy2003:megooflags` (Maven Central)                | Server | Local      | 0.1.0 (Beta) |
+| [.NET](/MegooFlags/sdks/dotnet/)               | `MegooFlags` (NuGet)                                           | Server | Local      | 0.1.0 (Beta) |
+| [Ruby](/MegooFlags/sdks/ruby/)                 | `megooflags` (RubyGems)                                        | Server | Local      | 0.1.0 (Beta) |
+| [PHP](/MegooFlags/sdks/php/)                   | `megooflags/megooflags` (Packagist)                            | Server | Local      | 0.1.0 (Beta) |
+| [JavaScript](/MegooFlags/sdks/js/) (browser)   | `@megooflags/js` (npm)                                         | Client | Remote     | 0.1.0 (Beta) |
+| [React](/MegooFlags/sdks/react/)               | `@megooflags/react` (npm)                                      | Client | Remote     | 0.1.0 (Beta) |
+| [React Native](/MegooFlags/sdks/react-native/) | `@megooflags/react-native` (npm)                               | Client | Remote     | 0.1.0 (Beta) |
+| [iOS](/MegooFlags/sdks/ios/)                   | `https://github.com/mmhy2003/megooflags-swift` (Swift Package) | Client | Remote     | 0.1.0 (Beta) |
+| [Android](/MegooFlags/sdks/android/)           | `io.github.mmhy2003:megooflags-android` (Maven Central)        | Client | Remote     | 0.1.0 (Beta) |
+| [Flutter](/MegooFlags/sdks/flutter/)           | `megooflags` (pub.dev)                                         | Client | Remote     | 0.1.0 (Beta) |
 
-Alpha means the API may still change. Server SDKs pass the shared conformance suite, client SDKs the
+Beta means the features are complete and tested, and the API may still change before 1.0.0. Server SDKs pass the shared conformance suite, client SDKs the
 shared client cases, both at 100 %.
 
 ## How to choose

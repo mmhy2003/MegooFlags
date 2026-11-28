@@ -16,8 +16,8 @@ for `amd64` and `arm64`, with these tags:
 | `latest`     | `latest`     | The newest release.                                                |
 | `X.Y.Z-rc.N` | `1.3.0-rc.1` | Never moves. Release candidates get only this tag, never `latest`. |
 
-Before 1.0, every release is marked as a pre-release on GitHub, and a `0.Y` release may break
-compatibility.
+From 1.0.0 on, releases are full GitHub releases and only `X.Y.Z-rc.N` release candidates are
+pre-releases. A release that breaks compatibility comes only with a new major version.
 
 ## Pin the version
 
@@ -25,7 +25,7 @@ The compose files take the tag from `MEGOOFLAGS_VERSION` and default to `latest`
 `docker compose pull` can upgrade you, so in production pin the exact release in `.env`:
 
 ```bash
-MEGOOFLAGS_VERSION=0.1.0
+MEGOOFLAGS_VERSION=1.0.0
 ```
 
 The web, migrate and api services always run the same version. Pinning `X.Y` gets you patch releases
@@ -67,8 +67,8 @@ at once: each one is still applied in order by the migrations.
 ## Upgrade a multi-node deployment
 
 Upgrade the **control plane first**, then **each worker in turn**. A worker accepts a control plane
-of the same or a newer compatible version, never an older one. Before 1.0, workers must run the same
-`0.Y` as the control plane; from 1.0, the same major version and the same or one minor older.
+of the same or a newer compatible version, never an older one. Workers must run the same major
+version as the control plane and the same minor or one minor older.
 
 The full procedure, with draining each worker first, is in
 [Rolling upgrades](/MegooFlags/deploy/multi-node/#rolling-upgrades).

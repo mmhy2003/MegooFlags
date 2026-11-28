@@ -7,7 +7,7 @@ daemon follows changes over SSE with a polling fallback; without it, requests re
 themselves after the response was sent. It keeps serving when the server is unreachable and sends
 evaluation counts and exposures in batches.
 
-Status: 0.1.0, Alpha.
+Status: 0.1.0, Beta.
 
 ## Install
 

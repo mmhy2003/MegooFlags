@@ -36,7 +36,7 @@ The volumes are `db_data` (the database), `caddy_data` (certificates, in automat
 ## Install
 
 Download the bundle of the release you want into a new directory. Use `latest` or an exact version
-such as `v0.1.0` in the URL:
+such as `v1.0.0` in the URL:
 
 ```bash
 mkdir megooflags && cd megooflags
@@ -50,7 +50,7 @@ Then edit `.env`. The essentials:
 
 - `MEGOOFLAGS_SECRET_KEY`: required. Generate it with `openssl rand -hex 32` and keep it safe. It
   encrypts SSO secrets and TOTP seeds in the database; losing it makes them unreadable.
-- `MEGOOFLAGS_VERSION`: pin the exact release, for example `0.1.0`. See
+- `MEGOOFLAGS_VERSION`: pin the exact release, for example `1.0.0`. See
   [Upgrades and version pinning](/MegooFlags/deploy/upgrades/).
 - `MEGOOFLAGS_SITE_ADDRESS` and `MEGOOFLAGS_PUBLIC_URL`: your domain and external URL. See
   [TLS modes](/MegooFlags/deploy/tls/).

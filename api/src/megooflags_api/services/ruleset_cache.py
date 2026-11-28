@@ -8,14 +8,25 @@ rebuilds, so no SDK request waits for the check. A Valkey change message invalid
 of its project at once: the next lookup waits for a fresh check instead of serving the old entry.
 When only flag_environment versions moved, a rebuild reloads just the changed flags and patches
 their fragments into the old body, which gives the same bytes, ETag and ruleset as a full build.
+
+With `freeze_full_builds`, a full build of at least FREEZE_MIN_FLAGS flags moves every object
+alive at that moment out of the cyclic garbage collector's reach (`gc.freeze`). A 10k-flag
+ruleset holds hundreds of thousands of objects, and each full collection walked them all, pausing
+the worker for hundreds of milliseconds several times a minute under load. A freeze unfreezes and
+collects the whole heap first, so cyclic garbage frozen by the previous one is reclaimed then; that
+collection is itself a pause, so freezes run at most once per FREEZE_INTERVAL, and a build inside
+the interval defers one freeze to its end (a cold start or a burst of new flags pays once).
+Patches do not freeze: their few new objects stay with the collector.
 """
 
 import asyncio
 import contextlib
 import dataclasses
+import gc
 import hashlib
 import json
 import logging
+import math
 import time
 import uuid
 from collections import OrderedDict
@@ -41,6 +52,8 @@ logger = logging.getLogger(__name__)
 
 SDK_MAX_AGE = 1.0
 INCREMENTAL_MAX_FLAGS = 256  # beyond this many changed flags, a full build is cheaper
+FREEZE_MIN_FLAGS = 1000  # smaller rulesets add little to a full collection
+FREEZE_INTERVAL = 60.0  # seconds between two freezes, each a whole-heap collection
 
 # Three parts, flag_environment | flag | segment, so a rebuild can tell what moved.
 FINGERPRINT = text("""
@@ -149,6 +162,13 @@ def _only_versions_moved(old: str, new: str) -> bool:
     return old.split("|")[1:] == new.split("|")[1:]
 
 
+def _freeze_long_lived() -> None:
+    """Reclaim what the last freeze kept, then freeze every object alive now."""
+    gc.unfreeze()
+    gc.collect()
+    gc.freeze()
+
+
 def from_body(body: bytes) -> CachedRuleset:
     """A ruleset from the JSON bytes SDKs download, with the same ETag the cache gives them."""
     etag = _etag(body)
@@ -170,8 +190,10 @@ class RulesetCache:
         sessionmaker: async_sessionmaker[AsyncSession] | None = None,
         max_environments: int = 256,
         clock: Callable[[], float] = time.monotonic,
+        freeze_full_builds: bool = False,
     ) -> None:
         self._sessionmaker = sessionmaker
+        self.freeze_full_builds = freeze_full_builds
         self._max = max_environments
         self._clock = clock
         self._entries: OrderedDict[uuid.UUID, _Entry] = OrderedDict()
@@ -179,6 +201,8 @@ class RulesetCache:
         self._locks: dict[uuid.UUID, tuple[asyncio.Lock, list[int]]] = {}
         self._refreshes: dict[uuid.UUID, asyncio.Task[None]] = {}
         self._epoch = 0
+        self._frozen_at = -math.inf
+        self._deferred_freeze: asyncio.TimerHandle | None = None
 
     async def get(
         self, session: AsyncSession, environment: EnvRef, max_age: float = 0.0
@@ -228,7 +252,10 @@ class RulesetCache:
                 entry.invalidated_epoch = self._epoch
 
     async def aclose(self) -> None:
-        """Cancel the background checks still running."""
+        """Cancel the background checks still running and a deferred freeze."""
+        if self._deferred_freeze is not None:
+            self._deferred_freeze.cancel()
+            self._deferred_freeze = None
         tasks = list(self._refreshes.values())
         for task in tasks:
             task.cancel()
@@ -324,6 +351,7 @@ class RulesetCache:
                     "incremental ruleset rebuild failed; rebuilding in full",
                     extra={"environment_id": environment.id},
                 )
+        full = built is None
         if built is None:
             parts = await build_parts(session, environment)
             # Parsing, encoding and hashing 10k flags takes hundreds of milliseconds: keep them
@@ -338,7 +366,24 @@ class RulesetCache:
         self._entries.move_to_end(environment.id)
         while len(self._entries) > self._max:
             self._entries.popitem(last=False)
+        if full and self.freeze_full_builds and len(cached.ruleset.flags) >= FREEZE_MIN_FLAGS:
+            self._freeze_soon()
         return cached
+
+    def _freeze_soon(self) -> None:
+        """Freeze now, or once at the end of the interval when the last freeze was too recent."""
+        wait = self._frozen_at + FREEZE_INTERVAL - self._clock()
+        if wait <= 0:
+            self._freeze()
+        elif self._deferred_freeze is None:
+            self._deferred_freeze = asyncio.get_running_loop().call_later(wait, self._freeze)
+
+    def _freeze(self) -> None:
+        if self._deferred_freeze is not None:
+            self._deferred_freeze.cancel()
+            self._deferred_freeze = None
+        self._frozen_at = self._clock()
+        _freeze_long_lived()
 
     async def _incremental(
         self, session: AsyncSession, environment: EnvRef, old: _Entry, fingerprint: str

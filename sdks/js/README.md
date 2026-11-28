@@ -6,7 +6,7 @@ evaluated, so no targeting rule ever reaches the browser. It follows changes ove
 fallback, caches the last values in `localStorage`, can start from bootstrap values, and sends
 exposures in batches.
 
-Status: 0.1.0, Alpha: the API may still change.
+Status: 0.1.0, Beta: the API may still change before 1.0.0.
 
 ## Install
 
