@@ -146,8 +146,9 @@ affinity:
 {{- end -}}
 
 {{/*
-The paths routed to the API, as deploy/Caddyfile and deploy/Caddyfile.worker route them
-("/x/*" is a prefix). Workers serve no /api. A YAML list of {type, path}.
+The paths routed to the API, with the types deploy/Caddyfile and deploy/Caddyfile.worker give them
+("/x/*" is a prefix). Workers serve no /api. A YAML list of {type, path}. The HTTPRoute uses the
+types as they are; the Ingress makes every path Prefix (see ingress.yaml).
 */}}
 {{- define "megooflags.apiPaths" -}}
 {{- if ne .Values.role "worker" }}

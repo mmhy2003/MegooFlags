@@ -96,5 +96,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|sdk|ofrep|_next|favicon.ico|icon.svg|healthz|readyz).*)"],
+  matcher: [
+    "/((?!api|sdk|ofrep|_next|favicon.ico|icon.svg|healthz|readyz|metrics).*)",
+  ],
 };

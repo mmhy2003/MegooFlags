@@ -45,7 +45,7 @@ spec:
         - name: {{ include "megooflags.apiService" . }}
           port: 8000
     {{- if ne .Values.role "worker" }}
-    # Everything else is the web UI. /metrics is never routed.
+    # Everything else is the web UI, also /metrics, which the web UI answers with 404.
     - matches:
         - path:
             type: PathPrefix

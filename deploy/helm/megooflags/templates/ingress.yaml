@@ -39,7 +39,7 @@ spec:
                   number: 8000
           {{- end }}
           {{- if ne .Values.role "worker" }}
-          # Everything else is the web UI. /metrics is never routed.
+          # Everything else is the web UI, also /metrics, which the web UI answers with 404.
           - path: /
             pathType: Prefix
             backend:
