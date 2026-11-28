@@ -4,8 +4,8 @@
 # 30080 -> 127.0.0.1:MF_HELM_INGRESS_PORT) and its Gateway API HTTPRoute (Gateway `traefik-gateway`
 # on entrypoint `gw`, NodePort 30081 -> 127.0.0.1:MF_HELM_GATEWAY_PORT).
 #
-# It installs a control plane (release `cp`, two api replicas) and two workers (release `workers`),
-# checks the routes, an SDK stream through both entry points, the workers serving with the api scaled
+# It installs a control plane (two api replicas) and two workers, as two releases with 50-character
+# names (`$cp_release`, `$workers_release`), checks the routes, an SDK stream through both entry points, the workers serving with the api scaled
 # to zero, and a `helm upgrade` that runs the next migration Job and rolls every api pod.
 #
 # Needs docker, kind v0.30.0, kubectl, helm v3.19.0, curl, openssl and python3. On failure the
@@ -26,6 +26,9 @@ TRAEFIK_IMAGE_TAG=v3.7.15
 
 chart="$root/deploy/helm/megooflags"
 ns=megooflags
+# 50-character release names (Helm allows 53): the chart cuts the base name to 41 characters.
+cp_release=control-plane-with-a-fifty-character-release-name1
+workers_release=workers-with-a-fifty-character-release-name-for-ci
 workers_host=workers.megooflags.test
 ingress="http://localhost:${ingress_port}"
 gateway="http://localhost:${gateway_port}"
@@ -56,6 +59,20 @@ trap cleanup EXIT
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
+# base_name <release>: the chart's base name, as megooflags.fullname in _helpers.tpl builds it.
+base_name() {
+  local base="$1-megooflags"
+  case "$1" in *megooflags*) base=$1 ;; esac
+  base=${base:0:41}
+  while [[ $base == *[-.] ]]; do base=${base%?}; done
+  echo "$base"
+}
+for release in "$cp_release" "$workers_release"; do
+  [ "${#release}" -eq 50 ] || fail "release name $release has ${#release} characters, not 50"
+done
+cp_base=$(base_name "$cp_release")
+workers_base=$(base_name "$workers_release")
+
 # status <url> [curl options...]: the HTTP status code, or 000 when nothing answered.
 status() {
   local url=$1
@@ -78,7 +95,7 @@ wait_200() {
 json_field() { python3 -c 'import json, sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"; }
 
 api_pods() {
-  kubectl get pods -n "$ns" -l app.kubernetes.io/instance=cp,app.kubernetes.io/component=api \
+  kubectl get pods -n "$ns" -l app.kubernetes.io/instance=${cp_release},app.kubernetes.io/component=api \
     -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort
 }
 
@@ -172,16 +189,18 @@ httpRoute:
     - name: traefik-gateway
       namespace: traefik
 EOF
-helm install cp "$chart" -n "$ns" --create-namespace -f "$work/cp.yaml" --wait --timeout 10m \
-  || fail "helm install cp failed"
+helm install "$cp_release" "$chart" -n "$ns" --create-namespace -f "$work/cp.yaml" --wait \
+  --timeout 10m || fail "helm install $cp_release failed"
 echo "control plane installed"
 
 # 4. The control-plane routes, through both entry points. The api's /metrics is never routed: the
-# catch-all sends /metrics to the web app, which redirects an anonymous visitor.
+# catch-all sends /metrics to the web app, which answers 404.
 for entry in "$ingress" "$gateway"; do
   for path in /healthz /readyz /sign-in; do
     wait_200 "$entry$path"
   done
+  code=$(status "$entry/metrics")
+  [ "$code" = 404 ] || fail "GET $entry/metrics on the control plane returned $code, not 404"
   body=$(curl -s --max-time 10 "$entry/metrics" || true)
   case "$body" in
     *megooflags_http_requests_total*) fail "GET $entry/metrics served the Prometheus metrics" ;;
@@ -190,9 +209,9 @@ done
 curl -fsS -D "$work/headers" -o /dev/null "$gateway/healthz" || fail "GET $gateway/healthz failed"
 grep -qi '^X-Frame-Options: DENY' "$work/headers" \
   || fail "GET $gateway/healthz has no X-Frame-Options: DENY from the HTTPRoute filter"
-accepted=$(kubectl get httproute cp-megooflags -n "$ns" \
+accepted=$(kubectl get httproute "$cp_base" -n "$ns" \
   -o jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}')
-[ "$accepted" = True ] || fail "HTTPRoute cp-megooflags is not Accepted (status: '$accepted')"
+[ "$accepted" = True ] || fail "HTTPRoute $cp_base is not Accepted (status: '$accepted')"
 echo "control-plane routes OK"
 
 # 5. The first admin and an org admin token, as in scripts/proxy_samples_test.sh, then an SDK stream
@@ -226,7 +245,7 @@ image:
   tag: ci
   pullPolicy: Never
 worker:
-  controlPlaneUrl: http://cp-megooflags-api.${ns}.svc:8000
+  controlPlaneUrl: http://${cp_base}-api.${ns}.svc:8000
   controlPlaneInsecure: true
   nodeTokens:
     - ${node_tokens[0]}
@@ -244,14 +263,14 @@ httpRoute:
     - name: traefik-gateway
       namespace: traefik
 EOF
-helm install workers "$chart" -n "$ns" -f "$work/workers.yaml" --wait --timeout 10m \
-  || fail "helm install workers failed"
-kubectl rollout status statefulset/workers-megooflags-worker -n "$ns" --timeout 5m \
-  || fail "statefulset/workers-megooflags-worker did not roll out"
+helm install "$workers_release" "$chart" -n "$ns" -f "$work/workers.yaml" --wait --timeout 10m \
+  || fail "helm install $workers_release failed"
+kubectl rollout status statefulset/${workers_base}-worker -n "$ns" --timeout 5m \
+  || fail "statefulset/${workers_base}-worker did not roll out"
 for n in 0 1; do
-  ready=$(kubectl get pod "workers-megooflags-worker-$n" -n "$ns" \
+  ready=$(kubectl get pod "${workers_base}-worker-$n" -n "$ns" \
     -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')
-  [ "$ready" = True ] || fail "pod workers-megooflags-worker-$n is not Ready"
+  [ "$ready" = True ] || fail "pod ${workers_base}-worker-$n is not Ready"
 done
 echo "workers installed"
 
@@ -270,7 +289,7 @@ done
 echo "worker routes OK"
 
 # 8. The workers keep serving with no api pod at all.
-kubectl scale deployment/cp-megooflags-api -n "$ns" --replicas=0 >/dev/null || fail "scale to 0 failed"
+kubectl scale deployment/${cp_base}-api -n "$ns" --replicas=0 >/dev/null || fail "scale to 0 failed"
 for _ in $(seq 60); do
   [ -z "$(api_pods)" ] && break
   sleep 2
@@ -278,20 +297,20 @@ done
 [ -z "$(api_pods)" ] || fail "api pods remain after scaling to 0: $(api_pods | tr '\n' ' ')"
 code=$(status "$ingress/sdk/v1/ruleset" "${ruleset[@]}")
 [ "$code" = 200 ] || fail "GET /sdk/v1/ruleset through the workers returned $code with the api down"
-kubectl scale deployment/cp-megooflags-api -n "$ns" --replicas=2 >/dev/null || fail "scale to 2 failed"
-kubectl rollout status deployment/cp-megooflags-api -n "$ns" --timeout 5m \
-  || fail "deployment/cp-megooflags-api did not come back"
+kubectl scale deployment/${cp_base}-api -n "$ns" --replicas=2 >/dev/null || fail "scale to 2 failed"
+kubectl rollout status deployment/${cp_base}-api -n "$ns" --timeout 5m \
+  || fail "deployment/${cp_base}-api did not come back"
 echo "control plane outage OK"
 
 # 9. An upgrade runs the next migration Job and replaces every api pod.
 before=$(api_pods)
-helm upgrade cp "$chart" -n "$ns" --reuse-values --set config.MEGOOFLAGS_LOG_LEVEL=DEBUG \
-  --wait --timeout 10m || fail "helm upgrade cp failed"
-succeeded=$(kubectl get job cp-megooflags-migrate-2 -n "$ns" -o jsonpath='{.status.succeeded}') \
-  || fail "job/cp-megooflags-migrate-2 does not exist"
-[ "$succeeded" = 1 ] || fail "job/cp-megooflags-migrate-2 has succeeded='$succeeded', not 1"
-if kubectl get job cp-megooflags-migrate-1 -n "$ns" >/dev/null 2>&1; then
-  fail "job/cp-megooflags-migrate-1 is still there after the upgrade"
+helm upgrade "$cp_release" "$chart" -n "$ns" --reuse-values --set config.MEGOOFLAGS_LOG_LEVEL=DEBUG \
+  --wait --timeout 10m || fail "helm upgrade $cp_release failed"
+succeeded=$(kubectl get job ${cp_base}-migrate-2 -n "$ns" -o jsonpath='{.status.succeeded}') \
+  || fail "job/${cp_base}-migrate-2 does not exist"
+[ "$succeeded" = 1 ] || fail "job/${cp_base}-migrate-2 has succeeded='$succeeded', not 1"
+if kubectl get job ${cp_base}-migrate-1 -n "$ns" >/dev/null 2>&1; then
+  fail "job/${cp_base}-migrate-1 is still there after the upgrade"
 fi
 for _ in $(seq 60); do
   [ "$(api_pods | wc -l)" -eq 2 ] && break
