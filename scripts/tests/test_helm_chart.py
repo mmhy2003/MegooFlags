@@ -179,6 +179,31 @@ def _role_values(role: str) -> dict[str, Any]:
             "from the Nodes page), or set existingSecret and worker.replicas",
             id="existing-secret-without-replicas",
         ),
+        pytest.param(
+            {
+                "role": "worker",
+                "worker": {
+                    "controlPlaneUrl": "https://cp.example.com",
+                    "nodeTokens": ["mf_node_a", "mf_node_b"],
+                    "replicas": 3,
+                },
+            },
+            "worker.replicas (3) must equal the number of worker.nodeTokens (2), or be left at 0",
+            id="replicas-differ-from-tokens",
+        ),
+        pytest.param(
+            {
+                "role": "worker",
+                "existingSecret": "tokens",
+                "worker": {
+                    "controlPlaneUrl": "https://cp.example.com",
+                    "nodeTokens": ["mf_node_a", "mf_node_b"],
+                    "replicas": 3,
+                },
+            },
+            "worker.replicas (3) must equal the number of worker.nodeTokens (2), or be left at 0",
+            id="replicas-differ-from-tokens-existing-secret",
+        ),
     ],
 )
 def test_required_values(tmp_path: Path, values: dict[str, Any], message: str) -> None:
@@ -666,6 +691,10 @@ def test_worker_resources(tmp_path: Path) -> None:
 def test_worker_replicas_follow_tokens(tmp_path: Path) -> None:
     values = _workers(nodeTokens=["mf_node_a", "mf_node_b", "mf_node_c"])
     assert _worker_set(render(tmp_path, values))["spec"]["replicas"] == 3
+
+
+def test_worker_replicas_equal_to_tokens(tmp_path: Path) -> None:
+    assert _worker_set(render(tmp_path, _workers(replicas=2)))["spec"]["replicas"] == 2
 
 
 def test_worker_existing_secret_replicas(tmp_path: Path) -> None:

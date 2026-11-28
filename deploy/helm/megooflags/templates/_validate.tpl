@@ -14,6 +14,11 @@ configmap.yaml, which every role renders.
 {{- if not (or $v.worker.nodeTokens (and $v.existingSecret (gt (int $v.worker.replicas) 0))) -}}
 {{- fail "worker.nodeTokens is required when role is worker (one token per replica, from the Nodes page), or set existingSecret and worker.replicas" -}}
 {{- end -}}
+{{- $tokens := len $v.worker.nodeTokens -}}
+{{- $replicas := int $v.worker.replicas -}}
+{{- if and (gt $tokens 0) (gt $replicas 0) (ne $replicas $tokens) -}}
+{{- fail (printf "worker.replicas (%d) must equal the number of worker.nodeTokens (%d), or be left at 0" $replicas $tokens) -}}
+{{- end -}}
 {{- else -}}
 {{- if not $v.existingSecret -}}
 {{- if not $v.secretKey -}}
